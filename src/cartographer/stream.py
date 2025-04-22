@@ -111,5 +111,8 @@ class Stream(ABC, Generic[T]):
         for session in self.sessions:
             session.add_item(item)
 
-        for callback in self.callbacks:
-            callback(item)
+        for callback in self.callbacks.copy():
+            try:
+                callback(item)
+            except Exception as e:
+                logger.error("Error in stream callback: %s", e)
