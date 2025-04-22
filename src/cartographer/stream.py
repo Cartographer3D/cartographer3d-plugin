@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Callable, Generic, Protocol, TypeVar
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 
 class Condition(Protocol):
@@ -109,5 +112,8 @@ class Stream(ABC, Generic[T]):
         for session in self.sessions:
             session.add_item(item)
 
-        for callback in self.callbacks:
-            callback(item)
+        for callback in self.callbacks.copy():
+            try:
+                callback(item)
+            except Exception as e:
+                logger.error("Error in stream callback: %s", e)
