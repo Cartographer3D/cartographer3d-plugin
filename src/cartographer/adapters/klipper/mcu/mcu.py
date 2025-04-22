@@ -128,8 +128,14 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     def start_session(self, start_condition: Callable[[Sample], bool] | None = None) -> Session[Sample]:
         return self._stream.start_session(start_condition)
 
+    def end_session(self, session: Session[Sample]) -> None:
+        return self._stream.end_session(session)
+
     def register_callback(self, callback: Callable[[Sample], None]) -> None:
         return self._stream.register_callback(callback)
+
+    def unregister_callback(self, callback: Callable[[Sample], None]) -> None:
+        return self._stream.unregister_callback(callback)
 
     @override
     def start_streaming(self) -> None:
