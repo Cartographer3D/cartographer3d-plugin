@@ -5,11 +5,14 @@ import math
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, final
 
+from cartographer.event_bus import Event
+
 if TYPE_CHECKING:
     from klippy import Printer
     from webhooks import WebRequest
 
     from cartographer.adapters.klipper.mcu import KlipperCartographerMcu
+    from cartographer.event_bus import EventBus
     from cartographer.interfaces.printer import Position, Sample, Toolhead
     from cartographer.probe.scan_mode import ScanMode
 
@@ -33,6 +36,7 @@ class WebhookSample:
 class KlipperCartographerWebhooks:
     def __init__(
         self,
+        event_bus: EventBus,
         printer: Printer,
         mcu: KlipperCartographerMcu,
         toolhead: Toolhead,
@@ -42,11 +46,13 @@ class KlipperCartographerWebhooks:
         self._mcu = mcu
         self._toolhead = toolhead
         self.scan_mode = scan_mode
+        self._event_bus = event_bus
 
     def register(self) -> None:
         """Register the webhooks with Klipper."""
         webhooks = self._printer.lookup_object("webhooks")
         webhooks.register_endpoint("cartographer/subscribe_samples", self._handle_subscribe_samples)
+        webhooks.register_endpoint("cartographer/subscribe_events", self._handle_subscribe_events)
 
     def _handle_subscribe_samples(self, web_request: WebRequest) -> None:
         conn = web_request.get_client_connection()
@@ -84,6 +90,22 @@ class KlipperCartographerWebhooks:
                 conn.send(response)
 
         self._mcu.register_callback(callback)
+
+    def _handle_subscribe_events(self, web_request: WebRequest) -> None:
+        conn = web_request.get_client_connection()
+        logger.debug("Events subscription received %d", id(conn))
+        template = web_request.get_dict("response_template", default={})
+
+        def callback(event: Event):
+            if conn.is_closed():
+                self._event_bus.unsubscribe(Event, callback)
+                logger.debug("Connection %d closed, stopping subscription", id(conn))
+            response = dict(template)
+            response["params"] = asdict(event)
+            response["params"]["type"] = event.__class__.__name__
+            conn.send(response)
+
+        self._event_bus.subscribe(Event, callback)
 
     def _frequency_to_distance(self, frequency: float) -> float | None:
         if not self.scan_mode.has_model():
