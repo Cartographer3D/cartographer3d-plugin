@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, cast
 from numpy.polynomial import Polynomial
 from typing_extensions import override
 
-from cartographer.interfaces.configuration import ScanModelConfiguration, ScanModelFit
+from cartographer.interfaces.configuration import ScanModelConfiguration
 from cartographer.probe.model import ModelSelectorMixin
 
 if TYPE_CHECKING:
@@ -41,7 +41,7 @@ class ScanModel:
         self._config: ScanModelConfiguration = config
 
     @staticmethod
-    def fit(samples: Sequence[Sample]) -> ScanModelFit:
+    def fit(name: str, samples: Sequence[Sample], z_offset: float) -> ScanModelConfiguration:
         positions = [sample.position for sample in samples]
         # TODO: Can we ignore missing positions?
         if not all(positions):
@@ -52,9 +52,11 @@ class ScanModel:
 
         poly = cast("Polynomial", Polynomial.fit(inverse_frequencies, z_offsets, DEGREES))
 
-        return ScanModelFit(
+        return ScanModelConfiguration(
+            name=name,
             coefficients=poly.coef,
             domain=poly.domain,
+            z_offset=z_offset,
         )
 
     def frequency_to_distance(self, frequency: float) -> float:

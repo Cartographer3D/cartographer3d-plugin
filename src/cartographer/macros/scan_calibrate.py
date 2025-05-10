@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from enum import Enum
 from functools import partial
-from typing import TYPE_CHECKING, Protocol, final
+from typing import TYPE_CHECKING, final
 
 from typing_extensions import assert_never, override
 
@@ -12,16 +12,11 @@ from cartographer.macros.utils import get_enum_choice
 from cartographer.probe import Probe, ScanModel
 
 if TYPE_CHECKING:
-    from cartographer.interfaces.configuration import ScanModelFit
+    from cartographer.interfaces.configuration import Configuration
+
+    pass
 
 logger = logging.getLogger(__name__)
-
-
-class Configuration(Protocol):
-    zero_reference_position: tuple[float, float]
-    move_speed: float
-
-    def save_new_scan_model(self, name: str, model: ScanModelFit) -> None: ...
 
 
 class ScanCalibrateMethod(Enum):
@@ -49,9 +44,9 @@ class ScanCalibrateMacro(Macro):
             raise RuntimeError(msg)
 
         self._toolhead.move(
-            x=self._config.zero_reference_position[0],
-            y=self._config.zero_reference_position[1],
-            speed=self._config.move_speed,
+            x=self._config.bed_mesh.zero_reference_position[0],
+            y=self._config.bed_mesh.zero_reference_position[1],
+            speed=self._config.general.travel_speed,
         )
         self._toolhead.wait_moves()
 
@@ -106,11 +101,11 @@ class ScanCalibrateMacro(Macro):
         samples = session.get_items()
         logger.debug("Collected %d samples", len(samples))
 
-        model = ScanModel.fit(samples)
+        model = ScanModel.fit(name, samples, z_offset=0.1)
         logger.debug("Scan calibration fitted model: %s", model)
 
-        self._config.save_new_scan_model(name, model)
-        self._probe.scan.load_model(name)
+        self._config.save_scan_model(model)
+        self._probe.scan.load_model(model.name)
         logger.info(
             """
             Scan model %s has been saved

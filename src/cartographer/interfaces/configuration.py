@@ -5,12 +5,6 @@ from typing import Protocol
 
 
 @dataclass(frozen=True)
-class ScanModelFit:
-    coefficients: list[float]
-    domain: tuple[float, float]
-
-
-@dataclass(frozen=True)
 class GeneralConfig:
     x_offset: float
     y_offset: float

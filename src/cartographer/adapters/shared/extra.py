@@ -21,7 +21,7 @@ from cartographer.macros import ProbeAccuracyMacro, ProbeMacro, QueryProbeMacro,
 from cartographer.macros.axis_twist_compensation import AxisTwistCompensationMacro
 from cartographer.macros.backlash import EstimateBacklashMacro
 from cartographer.macros.bed_mesh import BedMeshCalibrateMacro
-from cartographer.macros.scan import ScanCalibrateMacro
+from cartographer.macros.scan_calibrate import ScanCalibrateMacro
 from cartographer.macros.touch import TouchAccuracyMacro, TouchCalibrateMacro, TouchHomeMacro, TouchMacro
 from cartographer.probe import Probe, ScanMode, ScanModel, TouchMode
 

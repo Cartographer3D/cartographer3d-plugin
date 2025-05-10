@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, final
 
 from cartographer.macros.backlash import EstimateBacklashMacro
 from cartographer.macros.probe import ProbeAccuracyMacro, ProbeMacro, QueryProbeMacro, ZOffsetApplyProbeMacro
+from cartographer.macros.scan_calibrate import ScanCalibrateMacro
 from cartographer.macros.touch import TouchAccuracyMacro, TouchHomeMacro, TouchMacro
 from cartographer.macros.touch_calibrate import TouchCalibrateMacro
 from cartographer.probe.probe import Probe
@@ -42,7 +43,7 @@ class PrinterCartographer:
             TouchAccuracyMacro(touch_mode, toolhead),
             TouchHomeMacro(touch_mode, toolhead, config.bed_mesh.zero_reference_position),
             # BedMeshCalibrateMacro(...),  # Pass dependencies as needed
-            # ScanCalibrateMacro(probe, toolhead, config),
+            ScanCalibrateMacro(probe, toolhead, config),
             # AxisTwistCompensationMacro(...),
             EstimateBacklashMacro(toolhead, self.scan_mode),
         ]
