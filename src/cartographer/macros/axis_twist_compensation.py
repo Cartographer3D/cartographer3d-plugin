@@ -8,10 +8,10 @@ from typing import TYPE_CHECKING, Literal, Protocol, final
 import numpy as np
 from typing_extensions import override
 
-from cartographer.printer_interface import Macro, MacroParams, Toolhead
+from cartographer.interfaces.printer import Macro, MacroParams, Toolhead
 
 if TYPE_CHECKING:
-    from cartographer.configuration import Configuration
+    from cartographer.interfaces.configuration import Configuration
     from cartographer.probe import Probe
 
 logger = logging.getLogger(__name__)
@@ -24,17 +24,25 @@ class CalibrationOptions:
     line: float | None
 
 
+@dataclass
+class CompensationResult:
+    axis: Literal["x", "y"]
+    start: float
+    end: float
+    values: list[float]
+
+
 class AxisTwistCompensationHelper(Protocol):
     move_height: float
     speed: float
 
     def clear_compensations(self, axis: Literal["x", "y"]) -> None: ...
-    def save_compensations(self, axis: Literal["x", "y"], start: float, end: float, values: list[float]) -> None: ...
+    def apply_compensation(self, result: CompensationResult) -> None: ...
     def get_calibration_options(self, axis: Literal["x", "y"]) -> CalibrationOptions: ...
 
 
 @final
-class AxisTwistCompensationMacro(Macro[MacroParams]):
+class AxisTwistCompensationMacro(Macro):
     name = "TOUCH_AXIS_TWIST_COMPENSATION"
     description = "Scan and touch to calculate axis twist compensation values."
 
@@ -129,7 +137,7 @@ class AxisTwistCompensationMacro(Macro[MacroParams]):
         avg = float(np.mean(results))
         results = [avg - x for x in results]
 
-        self.helper.save_compensations(axis, start_pos, end_pos, results)
+        self.helper.apply_compensation(CompensationResult(axis=axis, start=start_pos, end=end_pos, values=results))
         logger.info("""
             AXIS_TWIST_COMPENSATION state has been saved
             for the current session.  The SAVE_CONFIG command will
@@ -160,13 +168,13 @@ class AxisTwistCompensationMacro(Macro[MacroParams]):
     def _move_probe_to(self, axis: Literal["x", "y"], position: float, calibration_axis: float) -> None:
         if axis == "x":
             self.toolhead.move(
-                x=position - self.config.x_offset,
-                y=calibration_axis - self.config.y_offset,
+                x=position - self.config.general.x_offset,
+                y=calibration_axis - self.config.general.y_offset,
                 speed=self.helper.speed,
             )
         else:
             self.toolhead.move(
-                x=calibration_axis - self.config.x_offset,
-                y=position - self.config.y_offset,
+                x=calibration_axis - self.config.general.x_offset,
+                y=position - self.config.general.y_offset,
                 speed=self.helper.speed,
             )

@@ -6,16 +6,16 @@ from typing import TYPE_CHECKING
 import pytest
 from typing_extensions import TypeAlias
 
-from cartographer.configuration import TouchModelConfiguration
+from cartographer.interfaces.configuration import TouchModelConfiguration
+from cartographer.interfaces.printer import MacroParams, Position, Toolhead
 from cartographer.macros.touch import TouchAccuracyMacro, TouchHomeMacro, TouchMacro
-from cartographer.printer_interface import MacroParams, Position, Toolhead
 from cartographer.probe.touch_mode import TouchMode
 
 if TYPE_CHECKING:
     from pytest import LogCaptureFixture
     from pytest_mock import MockerFixture
 
-Probe: TypeAlias = TouchMode[object]
+Probe: TypeAlias = TouchMode
 
 
 @pytest.fixture
@@ -126,7 +126,7 @@ def test_touch_home_macro_moves(
 
     macro.run(params)
 
-    assert move_spy.mock_calls == [mocker.call(x=10, y=10, speed=probe.config.move_speed)]
+    assert move_spy.mock_calls == [mocker.call(x=10, y=10, speed=probe._config.move_speed)]
 
 
 def test_touch_home_macro(

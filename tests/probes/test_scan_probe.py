@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 import pytest
 from typing_extensions import TypeAlias, override
 
-from cartographer.printer_interface import HomingState, Mcu, Position, Toolhead
-from cartographer.probe.scan_mode import Configuration, Model, ScanMode
+from cartographer.interfaces.printer import HomingState, Mcu, Position, Toolhead
+from cartographer.probe.scan_mode import Model, ScanMode, ScanModeConfiguration
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
@@ -23,7 +23,7 @@ class Sample:
     velocity: float | None = 5
 
 
-Probe: TypeAlias = ScanMode[object, Sample]
+Probe: TypeAlias = ScanMode
 
 
 class MockModel(Model):
@@ -52,7 +52,7 @@ class MockModel(Model):
         return frequency
 
 
-class MockConfiguration(Configuration):
+class MockConfiguration(ScanModeConfiguration):
     x_offset: float = 0.0
     y_offset: float = 0.0
     move_speed: float = 42.0
@@ -79,7 +79,7 @@ def homing_state(mocker: MockerFixture, probe: Probe) -> HomingState:
 
 
 @pytest.fixture
-def probe(mcu: Mcu[object, Sample], toolhead: Toolhead, config: Configuration, model: Model) -> Probe:
+def probe(mcu: Mcu[object, Sample], toolhead: Toolhead, config: ScanModeConfiguration, model: Model) -> Probe:
     return ScanMode(mcu, toolhead, config, model=model)
 
 

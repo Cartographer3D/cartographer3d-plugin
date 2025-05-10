@@ -4,18 +4,18 @@ from typing import Literal, final
 import numpy as np
 from typing_extensions import override
 
-from cartographer.printer_interface import Macro, MacroParams, S, Toolhead
+from cartographer.interfaces.printer import Macro, MacroParams, Toolhead
 from cartographer.probe.scan_mode import ScanMode
 
 logger = logging.getLogger(__name__)
 
 
 @final
-class EstimateBacklashMacro(Macro[MacroParams]):
+class EstimateBacklashMacro(Macro):
     name = "ESTIMATE_BACKLASH"
     description = "Do a series of moves to estimate backlash on the Z axis."
 
-    def __init__(self, toolhead: Toolhead, scan: ScanMode[object, S]) -> None:
+    def __init__(self, toolhead: Toolhead, scan: ScanMode) -> None:
         self._scan = scan
         self._toolhead = toolhead
 

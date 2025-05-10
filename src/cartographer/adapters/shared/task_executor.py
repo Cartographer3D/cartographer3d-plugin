@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, Callable, TypeVar, final
 
 from typing_extensions import ParamSpec, override
 
-from cartographer.interfaces import TaskExecutor
+from cartographer.interfaces.multiprocessing import TaskExecutor
 
 if TYPE_CHECKING:
     from multiprocessing.connection import Connection

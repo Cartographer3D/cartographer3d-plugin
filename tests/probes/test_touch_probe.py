@@ -5,16 +5,16 @@ from typing import TYPE_CHECKING, final
 import pytest
 from typing_extensions import TypeAlias
 
-from cartographer.printer_interface import HomingState, Mcu, Position, Sample, TemperatureStatus, Toolhead
+from cartographer.interfaces.printer import HomingState, Mcu, Position, Sample, TemperatureStatus, Toolhead
 from cartographer.probe.touch_mode import Configuration, TouchMode
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
-    from cartographer.configuration import TouchModelConfiguration
+    from cartographer.interfaces.configuration import TouchModelConfiguration
 
 
-Probe: TypeAlias = TouchMode[object]
+Probe: TypeAlias = TouchMode
 
 
 @final

@@ -3,25 +3,20 @@ from __future__ import annotations
 import logging
 from enum import Enum
 from functools import partial
-from typing import TYPE_CHECKING, Protocol, final
+from typing import TYPE_CHECKING, final
 
 from typing_extensions import assert_never, override
 
+from cartographer.interfaces.printer import Macro, MacroParams, Position, Toolhead
 from cartographer.macros.utils import get_enum_choice
-from cartographer.printer_interface import Macro, MacroParams, Position, Toolhead
 from cartographer.probe import Probe, ScanModel
 
 if TYPE_CHECKING:
-    from cartographer.configuration import ScanModelConfiguration, ScanModelFit
+    from cartographer.interfaces.configuration import Configuration
+
+    pass
 
 logger = logging.getLogger(__name__)
-
-
-class Configuration(Protocol):
-    zero_reference_position: tuple[float, float]
-    move_speed: float
-
-    def save_new_scan_model(self, name: str, model: ScanModelFit) -> ScanModelConfiguration: ...
 
 
 class ScanCalibrateMethod(Enum):
@@ -30,7 +25,7 @@ class ScanCalibrateMethod(Enum):
 
 
 @final
-class ScanCalibrateMacro(Macro[MacroParams]):
+class ScanCalibrateMacro(Macro):
     name = "SCAN_CALIBRATE"
     description = "Run the scan calibration"
 
@@ -49,9 +44,9 @@ class ScanCalibrateMacro(Macro[MacroParams]):
             raise RuntimeError(msg)
 
         self._toolhead.move(
-            x=self._config.zero_reference_position[0],
-            y=self._config.zero_reference_position[1],
-            speed=self._config.move_speed,
+            x=self._config.bed_mesh.zero_reference_position[0],
+            y=self._config.bed_mesh.zero_reference_position[1],
+            speed=self._config.general.travel_speed,
         )
         self._toolhead.wait_moves()
 
@@ -106,11 +101,11 @@ class ScanCalibrateMacro(Macro[MacroParams]):
         samples = session.get_items()
         logger.debug("Collected %d samples", len(samples))
 
-        model = ScanModel.fit(samples)
+        model = ScanModel.fit(name, samples, z_offset=0.1)
         logger.debug("Scan calibration fitted model: %s", model)
 
-        new_config = self._config.save_new_scan_model(name, model)
-        self._probe.scan.model = ScanModel(new_config)
+        self._config.save_scan_model(model)
+        self._probe.scan.load_model(model.name)
         logger.info(
             """
             Scan model %s has been saved

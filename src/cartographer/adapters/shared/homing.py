@@ -18,15 +18,16 @@ class _PinParams(TypedDict):
 
 @final
 class CartographerHomingChip:
-    def __init__(self, printer: Printer, endstop: MCU_endstop) -> None:
+    def __init__(self, printer: Printer, endstop: MCU_endstop, pin: str) -> None:
         self.endstop = endstop
+        self.pin = pin
 
     def setup_pin(self, pin_type: str, pin_params: _PinParams) -> MCU_endstop:
-        if pin_type != "endstop" or pin_params["pin"] != "z_virtual_endstop":
-            msg = "cartographer virtual endstop only useful as endstop pin"
+        if pin_type != "endstop" or pin_params["pin"] != self.pin:
+            msg = "cartographer probe chip is only useful as an endstop pin"
             raise pins.error(msg)
         if pin_params["invert"] or pin_params["pullup"]:
-            msg = "can not pullup/invert probe virtual endstop"
+            msg = f"can not pullup/invert cartographer {self.pin}"
             raise pins.error(msg)
 
         return self.endstop

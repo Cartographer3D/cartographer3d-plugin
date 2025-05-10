@@ -3,37 +3,52 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass
 from itertools import combinations
-from typing import TYPE_CHECKING, Protocol, final
+from typing import TYPE_CHECKING
 
 import numpy as np
 from typing_extensions import override
 
+from cartographer.interfaces.printer import Endstop, HomingState, Mcu, Position, ProbeMode, Toolhead
 from cartographer.lib.statistics import compute_mad
-from cartographer.printer_interface import C, Endstop, HomingState, Mcu, Position, ProbeMode, S, Toolhead
+from cartographer.probe.touch_model import TouchModelSelectorMixin
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from cartographer.configuration import TouchModelConfiguration
+    from cartographer.interfaces.configuration import Configuration, TouchModelConfiguration
 
 logger = logging.getLogger(__name__)
 
 
-STD_TOLERANCE = 0.008
+MAD_TOLERANCE = 0.0054  # Statistically equivalent to 0.008mm stddev
+SAFE_TRIGGER_MIN_HEIGHT = -0.2  # Initial home too far
 RETRACT_DISTANCE = 2.0
 MAX_TOUCH_TEMPERATURE = 155
 
 
-class Configuration(Protocol):
-    move_speed: float
-
-    touch_samples: int
-    touch_max_samples: int
+@dataclass(frozen=True)
+class TouchModeConfiguration:
+    samples: int
+    max_samples: int
 
     x_offset: float
     y_offset: float
     mesh_min: tuple[float, float]
     mesh_max: tuple[float, float]
+
+    models: dict[str, TouchModelConfiguration]
+
+    @staticmethod
+    def from_config(config: Configuration):
+        return TouchModeConfiguration(
+            samples=config.touch.samples,
+            max_samples=config.touch.max_samples,
+            models=config.touch.models,
+            x_offset=config.general.x_offset,
+            y_offset=config.general.y_offset,
+            mesh_min=config.bed_mesh.mesh_min,
+            mesh_max=config.bed_mesh.mesh_max,
+        )
 
 
 class TouchError(RuntimeError):
@@ -54,7 +69,7 @@ class TouchBoundaries:
         return in_x_bounds and in_y_bounds
 
     @staticmethod
-    def from_config(config: Configuration) -> TouchBoundaries:
+    def from_config(config: TouchModeConfiguration) -> TouchBoundaries:
         mesh_min_x, mesh_min_y = config.mesh_min
         mesh_max_x, mesh_max_y = config.mesh_max
         x_offset = config.x_offset
@@ -75,45 +90,37 @@ class TouchBoundaries:
         )
 
 
-@final
-class TouchMode(ProbeMode, Endstop[C]):
+class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
     """Implementation for Survey Touch."""
-
-    def get_model(self) -> TouchModelConfiguration:
-        if self.model is None:
-            msg = "no touch model loaded"
-            raise RuntimeError(msg)
-        return self.model
 
     @property
     @override
     def offset(self) -> Position:
-        z_offset = self.model.z_offset if self.model else 0.0
+        z_offset = self.get_model().z_offset if self.has_model() else 0.0
         return Position(0.0, 0.0, z_offset)
-
-    @override
-    def save_z_offset(self, new_offset: float) -> None:
-        self.get_model().save_z_offset(new_offset)
 
     @property
     @override
     def is_ready(self) -> bool:
-        return self.model is not None
+        return self.has_model()
 
-    def __init__(
-        self,
-        mcu: Mcu[C, S],
-        toolhead: Toolhead,
-        config: Configuration,
-        *,
-        model: TouchModelConfiguration | None,
-    ) -> None:
-        self._toolhead = toolhead
-        self._mcu = mcu
-        self.config = config
-        self.model = model
+    def __init__(self, mcu: Mcu, toolhead: Toolhead, config: TouchModeConfiguration) -> None:
+        super().__init__(config.models)
+        self._toolhead: Toolhead = toolhead
+        self._mcu: Mcu = mcu
+        self._config: TouchModeConfiguration = config
 
-        self.boundaries = TouchBoundaries.from_config(config)
+        self.boundaries: TouchBoundaries = TouchBoundaries.from_config(config)
+
+        self.last_z_result: float | None = None
+
+    @override
+    def get_status(self, eventtime: float) -> object:
+        return {
+            "current_model": self.get_model().name if self.has_model() else "none",
+            "models": ", ".join(self._config.models.keys()),
+            "last_z_result": self.last_z_result,
+        }
 
     @override
     def perform_probe(self) -> float:
@@ -122,19 +129,20 @@ class TouchMode(ProbeMode, Endstop[C]):
             raise RuntimeError(msg)
 
         if self._toolhead.get_position().z < 5:
-            self._toolhead.move(z=5, speed=self.config.move_speed)
+            self._toolhead.move(z=5, speed=5)
         self._toolhead.wait_moves()
 
-        return self._run_probe()
+        self.last_z_result = self._run_probe()
+        return self.last_z_result
 
     def _run_probe(self) -> float:
         collected: list[float] = []
-        touch_samples = self.config.touch_samples
-        touch_max_samples = self.config.touch_max_samples
+        touch_samples = self._config.samples
+        touch_max_samples = self._config.max_samples
         logger.debug("Starting touch sequence for %d samples within %d touches...", touch_samples, touch_max_samples)
 
         for i in range(touch_max_samples):
-            trigger_pos = self.perform_single_probe()
+            trigger_pos = self._perform_single_probe()
             collected.append(trigger_pos)
             logger.debug("Touch %d: %.6f", i + 1, trigger_pos)
 
@@ -155,28 +163,32 @@ class TouchMode(ProbeMode, Endstop[C]):
 
     def _find_valid_combination(self, samples: list[float], size: int) -> tuple[float, ...] | None:
         for combo in combinations(samples, size):
-            if np.std(combo) <= STD_TOLERANCE:
-                return combo
+            current_mad = compute_mad(combo)
+            if current_mad <= MAD_TOLERANCE:
+                return tuple(sorted(combo))
         return None
 
-    def perform_single_probe(self) -> float:
+    def _perform_single_probe(self) -> float:
         model = self.get_model()
         if self._toolhead.get_position().z < RETRACT_DISTANCE:
-            self._toolhead.move(z=RETRACT_DISTANCE, speed=self.config.move_speed)
+            self._toolhead.move(z=RETRACT_DISTANCE, speed=5)
         self._toolhead.wait_moves()
         trigger_pos = self._toolhead.z_homing_move(self, bottom=-2.0, speed=model.speed)
         pos = self._toolhead.get_position()
-        self._toolhead.move(
-            z=max(pos.z + RETRACT_DISTANCE, RETRACT_DISTANCE),
-            speed=self.config.move_speed,
-        )
+        self._toolhead.move(z=max(pos.z + RETRACT_DISTANCE, RETRACT_DISTANCE), speed=5)
+        if trigger_pos < SAFE_TRIGGER_MIN_HEIGHT:
+            msg = f"""
+                Probe triggered too low at {pos:.3f}mm.
+                Ensure Z is homed within {SAFE_TRIGGER_MIN_HEIGHT:.1f}mm of bed.
+                """
+            raise RuntimeError(msg)
         return trigger_pos
 
     @override
-    def home_start(self, print_time: float) -> C:
+    def home_start(self, print_time: float) -> object:
         model = self.get_model()
         if model.threshold <= 0:
-            msg = "threshold must be greater than 0"
+            msg = "threshold must positive"
             raise RuntimeError(msg)
 
         pos = self._toolhead.get_position()
@@ -195,8 +207,6 @@ class TouchMode(ProbeMode, Endstop[C]):
 
     @override
     def on_home_end(self, homing_state: HomingState) -> None:
-        if self not in homing_state.endstops:
-            return
         if not homing_state.is_homing_z():
             return
 

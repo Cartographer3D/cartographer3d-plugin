@@ -6,13 +6,13 @@ from unittest.mock import MagicMock
 import pytest
 from typing_extensions import override
 
-from cartographer.klipper.endstop import KlipperEndstop
-from cartographer.printer_interface import Endstop, HomingState
+from cartographer.adapters.shared.endstop import KlipperEndstop
+from cartographer.interfaces.printer import Endstop, HomingState
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
-    from cartographer.klipper.mcu import KlipperCartographerMcu
+    from cartographer.adapters.shared.mcu import KlipperCartographerMcu
 
 ReactorCompletion = MagicMock
 

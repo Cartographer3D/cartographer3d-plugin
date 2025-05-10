@@ -51,7 +51,7 @@ class GCodeConsoleFilter(logging.Filter):
 
     @override
     def filter(self, record: logging.LogRecord) -> bool:
-        return "klipper.mcu" not in record.name or record.levelno >= logging.WARNING
+        return ".mcu" not in record.name or record.levelno >= logging.WARNING
 
 
 class GCodeConsoleHandler(logging.Handler):

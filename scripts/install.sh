@@ -4,7 +4,7 @@ set -euo pipefail
 
 MODULE_NAME="cartographer.py"
 PACKAGE_NAME="cartographer3d-plugin"
-SCAFFOLDING="from cartographer.klipper.extra import *"
+SCAFFOLDING="from cartographer.extra import *"
 DEFAULT_KLIPPER_DIR="$HOME/klipper"
 DEFAULT_KLIPPY_ENV="$HOME/klippy-env"
 

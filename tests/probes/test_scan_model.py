@@ -7,13 +7,13 @@ from typing import TYPE_CHECKING
 import pytest
 from numpy.polynomial import Polynomial
 
-from cartographer.printer_interface import Position, Sample
+from cartographer.interfaces.printer import Position, Sample
 from cartographer.probe.scan_model import ScanModel
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
-    from cartographer.configuration import ScanModelConfiguration
+    from cartographer.interfaces.configuration import ScanModelConfiguration
 
 
 @dataclass

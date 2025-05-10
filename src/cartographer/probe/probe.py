@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, final
 
 if TYPE_CHECKING:
-    from cartographer.printer_interface import C, S
     from cartographer.probe.scan_mode import ScanMode
     from cartographer.probe.touch_mode import TouchMode
 
@@ -12,7 +11,7 @@ if TYPE_CHECKING:
 class Probe:
     """Main probe class managing mode instances"""
 
-    def __init__(self, scan: ScanMode[C, S], touch: TouchMode[C]):
+    def __init__(self, scan: ScanMode, touch: TouchMode):
         self.scan = scan
         self.touch = touch
 

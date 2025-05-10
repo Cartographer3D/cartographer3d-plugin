@@ -6,15 +6,14 @@ from typing import TYPE_CHECKING, Callable, final
 from extras.manual_probe import ManualProbeHelper
 from typing_extensions import override
 
-from cartographer.klipper.endstop import KlipperEndstop
-from cartographer.printer_interface import Endstop, HomingAxis, Position, TemperatureStatus, Toolhead
+from cartographer.adapters.shared.endstop import KlipperEndstop
+from cartographer.interfaces.printer import Endstop, HomingAxis, Position, TemperatureStatus, Toolhead
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
-    from reactor import ReactorCompletion
     from toolhead import ToolHead as KlippyToolhead
 
-    from cartographer.klipper.mcu.mcu import KlipperCartographerMcu
+    from cartographer.adapters.shared.mcu.mcu import KlipperCartographerMcu
 
 logger = logging.getLogger(__name__)
 
@@ -70,8 +69,7 @@ class KlipperToolhead(Toolhead):
         return gcode_move.get_status()["homing_origin"].z
 
     @override
-    # TODO: Fix override
-    def z_homing_move(self, endstop: Endstop[ReactorCompletion], *, bottom: float, speed: float) -> float:  # pyright: ignore[reportIncompatibleMethodOverride]
+    def z_homing_move(self, endstop: Endstop, *, bottom: float, speed: float) -> float:
         klipper_endstop = KlipperEndstop(self.mcu, endstop)
         self.wait_moves()
 

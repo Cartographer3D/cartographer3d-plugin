@@ -1,28 +1,31 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, TypedDict, final
 
 import mcu
 from mcu import MCU_trsync
 from mcu import TriggerDispatch as KlipperTriggerDispatch
-from reactor import ReactorCompletion
 from typing_extensions import override
 
-from cartographer.klipper.mcu.commands import HomeCommand, KlipperCartographerCommands, ThresholdCommand, TriggerMethod
-from cartographer.klipper.mcu.constants import (
+from cartographer.adapters.shared.mcu.commands import (
+    HomeCommand,
+    KlipperCartographerCommands,
+    ThresholdCommand,
+    TriggerMethod,
+)
+from cartographer.adapters.shared.mcu.constants import (
     FREQUENCY_RANGE_PERCENT,
     SHORTED_FREQUENCY_VALUE,
     TRIGGER_HYSTERESIS,
     KlipperCartographerConstants,
 )
-from cartographer.klipper.mcu.stream import KlipperStream, KlipperStreamMcu
-from cartographer.printer_interface import Mcu, Position
-from cartographer.printer_interface import Sample as CartographerSample
+from cartographer.adapters.shared.mcu.stream import KlipperStream, KlipperStreamMcu
+from cartographer.interfaces.printer import Mcu, Position, Sample
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
+    from reactor import ReactorCompletion
 
     from cartographer.stream import Session
 
@@ -35,17 +38,8 @@ class _RawData(TypedDict):
     temp: int
 
 
-@dataclass
-class Sample(CartographerSample):
-    time: float
-    frequency: float
-    temperature: float
-    position: Position | None
-    velocity: float | None
-
-
 @final
-class KlipperCartographerMcu(Mcu[ReactorCompletion, Sample], KlipperStreamMcu):
+class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     _constants: KlipperCartographerConstants | None = None
     _commands: KlipperCartographerCommands | None = None
 

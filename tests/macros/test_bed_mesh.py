@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING
 import pytest
 from typing_extensions import TypeAlias
 
+from cartographer.interfaces.printer import Position, Toolhead
 from cartographer.macros.bed_mesh import BedMeshCalibrateMacro, Configuration, MeshHelper, MeshPoint
-from cartographer.printer_interface import MacroParams, Position, Toolhead
 from cartographer.probe import Probe, ScanMode
 from cartographer.probe.scan_mode import Model
 from cartographer.probe.touch_mode import TouchMode
@@ -15,7 +15,7 @@ from cartographer.probe.touch_mode import TouchMode
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
-    from cartographer.interfaces import TaskExecutor
+    from cartographer.interfaces.multiprocessing import TaskExecutor
     from cartographer.stream import Session
 
 
@@ -27,8 +27,8 @@ class Sample:
     velocity: float | None = None
 
 
-Macro: TypeAlias = BedMeshCalibrateMacro[MacroParams]
-Helper: TypeAlias = MeshHelper[MacroParams]
+Macro: TypeAlias = BedMeshCalibrateMacro
+Helper: TypeAlias = MeshHelper
 
 
 @pytest.fixture
@@ -42,9 +42,7 @@ def offset() -> Position:
 
 
 @pytest.fixture
-def scan_mode(
-    mocker: MockerFixture, scan_model: Model, session: Session[Sample], offset: Position
-) -> ScanMode[object, Sample]:
+def scan_mode(mocker: MockerFixture, scan_model: Model, session: Session[Sample], offset: Position) -> ScanMode:
     scan_mode = mocker.MagicMock(spec=ScanMode, autospec=True, instance=True)
     scan_mode.model = scan_model
     scan_mode.offset = offset
@@ -54,13 +52,13 @@ def scan_mode(
 
 
 @pytest.fixture
-def touch_mode(mocker: MockerFixture) -> TouchMode[object]:
+def touch_mode(mocker: MockerFixture) -> TouchMode:
     touch_mode = mocker.MagicMock(spec=TouchMode, autospec=True, instance=True)
     return touch_mode
 
 
 @pytest.fixture
-def probe(scan_mode: ScanMode[object, Sample], touch_mode: TouchMode[object]) -> Probe:
+def probe(scan_mode: ScanMode, touch_mode: TouchMode) -> Probe:
     return Probe(scan_mode, touch_mode)
 
 
@@ -207,7 +205,7 @@ def test_calculate_positions_cluster_no_samples(
 def test_finalize_with_positions(
     mocker: MockerFixture,
     macro: Macro,
-    scan_mode: ScanMode[object, Sample],
+    scan_mode: ScanMode,
     scan_model: Model,
     helper: Helper,
     session: Session[Sample],
@@ -267,7 +265,7 @@ def test_probe_applies_axis_twist_compensation(
 
 def test_ignores_unincluded_points(
     mocker: MockerFixture,
-    scan_mode: ScanMode[object, Sample],
+    scan_mode: ScanMode,
     macro: Macro,
     scan_model: Model,
     helper: Helper,

@@ -10,13 +10,16 @@ from reactor import Reactor
 from stepper import PrinterRail
 from toolhead import ToolHead
 
-from cartographer.klipper.extra import PrinterCartographer
+from cartographer.adapters.shared.extra import PrinterCartographer
 from extras.axis_twist_compensation import AxisTwistCompensation
 from extras.bed_mesh import BedMesh
 from extras.heaters import PrinterHeaters
 from extras.homing import Homing, HomingMove, PrinterHoming
 from extras.motion_report import PrinterMotionReport
 from extras.probe import PrinterProbe
+
+# TODO: Kalico specific
+APP_NAME: str
 
 class Printer:
     config_error: type[configfile.error]

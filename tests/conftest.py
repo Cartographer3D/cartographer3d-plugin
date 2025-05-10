@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, Callable, TypeVar
 import pytest
 from typing_extensions import ParamSpec, override
 
-from cartographer.interfaces import TaskExecutor
-from cartographer.printer_interface import MacroParams, Mcu, Position, Sample, Toolhead
+from cartographer.interfaces.multiprocessing import TaskExecutor
+from cartographer.interfaces.printer import MacroParams, Mcu, Position, Sample, Toolhead
 from cartographer.stream import Session
 
 if TYPE_CHECKING:

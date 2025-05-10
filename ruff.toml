@@ -5,6 +5,14 @@ docstring-code-format = true
 docstring-code-line-length = 80
 
 [lint]
+extend-safe-fixes = [
+  # typing-only-first-party-import
+  "TC001",
+  # typing-only-third-party-import
+  "TC002",
+  # f-string-in-exception
+  "EM102",
+]
 select = [
   # pycodestyle
   "E",

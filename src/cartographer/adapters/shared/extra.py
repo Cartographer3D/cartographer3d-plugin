@@ -4,24 +4,24 @@ import logging
 from textwrap import dedent
 from typing import TYPE_CHECKING, Callable, TypedDict, final
 
-from cartographer.klipper.axis_twist_compensation import KlipperAxisTwistCompensationHelper
-from cartographer.klipper.bed_mesh import KlipperMeshHelper
-from cartographer.klipper.configuration import KlipperCartographerConfiguration
-from cartographer.klipper.endstop import KlipperEndstop
-from cartographer.klipper.homing import CartographerHomingChip
-from cartographer.klipper.logging import setup_console_logger
-from cartographer.klipper.mcu import KlipperCartographerMcu
-from cartographer.klipper.mcu.mcu import Sample
-from cartographer.klipper.printer import KlipperToolhead
-from cartographer.klipper.probe import KlipperCartographerProbe
-from cartographer.klipper.task_executor import KlipperMultiprocessingExecutor
-from cartographer.klipper.temperature import PrinterTemperatureCoil
+from cartographer.adapters.shared.axis_twist_compensation import KlipperAxisTwistCompensationHelper
+from cartographer.adapters.shared.bed_mesh import KlipperMeshHelper
+from cartographer.adapters.shared.configuration import KlipperConfiguration
+from cartographer.adapters.shared.endstop import KlipperEndstop
+from cartographer.adapters.shared.homing import CartographerHomingChip
+from cartographer.adapters.shared.logging import setup_console_logger
+from cartographer.adapters.shared.mcu import KlipperCartographerMcu
+from cartographer.adapters.shared.mcu.mcu import Sample
+from cartographer.adapters.shared.printer import KlipperToolhead
+from cartographer.adapters.shared.probe import KlipperCartographerProbe
+from cartographer.adapters.shared.task_executor import KlipperMultiprocessingExecutor
+from cartographer.adapters.shared.temperature import PrinterTemperatureCoil
 from cartographer.lib.alpha_beta_filter import AlphaBetaFilter
 from cartographer.macros import ProbeAccuracyMacro, ProbeMacro, QueryProbeMacro, ZOffsetApplyProbeMacro
 from cartographer.macros.axis_twist_compensation import AxisTwistCompensationMacro
 from cartographer.macros.backlash import EstimateBacklashMacro
 from cartographer.macros.bed_mesh import BedMeshCalibrateMacro
-from cartographer.macros.scan import ScanCalibrateMacro
+from cartographer.macros.scan_calibrate import ScanCalibrateMacro
 from cartographer.macros.touch import TouchAccuracyMacro, TouchCalibrateMacro, TouchHomeMacro, TouchMacro
 from cartographer.probe import Probe, ScanMode, ScanModel, TouchMode
 
@@ -29,7 +29,7 @@ if TYPE_CHECKING:
     from configfile import ConfigWrapper
     from gcode import GCodeCommand
 
-    from cartographer.printer_interface import Macro
+    from cartographer.interfaces.printer import Macro
 
 logger = logging.getLogger(__name__)
 
@@ -70,25 +70,22 @@ class CartographerTouchStatus(TypedDict):
 
 @final
 class PrinterCartographer:
-    config: KlipperCartographerConfiguration
+    config: KlipperConfiguration
 
     def __init__(self, config: ConfigWrapper) -> None:
         printer = config.get_printer()
         logger.debug("Initializing Cartographer")
-        self.config = KlipperCartographerConfiguration(config)
+        self.config = KlipperConfiguration(config)
         task_executor = KlipperMultiprocessingExecutor(printer.get_reactor())
 
         filter = AlphaBetaFilter()
         self.mcu = KlipperCartographerMcu(config, smooth_with(filter))
         toolhead = KlipperToolhead(config, self.mcu)
 
-        scan_config = self.config.scan_models.get("default")
-        model = ScanModel(scan_config) if scan_config else None
-        self.scan_mode = ScanMode(self.mcu, toolhead, self.config, model=model)
+        self.scan_mode = ScanMode(self.mcu, toolhead, self.config)
         scan_endstop = KlipperEndstop(self.mcu, self.scan_mode)
 
-        touch_config = self.config.touch_models.get("default")
-        self.touch_mode = TouchMode(self.mcu, toolhead, self.config, model=touch_config)
+        self.touch_mode = TouchMode(self.mcu, toolhead, self.config)
         probe = Probe(self.scan_mode, self.touch_mode)
 
         homing_chip = CartographerHomingChip(printer, scan_endstop)
@@ -108,7 +105,7 @@ class PrinterCartographer:
         self.touch_macro = TouchMacro(self.touch_mode)
         self._register_macro(self.touch_macro)
         self._register_macro(TouchAccuracyMacro(self.touch_mode, toolhead))
-        touch_home = TouchHomeMacro(self.touch_mode, toolhead, self.config.zero_reference_position)
+        touch_home = TouchHomeMacro(self.touch_mode, toolhead, self.config.bed_mesh.zero_reference_position)
         self._register_macro(touch_home)
 
         self._register_macro(

@@ -6,7 +6,7 @@ import pytest
 from pytest_bdd import given, parsers, then
 from typing_extensions import override
 
-from cartographer.printer_interface import MacroParams
+from cartographer.interfaces.printer import MacroParams
 
 if TYPE_CHECKING:
     from pytest import LogCaptureFixture

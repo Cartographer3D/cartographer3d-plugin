@@ -2,15 +2,18 @@ from __future__ import annotations
 
 import logging
 import math
-from typing import TYPE_CHECKING, Generic, Protocol
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
 from typing_extensions import override
 
-from cartographer.printer_interface import C, Endstop, HomingState, Position, ProbeMode, S
+from cartographer.interfaces.printer import Endstop, HomingState, Position, ProbeMode, Sample
+from cartographer.probe.scan_model import ScanModelSelectorMixin
 
 if TYPE_CHECKING:
-    from cartographer.printer_interface import Mcu, Toolhead
+    from cartographer.interfaces.configuration import Configuration, ScanModelConfiguration
+    from cartographer.interfaces.printer import Mcu, Toolhead
     from cartographer.stream import Session
 
 logger = logging.getLogger(__name__)
@@ -22,7 +25,6 @@ class Model(Protocol):
 
     @property
     def z_offset(self) -> float: ...
-    def save_z_offset(self, new_offset: float) -> None: ...
     def distance_to_frequency(self, distance: float) -> float: ...
     def frequency_to_distance(self, frequency: float) -> float: ...
 
@@ -30,62 +32,74 @@ class Model(Protocol):
 TRIGGER_DISTANCE = 2.0
 
 
-class Configuration(Protocol):
+@dataclass(frozen=True)
+class ScanModeConfiguration:
     x_offset: float
     y_offset: float
-    move_speed: float
+    travel_speed: float
 
-    scan_samples: int
+    samples: int
+    models: dict[str, ScanModelConfiguration]
+
+    @staticmethod
+    def from_config(config: Configuration):
+        return ScanModeConfiguration(
+            x_offset=config.general.x_offset,
+            y_offset=config.general.y_offset,
+            travel_speed=config.general.travel_speed,
+            samples=config.scan.samples,
+            models=config.scan.models,
+        )
 
 
-class ScanMode(ProbeMode, Endstop[C], Generic[C, S]):
+class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
     """Implementation for Scan mode."""
-
-    def get_model(self) -> Model:
-        if self.model is None:
-            msg = "no scan model loaded"
-            raise RuntimeError(msg)
-        return self.model
 
     @property
     @override
     def offset(self) -> Position:
-        z_offset = self.model.z_offset if self.model else 0.0
-        return Position(self.config.x_offset, self.config.y_offset, self.probe_height + z_offset)
-
-    @override
-    def save_z_offset(self, new_offset: float) -> None:
-        self.get_model().save_z_offset(new_offset - self.probe_height)
+        z_offset = self.get_model().z_offset if self.has_model() else 0.0
+        return Position(self._config.x_offset, self._config.y_offset, self.probe_height + z_offset)
 
     @property
     @override
     def is_ready(self) -> bool:
-        return self.model is not None
+        return self.has_model()
 
     def __init__(
         self,
-        mcu: Mcu[C, S],
+        mcu: Mcu,
         toolhead: Toolhead,
-        config: Configuration,
-        *,
-        model: Model | None = None,
-        probe_height: float = TRIGGER_DISTANCE,
+        config: ScanModeConfiguration,
     ) -> None:
+        super().__init__(config.models)
         self._toolhead: Toolhead = toolhead
-        self.model: Model | None = model
-        self.config: Configuration = config
-        self.probe_height: float = probe_height
-        self._mcu: Mcu[C, S] = mcu
+        self._config: ScanModeConfiguration = config
+        self.probe_height: float = TRIGGER_DISTANCE
+        self._mcu: Mcu = mcu
+
+        self.last_z_result: float | None = None
+
+    @override
+    def get_status(self, eventtime: float) -> object:
+        return {
+            "current_model": self.get_model().name if self.has_model() else "none",
+            "models": ", ".join(self._config.models.keys()),
+            "last_z_result": self.last_z_result,
+        }
 
     @override
     def perform_probe(self) -> float:
         if not self._toolhead.is_homed("z"):
             msg = "z axis must be homed before probing"
             raise RuntimeError(msg)
-        self._toolhead.move(z=self.probe_height, speed=self.config.move_speed)
+        self._toolhead.move(z=self.probe_height, speed=self._config.travel_speed)
         self._toolhead.wait_moves()
+
+        delta = self.probe_height - self.measure_distance()
+
         toolhead_pos = self._toolhead.get_position()
-        dist = toolhead_pos.z + self.probe_height - self.measure_distance()
+        dist = toolhead_pos.z + delta
 
         if math.isinf(dist):
             msg = "toolhead stopped outside model range"
@@ -93,28 +107,22 @@ class ScanMode(ProbeMode, Endstop[C], Generic[C, S]):
 
         pos = self._toolhead.apply_axis_twist_compensation(Position(toolhead_pos.x, toolhead_pos.y, dist))
         logger.info("probe at %.3f,%.3f is z=%.6f", pos.x, pos.y, pos.z)
-        return pos.z
-
-    def distance_to_frequency(self, distance: float) -> float:
-        if self.model is None:
-            msg = "cannot convert distance to frequency without a model"
-            raise RuntimeError(msg)
-        return self.model.distance_to_frequency(distance)
+        self.last_z_result = pos.z
+        return self.last_z_result
 
     def measure_distance(
         self, *, time: float | None = None, min_sample_count: int | None = None, skip_count: int = 5
     ) -> float:
-        min_sample_count = min_sample_count or self.config.scan_samples
-        if self.model is None:
-            msg = "cannot measure distance without a model"
-            raise RuntimeError(msg)
+        model = self.get_model()
+
+        min_sample_count = min_sample_count or self._config.samples
         time = time or self._toolhead.get_last_move_time()
 
         with self._mcu.start_session(lambda sample: sample.time >= time) as session:
             session.wait_for(lambda samples: len(samples) >= min_sample_count + skip_count)
         samples = session.get_items()[skip_count:]
 
-        dist = float(np.median([self.model.frequency_to_distance(sample.frequency) for sample in samples]))
+        dist = float(np.median([model.frequency_to_distance(sample.frequency) for sample in samples]))
         return dist
 
     @override
@@ -127,14 +135,12 @@ class ScanMode(ProbeMode, Endstop[C], Generic[C, S]):
         return self.probe_height
 
     @override
-    def home_start(self, print_time: float) -> C:
-        trigger_frequency = self.distance_to_frequency(self.get_endstop_position())
+    def home_start(self, print_time: float) -> object:
+        trigger_frequency = self.get_model().distance_to_frequency(self.probe_height)
         return self._mcu.start_homing_scan(print_time, trigger_frequency)
 
     @override
     def on_home_end(self, homing_state: HomingState) -> None:
-        if self not in homing_state.endstops:
-            return
         if not homing_state.is_homing_z():
             return
         distance = self.measure_distance()
@@ -150,6 +156,6 @@ class ScanMode(ProbeMode, Endstop[C], Generic[C, S]):
 
     def start_session(
         self,
-    ) -> Session[S]:
+    ) -> Session[Sample]:
         time = self._toolhead.get_last_move_time()
         return self._mcu.start_session(lambda sample: sample.time >= time)

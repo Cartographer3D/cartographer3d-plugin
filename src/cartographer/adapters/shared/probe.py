@@ -3,16 +3,17 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypedDict
 
 from extras.probe import PrinterProbe
+from gcode import CommandError
 from typing_extensions import override
 
-from cartographer.klipper.utils import reraise_as_command_error
+from cartographer.adapters.shared.utils import reraise_as
 
 if TYPE_CHECKING:
     from gcode import GCodeCommand
 
-    from cartographer.klipper.printer import KlipperToolhead
+    from cartographer.adapters.shared.printer import KlipperToolhead
+    from cartographer.interfaces.printer import ProbeMode
     from cartographer.macros.probe import ProbeMacro, QueryProbeMacro
-    from cartographer.printer_interface import ProbeMode
 
 
 class ProbeStatus(TypedDict):
@@ -37,7 +38,7 @@ class KlipperProbeSession:
         self._results: list[list[float]] = []
         self.toolhead: KlipperToolhead = toolhead
 
-    @reraise_as_command_error
+    @reraise_as(CommandError)
     def run_probe(self, gcmd: GCodeCommand) -> None:
         del gcmd
         pos = self.toolhead.get_position()

@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING, cast
 
 import pytest
 from pytest_bdd import given, parsers, scenarios, then, when
-from typing_extensions import TypeAlias
 
-import cartographer.probe as probe
-from cartographer.printer_interface import Position, Sample
+from cartographer.interfaces.printer import Position
 from cartographer.probe import Probe
+from cartographer.probe.scan_mode import ScanMode
+from cartographer.probe.touch_mode import TouchMode
 
 if TYPE_CHECKING:
     from unittest.mock import Mock
@@ -17,26 +17,22 @@ if TYPE_CHECKING:
     from pytest import LogCaptureFixture
     from pytest_mock import MockerFixture
 
-    from cartographer.printer_interface import MacroParams, Toolhead
+    from cartographer.interfaces.printer import MacroParams, Toolhead
 
 
 scenarios("../../features/z_offset.feature")
 
 
-ScanMode: TypeAlias = probe.ScanMode[object, Sample]
-TouchMode: TypeAlias = probe.TouchMode[object]
-
-
 @pytest.fixture
 def scan(mocker: MockerFixture):
-    mock = mocker.MagicMock(spec=probe.ScanMode, instance=True, autospec=True)
+    mock = mocker.MagicMock(spec=ScanMode, instance=True, autospec=True)
     mock.is_ready = True
     return mock
 
 
 @pytest.fixture
 def touch(mocker: MockerFixture):
-    mock = mocker.MagicMock(spec=probe.TouchMode, instance=True, autospec=True)
+    mock = mocker.MagicMock(spec=TouchMode, instance=True, autospec=True)
     mock.is_ready = False
     return mock
 
