@@ -15,7 +15,7 @@ from cartographer.probe.touch_mode import TouchMode, TouchModeConfiguration
 
 if TYPE_CHECKING:
     from cartographer.interfaces.printer import Macro
-    from cartographer.runtime.types import Adapters
+    from cartographer.runtime.adapters import Adapters
 
 logger = logging.getLogger(__name__)
 

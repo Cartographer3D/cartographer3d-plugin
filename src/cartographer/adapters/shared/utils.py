@@ -1,19 +1,23 @@
+from __future__ import annotations
+
 from functools import wraps
 from typing import Callable, TypeVar
 
-from gcode import CommandError
 from typing_extensions import ParamSpec
 
 P = ParamSpec("P")
 R = TypeVar("R")
 
 
-def reraise_as_command_error(func: Callable[P, R]) -> Callable[P, R]:
-    @wraps(func)
-    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
-        try:
-            return func(*args, **kwargs)
-        except RuntimeError as e:
-            raise CommandError(str(e)) from e
+def reraise_as(target_exception: type[BaseException]) -> Callable[[Callable[P, R]], Callable[P, R]]:
+    def decorator(func: Callable[P, R]) -> Callable[P, R]:
+        @wraps(func)
+        def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+            try:
+                return func(*args, **kwargs)
+            except RuntimeError as e:
+                raise target_exception(str(e)) from e
 
-    return wrapper
+        return wrapper
+
+    return decorator

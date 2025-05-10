@@ -7,7 +7,7 @@ from cartographer.adapters.shared.axis_twist_compensation import KlipperAxisTwis
 from cartographer.adapters.shared.configuration import KlipperConfiguration
 from cartographer.adapters.shared.mcu.mcu import KlipperCartographerMcu
 from cartographer.adapters.shared.printer import KlipperToolhead
-from cartographer.runtime.types import Adapters
+from cartographer.runtime.adapters import Adapters
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper as KlipperConfigWrapper

@@ -16,6 +16,8 @@ def load_config(config: object) -> object:
 
     cartographer = PrinterCartographer(adapters)
 
+    integrator.register_cartographer(cartographer)
+
     for macro in cartographer.macros:
         integrator.register_macro(macro)
 

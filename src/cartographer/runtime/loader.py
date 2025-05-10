@@ -2,8 +2,9 @@ from typing import TYPE_CHECKING, cast
 
 from cartographer.adapters.klipper.adapters import KlipperAdapters
 from cartographer.adapters.klipper.integrator import KlipperIntegrator
+from cartographer.runtime.adapters import Adapters
 from cartographer.runtime.environment import Environment, detect_environment
-from cartographer.runtime.types import Adapters, Integrator
+from cartographer.runtime.integrator import Integrator
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper as KlipperConfigWrapper
