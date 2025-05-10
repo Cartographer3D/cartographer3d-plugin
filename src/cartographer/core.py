@@ -32,8 +32,8 @@ class PrinterCartographer:
             toolhead,
             ScanModeConfiguration.from_config(config),
         )
-        touch_mode = TouchMode(mcu, toolhead, TouchModeConfiguration.from_config(config))
-        probe = Probe(self.scan_mode, touch_mode)
+        self.touch_mode = TouchMode(mcu, toolhead, TouchModeConfiguration.from_config(config))
+        probe = Probe(self.scan_mode, self.touch_mode)
 
         self.macros: list[Macro] = [
             ProbeMacro(probe),
@@ -41,9 +41,9 @@ class PrinterCartographer:
             QueryProbeMacro(probe),
             ZOffsetApplyProbeMacro(probe, toolhead, config),
             TouchCalibrateMacro(probe, mcu, toolhead, config),
-            TouchMacro(touch_mode),
-            TouchAccuracyMacro(touch_mode, toolhead),
-            TouchHomeMacro(touch_mode, toolhead, config.bed_mesh.zero_reference_position),
+            TouchMacro(self.touch_mode),
+            TouchAccuracyMacro(self.touch_mode, toolhead),
+            TouchHomeMacro(self.touch_mode, toolhead, config.bed_mesh.zero_reference_position),
             # BedMeshCalibrateMacro(...),  # Pass dependencies as needed
             ScanCalibrateMacro(probe, toolhead, config),
             EstimateBacklashMacro(toolhead, self.scan_mode),
@@ -52,10 +52,8 @@ class PrinterCartographer:
         if adapters.axis_twist_compensation:
             self.macros.append(AxisTwistCompensationMacro(probe, toolhead, adapters.axis_twist_compensation, config))
 
-    # TODO: Move this into an adapter
     def get_status(self, eventtime: float) -> object:
-        del eventtime
         return {
-            "scan": {},
-            "touch": {},
+            "scan": self.scan_mode.get_status(eventtime),
+            "touch": self.touch_mode.get_status(eventtime),
         }

@@ -59,7 +59,7 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
     @override
     def offset(self) -> Position:
         z_offset = self.get_model().z_offset if self.has_model() else 0.0
-        return Position(self.config.x_offset, self.config.y_offset, self.probe_height + z_offset)
+        return Position(self._config.x_offset, self._config.y_offset, self.probe_height + z_offset)
 
     @property
     @override
@@ -74,19 +74,32 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
     ) -> None:
         super().__init__(config.models)
         self._toolhead: Toolhead = toolhead
-        self.config: ScanModeConfiguration = config
+        self._config: ScanModeConfiguration = config
         self.probe_height: float = TRIGGER_DISTANCE
         self._mcu: Mcu = mcu
+
+        self.last_z_result: float | None = None
+
+    @override
+    def get_status(self, eventtime: float) -> object:
+        return {
+            "current_model": self.get_model().name if self.has_model() else "none",
+            "models": ", ".join(self._config.models.keys()),
+            "last_z_result": self.last_z_result,
+        }
 
     @override
     def perform_probe(self) -> float:
         if not self._toolhead.is_homed("z"):
             msg = "z axis must be homed before probing"
             raise RuntimeError(msg)
-        self._toolhead.move(z=self.probe_height, speed=self.config.travel_speed)
+        self._toolhead.move(z=self.probe_height, speed=self._config.travel_speed)
         self._toolhead.wait_moves()
+
+        delta = self.probe_height - self.measure_distance()
+
         toolhead_pos = self._toolhead.get_position()
-        dist = toolhead_pos.z + self.probe_height - self.measure_distance()
+        dist = toolhead_pos.z + delta
 
         if math.isinf(dist):
             msg = "toolhead stopped outside model range"
@@ -94,14 +107,15 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
 
         pos = self._toolhead.apply_axis_twist_compensation(Position(toolhead_pos.x, toolhead_pos.y, dist))
         logger.info("probe at %.3f,%.3f is z=%.6f", pos.x, pos.y, pos.z)
-        return pos.z
+        self.last_z_result = pos.z
+        return self.last_z_result
 
     def measure_distance(
         self, *, time: float | None = None, min_sample_count: int | None = None, skip_count: int = 5
     ) -> float:
         model = self.get_model()
 
-        min_sample_count = min_sample_count or self.config.samples
+        min_sample_count = min_sample_count or self._config.samples
         time = time or self._toolhead.get_last_move_time()
 
         with self._mcu.start_session(lambda sample: sample.time >= time) as session:

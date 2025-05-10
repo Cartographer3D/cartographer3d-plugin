@@ -112,6 +112,16 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
 
         self.boundaries: TouchBoundaries = TouchBoundaries.from_config(config)
 
+        self.last_z_result: float | None = None
+
+    @override
+    def get_status(self, eventtime: float) -> object:
+        return {
+            "current_model": self.get_model().name if self.has_model() else "none",
+            "models": ", ".join(self._config.models.keys()),
+            "last_z_result": self.last_z_result,
+        }
+
     @override
     def perform_probe(self) -> float:
         if not self._toolhead.is_homed("z"):
@@ -122,7 +132,8 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             self._toolhead.move(z=5, speed=5)
         self._toolhead.wait_moves()
 
-        return self._run_probe()
+        self.last_z_result = self._run_probe()
+        return self.last_z_result
 
     def _run_probe(self) -> float:
         collected: list[float] = []
