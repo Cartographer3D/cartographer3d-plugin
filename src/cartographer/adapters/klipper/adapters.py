@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, final
 
+from cartographer.adapters.shared.axis_twist_compensation import KlipperAxisTwistCompensationHelper
 from cartographer.adapters.shared.configuration import KlipperConfiguration
 from cartographer.adapters.shared.mcu.mcu import KlipperCartographerMcu
 from cartographer.adapters.shared.printer import KlipperToolhead
@@ -23,3 +24,6 @@ class KlipperAdapters(Adapters):
         self.config = KlipperConfiguration(config)
         self.mcu = KlipperCartographerMcu(config)
         self.toolhead = KlipperToolhead(config, self.mcu)
+
+        if config.has_section("axis_twist_compensation"):
+            self.axis_twist_compensation = KlipperAxisTwistCompensationHelper(config)

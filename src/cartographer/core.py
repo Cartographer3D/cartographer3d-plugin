@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, final
 
+from cartographer.macros.axis_twist_compensation import AxisTwistCompensationMacro
 from cartographer.macros.backlash import EstimateBacklashMacro
 from cartographer.macros.probe import ProbeAccuracyMacro, ProbeMacro, QueryProbeMacro, ZOffsetApplyProbeMacro
 from cartographer.macros.scan_calibrate import ScanCalibrateMacro
@@ -13,6 +14,7 @@ from cartographer.probe.scan_mode import ScanMode, ScanModeConfiguration
 from cartographer.probe.touch_mode import TouchMode, TouchModeConfiguration
 
 if TYPE_CHECKING:
+    from cartographer.interfaces.printer import Macro
     from cartographer.runtime.types import Adapters
 
 logger = logging.getLogger(__name__)
@@ -33,7 +35,7 @@ class PrinterCartographer:
         touch_mode = TouchMode(mcu, toolhead, TouchModeConfiguration.from_config(config))
         probe = Probe(self.scan_mode, touch_mode)
 
-        self.macros = [
+        self.macros: list[Macro] = [
             ProbeMacro(probe),
             ProbeAccuracyMacro(probe, toolhead),
             QueryProbeMacro(probe),
@@ -44,9 +46,11 @@ class PrinterCartographer:
             TouchHomeMacro(touch_mode, toolhead, config.bed_mesh.zero_reference_position),
             # BedMeshCalibrateMacro(...),  # Pass dependencies as needed
             ScanCalibrateMacro(probe, toolhead, config),
-            # AxisTwistCompensationMacro(...),
             EstimateBacklashMacro(toolhead, self.scan_mode),
         ]
+
+        if adapters.axis_twist_compensation:
+            self.macros.append(AxisTwistCompensationMacro(probe, toolhead, adapters.axis_twist_compensation, config))
 
     # TODO: Move this into an adapter
     def get_status(self, eventtime: float) -> object:
