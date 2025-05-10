@@ -12,7 +12,7 @@ from cartographer.macros.utils import get_enum_choice
 from cartographer.probe import Probe, ScanModel
 
 if TYPE_CHECKING:
-    from cartographer.interfaces.configuration import ScanModelConfiguration, ScanModelFit
+    from cartographer.interfaces.configuration import ScanModelFit
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ class Configuration(Protocol):
     zero_reference_position: tuple[float, float]
     move_speed: float
 
-    def save_new_scan_model(self, name: str, model: ScanModelFit) -> ScanModelConfiguration: ...
+    def save_new_scan_model(self, name: str, model: ScanModelFit) -> None: ...
 
 
 class ScanCalibrateMethod(Enum):
@@ -109,8 +109,8 @@ class ScanCalibrateMacro(Macro):
         model = ScanModel.fit(samples)
         logger.debug("Scan calibration fitted model: %s", model)
 
-        new_config = self._config.save_new_scan_model(name, model)
-        self._probe.scan.model = ScanModel(new_config)
+        self._config.save_new_scan_model(name, model)
+        self._probe.scan.load_model(name)
         logger.info(
             """
             Scan model %s has been saved

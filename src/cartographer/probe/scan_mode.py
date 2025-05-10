@@ -9,9 +9,10 @@ import numpy as np
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Endstop, HomingState, Position, ProbeMode, Sample
+from cartographer.probe.scan_model import ScanModelSelectorMixin
 
 if TYPE_CHECKING:
-    from cartographer.interfaces.configuration import Configuration
+    from cartographer.interfaces.configuration import Configuration, ScanModelConfiguration
     from cartographer.interfaces.printer import Mcu, Toolhead
     from cartographer.stream import Session
 
@@ -38,6 +39,7 @@ class ScanModeConfiguration:
     travel_speed: float
 
     samples: int
+    models: dict[str, ScanModelConfiguration]
 
     @staticmethod
     def from_config(config: Configuration):
@@ -46,42 +48,34 @@ class ScanModeConfiguration:
             y_offset=config.general.y_offset,
             travel_speed=config.general.travel_speed,
             samples=config.scan.samples,
+            models=config.scan.models,
         )
 
 
-class ScanMode(ProbeMode, Endstop):
+class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
     """Implementation for Scan mode."""
-
-    def get_model(self) -> Model:
-        if self.model is None:
-            msg = "no scan model loaded"
-            raise RuntimeError(msg)
-        return self.model
 
     @property
     @override
     def offset(self) -> Position:
-        z_offset = self.model.z_offset if self.model else 0.0
+        z_offset = self.get_model().z_offset if self.has_model() else 0.0
         return Position(self.config.x_offset, self.config.y_offset, self.probe_height + z_offset)
 
     @property
     @override
     def is_ready(self) -> bool:
-        return self.model is not None
+        return self.has_model()
 
     def __init__(
         self,
         mcu: Mcu,
         toolhead: Toolhead,
         config: ScanModeConfiguration,
-        *,
-        model: Model | None = None,
-        probe_height: float = TRIGGER_DISTANCE,
     ) -> None:
+        super().__init__(config.models)
         self._toolhead: Toolhead = toolhead
-        self.model: Model | None = model
         self.config: ScanModeConfiguration = config
-        self.probe_height: float = probe_height
+        self.probe_height: float = TRIGGER_DISTANCE
         self._mcu: Mcu = mcu
 
     @override
@@ -105,17 +99,16 @@ class ScanMode(ProbeMode, Endstop):
     def measure_distance(
         self, *, time: float | None = None, min_sample_count: int | None = None, skip_count: int = 5
     ) -> float:
+        model = self.get_model()
+
         min_sample_count = min_sample_count or self.config.samples
-        if self.model is None:
-            msg = "cannot measure distance without a model"
-            raise RuntimeError(msg)
         time = time or self._toolhead.get_last_move_time()
 
         with self._mcu.start_session(lambda sample: sample.time >= time) as session:
             session.wait_for(lambda samples: len(samples) >= min_sample_count + skip_count)
         samples = session.get_items()[skip_count:]
 
-        dist = float(np.median([self.model.frequency_to_distance(sample.frequency) for sample in samples]))
+        dist = float(np.median([model.frequency_to_distance(sample.frequency) for sample in samples]))
         return dist
 
     @override

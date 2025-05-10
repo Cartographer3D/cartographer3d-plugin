@@ -126,7 +126,7 @@ def test_touch_home_macro_moves(
 
     macro.run(params)
 
-    assert move_spy.mock_calls == [mocker.call(x=10, y=10, speed=probe.config.move_speed)]
+    assert move_spy.mock_calls == [mocker.call(x=10, y=10, speed=probe._config.move_speed)]
 
 
 def test_touch_home_macro(

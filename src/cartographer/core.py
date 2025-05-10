@@ -35,7 +35,7 @@ class PrinterCartographer:
             ProbeMacro(probe),
             ProbeAccuracyMacro(probe, toolhead),
             QueryProbeMacro(probe),
-            ZOffsetApplyProbeMacro(probe, toolhead),
+            ZOffsetApplyProbeMacro(probe, toolhead, config),
             TouchMacro(touch_mode),
             TouchAccuracyMacro(touch_mode, toolhead),
             TouchHomeMacro(touch_mode, toolhead, config.bed_mesh.zero_reference_position),
