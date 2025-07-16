@@ -75,7 +75,7 @@ PATH_GENERATOR_MAP = {
 }
 
 
-@dataclass(frozen=True)
+@dataclass
 class MeshScanParams:
     mesh_bounds: MeshBounds
     resolution: tuple[int, int]

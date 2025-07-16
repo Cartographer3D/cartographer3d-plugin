@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 from dataclasses import dataclass
+from math import ceil
 from typing import TYPE_CHECKING, Callable, final
 
 import numpy as np
@@ -267,7 +268,7 @@ class AdaptiveMeshCalculator:
         adapted_height = adaptive_bounds.height()
 
         # Grid resolution must be at least MIN_GRID_RESOLUTION x MIN_GRID_RESOLUTION
-        x_res = max(MIN_GRID_RESOLUTION, int(adapted_width * x_density) + 1)
-        y_res = max(MIN_GRID_RESOLUTION, int(adapted_height * y_density) + 1)
+        x_res = max(MIN_GRID_RESOLUTION, ceil(adapted_width * x_density) + 1)
+        y_res = max(MIN_GRID_RESOLUTION, ceil(adapted_height * y_density) + 1)
 
         return x_res, y_res
