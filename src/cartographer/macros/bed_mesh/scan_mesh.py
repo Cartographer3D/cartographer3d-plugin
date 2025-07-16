@@ -246,7 +246,7 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
     def _move_probe_to_point(self, point: Point, speed: float) -> None:
         """Move probe to specified point (converts to nozzle coordinates)."""
         x, y = self.coordinate_transformer.probe_to_nozzle(point)
-        self.toolhead.move(x=x, y=y, speed=speed)
+        self.toolhead.move(x=float(x), y=float(y), speed=speed)
 
     @log_duration("Processing samples into final mesh positions")
     def _process_samples_to_positions(self, grid: MeshGrid, samples: list[Sample], height: float) -> list[Position]:

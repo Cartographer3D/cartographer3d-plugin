@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 from math import ceil
-from typing import TYPE_CHECKING, Callable, final
+from typing import TYPE_CHECKING, Callable, Sequence, final
 
 import numpy as np
 
@@ -45,12 +45,12 @@ class MeshGrid:
     @property
     def x_step(self) -> float:
         """Get step size in x direction."""
-        return (self.max_point[0] - self.min_point[0]) / (self.x_resolution - 1)
+        return float(self.max_point[0] - self.min_point[0]) / (self.x_resolution - 1)
 
     @property
     def y_step(self) -> float:
         """Get step size in y direction."""
-        return (self.max_point[1] - self.min_point[1]) / (self.y_resolution - 1)
+        return float(self.max_point[1] - self.min_point[1]) / (self.y_resolution - 1)
 
     def generate_points(self) -> list[Point]:
         """Generate all grid points in y-major order."""
@@ -59,7 +59,7 @@ class MeshGrid:
     def contains_point(self, point: Point) -> bool:
         """Check if a point is within the grid bounds."""
         x, y = point
-        return self.min_point[0] <= x <= self.max_point[0] and self.min_point[1] <= y <= self.max_point[1]
+        return bool(self.min_point[0] <= x <= self.max_point[0] and self.min_point[1] <= y <= self.max_point[1])
 
     def point_to_grid_index(self, point: Point) -> tuple[int, int]:
         """Convert a point to grid indices (j, i) where j=row, i=col."""
@@ -132,7 +132,7 @@ class SampleProcessor:
                 grid_point = self.grid.grid_index_to_point(j, i)
                 values = accumulator.get((j, i), [])
                 count = len(values)
-                z = float(np.median(values))
+                z = float(np.median(values)) if values else np.nan
                 results.append(GridPointResult(point=grid_point, z=z, sample_count=count))
 
         return results
@@ -222,10 +222,10 @@ class MeshBounds:
     max_point: Point
 
     def width(self) -> float:
-        return self.max_point[0] - self.min_point[0]
+        return float(self.max_point[0] - self.min_point[0])
 
     def height(self) -> float:
-        return self.max_point[1] - self.min_point[1]
+        return float(self.max_point[1] - self.min_point[1])
 
 
 @final
@@ -236,7 +236,7 @@ class AdaptiveMeshCalculator:
         self.base_bounds = base_bounds
         self.base_resolution = base_resolution
 
-    def calculate_adaptive_bounds(self, object_points: list[Point], margin: float) -> MeshBounds:
+    def calculate_adaptive_bounds(self, object_points: Sequence[Point], margin: float) -> MeshBounds:
         """Calculate adaptive bounds based on object points."""
         if not object_points:
             return self.base_bounds
