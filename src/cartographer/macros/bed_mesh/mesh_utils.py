@@ -1,14 +1,19 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Callable, Literal
 
 import numpy as np
 
+from cartographer.interfaces.printer import Position
+
 if TYPE_CHECKING:
     from cartographer.interfaces.printer import Sample
     from cartographer.macros.bed_mesh.interfaces import Point
+
+logger = logging.getLogger(__name__)
 
 
 def cluster_points(points: list[Point], axis: Literal["x", "y"], tol: float = 1e-3) -> list[list[Point]]:
@@ -92,3 +97,50 @@ def assign_samples_to_grid(
         results.append(GridPointResult(point=point, z=z, sample_count=count))
 
     return results
+
+
+def normalize_to_zero_reference(
+    positions: list[Position],
+    zero_ref: Point,
+) -> list[Position]:
+    # Step 1: Extract sorted unique coordinates
+    xs = np.array(sorted({p.x for p in positions}))
+    ys = np.array(sorted({p.y for p in positions}))
+
+    # Step 2: Build a mapping from (x, y) to z
+    z_map = {(p.x, p.y): p.z for p in positions}
+
+    # Step 3: Build Z grid with shape (y_count, x_count)
+    z_grid = np.array([[z_map[(x, y)] for x in xs] for y in ys])
+
+    # Step 4: Compute grid spacing
+    dx = xs[1] - xs[0]
+    dy = ys[1] - ys[0]
+
+    # Step 5: Bilinear interpolation
+    tx = (zero_ref[0] - xs[0]) / dx
+    ty = (zero_ref[1] - ys[0]) / dy
+    xi = int(np.floor(tx))
+    yi = int(np.floor(ty))
+    tx -= xi
+    ty -= yi
+
+    z00 = z_grid[yi, xi]
+    z01 = z_grid[yi, xi + 1]
+    z10 = z_grid[yi + 1, xi]
+    z11 = z_grid[yi + 1, xi + 1]
+
+    z0 = (1 - tx) * z00 + tx * z01
+    z1 = (1 - tx) * z10 + tx * z11
+    z_ref = (1 - ty) * z0 + ty * z1
+
+    logger.debug("Interpolated zero reference at (%.2f, %.2f) = %.3f", zero_ref[0], zero_ref[1], z_ref)
+
+    # Step 6: Normalize
+    z_grid -= z_ref
+
+    # Step 7: Rebuild list in y-major order
+    normalized_positions = [
+        Position(x=float(x), y=float(y), z=float(z_grid[yi, xi])) for yi, y in enumerate(ys) for xi, x in enumerate(xs)
+    ]
+    return normalized_positions
