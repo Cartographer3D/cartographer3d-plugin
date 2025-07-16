@@ -6,9 +6,9 @@ import numpy as np
 import pytest
 from typing_extensions import TypeAlias
 
-from cartographer.macros.bed_mesh.random_path import RandomPathGenerator
-from cartographer.macros.bed_mesh.snake_path import SnakePathGenerator
-from cartographer.macros.bed_mesh.spiral_path import SpiralPathGenerator
+from cartographer.macros.bed_mesh.paths.random_path import RandomPathGenerator
+from cartographer.macros.bed_mesh.paths.snake_path import SnakePathGenerator
+from cartographer.macros.bed_mesh.paths.spiral_path import SpiralPathGenerator
 
 if TYPE_CHECKING:
     from cartographer.macros.bed_mesh.interfaces import PathGenerator, Point

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from collections import defaultdict
 from typing import TYPE_CHECKING, Any, Iterator, Literal, cast
 
 import numpy as np
@@ -10,6 +11,29 @@ if TYPE_CHECKING:
     from cartographer.macros.bed_mesh.interfaces import Point
 
 Vec: TypeAlias = "np.ndarray[Literal[2], np.dtype[np.float64]]"
+
+
+def cluster_points(points: list[Point], axis: Literal["x", "y"], tol: float = 1e-3) -> list[list[Point]]:
+    # axis to cluster on:
+    # if main_direction = "x", cluster on y (index 1)
+    # if main_direction = "y", cluster on x (index 0)
+    cluster_index = 1 if axis == "x" else 0
+    sort_index = 0 if axis == "x" else 1
+
+    clusters: dict[float, list[Point]] = defaultdict(list)
+    for p in points:
+        key = round(p[cluster_index] / tol)
+        clusters[key].append(p)
+
+    sorted_keys = sorted(clusters.keys())
+
+    rows: list[list[Point]] = []
+    for key in sorted_keys:
+        row_points = clusters[key]
+        row_points.sort(key=lambda pt: pt[sort_index])
+        rows.append(row_points)
+
+    return rows
 
 
 def arc_points(

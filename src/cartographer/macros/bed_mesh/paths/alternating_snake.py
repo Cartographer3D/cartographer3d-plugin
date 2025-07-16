@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Iterator, Literal, final
 from typing_extensions import override
 
 from cartographer.macros.bed_mesh.interfaces import PathGenerator
-from cartographer.macros.bed_mesh.snake_path import SnakePathGenerator
+from cartographer.macros.bed_mesh.paths.snake_path import SnakePathGenerator
 
 if TYPE_CHECKING:
     from cartographer.macros.bed_mesh.interfaces import Point

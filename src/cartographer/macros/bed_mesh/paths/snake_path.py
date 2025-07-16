@@ -6,11 +6,11 @@ import numpy as np
 from typing_extensions import override
 
 from cartographer.macros.bed_mesh.interfaces import PathGenerator
-from cartographer.macros.bed_mesh.mesh_utils import cluster_points
-from cartographer.macros.bed_mesh.pathing_utils import (
+from cartographer.macros.bed_mesh.paths.utils import (
     Vec,
     angle_deg,
     arc_points,
+    cluster_points,
     normalize,
     perpendicular,
     row_direction,
