@@ -10,9 +10,9 @@ from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
-from cartographer.macros.bed_mesh.alternating_snake import AlternatingSnakePathGenerator
-from cartographer.macros.bed_mesh.snake_path import SnakePathGenerator
-from cartographer.macros.bed_mesh.spiral_path import SpiralPathGenerator
+from cartographer.macros.bed_mesh.paths.alternating_snake import AlternatingSnakePathGenerator
+from cartographer.macros.bed_mesh.paths.snake_path import SnakePathGenerator
+from cartographer.macros.bed_mesh.paths.spiral_path import SpiralPathGenerator
 
 if TYPE_CHECKING:
     from matplotlib.text import Annotation

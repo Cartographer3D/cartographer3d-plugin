@@ -12,11 +12,11 @@ from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams, Position, Sample, SupportsFallbackMacro, Toolhead
 from cartographer.lib.log import log_duration
-from cartographer.macros.bed_mesh.alternating_snake import AlternatingSnakePathGenerator
 from cartographer.macros.bed_mesh.mesh_utils import assign_samples_to_grid, normalize_to_zero_reference
-from cartographer.macros.bed_mesh.random_path import RandomPathGenerator
-from cartographer.macros.bed_mesh.snake_path import SnakePathGenerator
-from cartographer.macros.bed_mesh.spiral_path import SpiralPathGenerator
+from cartographer.macros.bed_mesh.paths.alternating_snake import AlternatingSnakePathGenerator
+from cartographer.macros.bed_mesh.paths.random_path import RandomPathGenerator
+from cartographer.macros.bed_mesh.paths.snake_path import SnakePathGenerator
+from cartographer.macros.bed_mesh.paths.spiral_path import SpiralPathGenerator
 from cartographer.macros.utils import get_choice, get_float_tuple, get_int_tuple
 
 if TYPE_CHECKING:
