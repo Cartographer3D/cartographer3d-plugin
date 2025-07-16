@@ -4,11 +4,13 @@ import logging
 from typing import TYPE_CHECKING, Literal, final
 
 import numpy as np
-from typing_extensions import TypeAlias, override
+from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams, Toolhead
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
     from cartographer.interfaces.configuration import Configuration
     from cartographer.probe.scan_mode import ScanMode
 
@@ -131,12 +133,9 @@ class EstimateBacklashMacro(Macro):
                 )
 
 
-_np_float_list: TypeAlias = "np.ndarray[Literal[1], np.dtype[np.float64]]"
-
-
 def welchs_ttest(a_in: list[float], b_in: list[float]) -> tuple[float, float]:
-    a: _np_float_list = np.array(a_in, dtype=float)
-    b: _np_float_list = np.array(b_in, dtype=float)
+    a: NDArray[np.float64] = np.array(a_in, dtype=float)
+    b: NDArray[np.float64] = np.array(b_in, dtype=float)
 
     mean_a = np.mean(a)
     mean_b = np.mean(b)

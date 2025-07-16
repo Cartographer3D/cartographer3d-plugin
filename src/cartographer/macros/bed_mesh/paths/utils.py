@@ -8,9 +8,11 @@ import numpy as np
 from typing_extensions import TypeAlias
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
     from cartographer.macros.bed_mesh.interfaces import Point
 
-Vec: TypeAlias = "np.ndarray[Literal[2], np.dtype[np.float64]]"
+Vec: TypeAlias = "NDArray[np.float64]"
 
 
 def cluster_points(points: list[Point], axis: Literal["x", "y"], tol: float = 1e-3) -> list[list[Point]]:
