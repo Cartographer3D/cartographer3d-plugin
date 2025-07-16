@@ -5,10 +5,12 @@ from typing import TYPE_CHECKING, Iterator, Protocol
 from typing_extensions import TypeAlias
 
 if TYPE_CHECKING:
+    import numpy as np
+
     from cartographer.interfaces.printer import Position
 
-Point: TypeAlias = "tuple[float, float]"
-Polygon: TypeAlias = "list[Point]"
+Point: TypeAlias = "tuple[float|np.float64, float|np.float64]"
+Polygon: TypeAlias = "list[tuple[float, float]]"
 
 
 class PathGenerator(Protocol):
