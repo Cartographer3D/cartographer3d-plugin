@@ -80,7 +80,6 @@ def parse_scan_config(wrapper: ParseConfigWrapper, models: dict[str, ScanModelCo
         mesh_direction=get_choice(wrapper, "mesh_direction", _directions, default="x"),
         mesh_height=wrapper.get_float("mesh_height", default=4, minimum=1),
         mesh_path=get_choice(wrapper, "mesh_path", _paths, default="snake"),
-        mesh_corner_radius=wrapper.get_float("mesh_corner_radius", default=2, minimum=0),
     )
 
 

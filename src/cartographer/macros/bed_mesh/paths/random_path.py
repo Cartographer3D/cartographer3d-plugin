@@ -16,12 +16,18 @@ MIN_DIST = 10.0
 
 @final
 class RandomPathGenerator(PathGenerator):
-    def __init__(self, main_direction: Literal["x", "y"], corner_radius: float):
+    def __init__(self, main_direction: Literal["x", "y"]):
         del main_direction
-        del corner_radius
 
     @override
-    def generate_path(self, points: list[Point]) -> Iterator[Point]:
+    def generate_path(
+        self,
+        points: list[Point],
+        x_axis_limits: tuple[float, float],
+        y_axis_limits: tuple[float, float],
+    ) -> Iterator[Point]:
+        del x_axis_limits, y_axis_limits
+
         if not points:
             return iter([])
 

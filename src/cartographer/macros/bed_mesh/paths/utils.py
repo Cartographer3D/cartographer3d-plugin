@@ -41,7 +41,9 @@ def cluster_points(points: list[Point], axis: Literal["x", "y"], tol: float = 1e
 def arc_points(
     center: Vec, radius: float, start_angle_deg: float, span_deg: float, max_dev: float = 0.1
 ) -> Iterator[Point]:
+    cx, cy = center
     if radius == 0:
+        yield (cx, cy)
         return
 
     max_dev = min(max_dev, radius)  # Avoid domain error in arccos
@@ -52,7 +54,6 @@ def arc_points(
     n_points = max(1, int(np.ceil(abs(span_rad) / d_theta)))
     thetas = cast("np.ndarray[Any, np.dtype[np.float64]]", start_rad + np.linspace(0, span_rad, n_points + 1))  # pyright: ignore[reportExplicitAny]
 
-    cx, cy = center
     xs = cx + radius * np.cos(thetas)
     ys = cy + radius * np.sin(thetas)
 

@@ -155,8 +155,8 @@ class Toolhead(Protocol):
         """Set the z position of the toolhead."""
         ...
 
-    def get_z_axis_limits(self) -> tuple[float, float]:
-        """Get the limits of the z axis."""
+    def get_axis_limits(self, axis: HomingAxis) -> tuple[float, float]:
+        """Get the limits of an axis."""
         ...
 
     def manual_probe(self, finalize_callback: Callable[[Position | None], None]) -> None:

@@ -17,6 +17,16 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+axis_mapping: dict[HomingAxis, int] = {
+    "x": 0,
+    "y": 1,
+    "z": 2,
+}
+
+
+def axis_to_index(axis: HomingAxis) -> int:
+    return axis_mapping[axis]
+
 
 @final
 class KlipperToolhead(Toolhead):
@@ -72,7 +82,7 @@ class KlipperToolhead(Toolhead):
     def z_homing_move(self, endstop: Endstop, *, speed: float) -> float:
         klipper_endstop = KlipperEndstop(self.mcu, endstop)
         self.wait_moves()
-        z_min, _ = self.get_z_axis_limits()
+        z_min, _ = self.get_axis_limits("z")
 
         pos = self.toolhead.get_position()[:]
         pos[2] = z_min
@@ -89,10 +99,11 @@ class KlipperToolhead(Toolhead):
         self.toolhead.set_position(pos, homing_axes)
 
     @override
-    def get_z_axis_limits(self) -> tuple[float, float]:
+    def get_axis_limits(self, axis: HomingAxis) -> tuple[float, float]:
         time = self.toolhead.get_last_move_time()
         status = self.toolhead.get_status(time)
-        return status["axis_minimum"][2], status["axis_maximum"][2]
+        index = axis_to_index(axis)
+        return status["axis_minimum"][index], status["axis_maximum"][index]
 
     @override
     def manual_probe(self, finalize_callback: Callable[[Position | None], None]) -> None:

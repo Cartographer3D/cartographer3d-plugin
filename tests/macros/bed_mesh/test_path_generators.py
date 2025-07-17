@@ -24,12 +24,10 @@ GridFixture: TypeAlias = "tuple[str, list[Point]]"
 
 @pytest.fixture(
     params=[
-        ("Snake X", lambda: SnakePathGenerator(main_direction="x", corner_radius=0)),
-        ("Snake Y", lambda: SnakePathGenerator(main_direction="y", corner_radius=0)),
-        ("Snake X cornering", lambda: SnakePathGenerator(main_direction="x", corner_radius=5)),
-        ("Spiral", lambda: SpiralPathGenerator(main_direction="x", corner_radius=0)),
-        ("Spiral cornering", lambda: SpiralPathGenerator(main_direction="x", corner_radius=5)),
-        ("Random", lambda: RandomPathGenerator(main_direction="x", corner_radius=0)),
+        ("Snake X", lambda: SnakePathGenerator(main_direction="x")),
+        ("Snake Y", lambda: SnakePathGenerator(main_direction="y")),
+        ("Spiral", lambda: SpiralPathGenerator(main_direction="x")),
+        ("Random", lambda: RandomPathGenerator(main_direction="x")),
     ]
 )
 def generator(request: pytest.FixtureRequest):
@@ -57,7 +55,7 @@ def test_path_generator_covers_all_points(generator: GeneratorFixture, grid_poin
 
     max_dist = 0.2  # maximum allowed miss distance per input point
 
-    path = list(gen.generate_path(points))
+    path = list(gen.generate_path(points, (0, 100), (0, 100)))
     path_array = np.array(path)
 
     for _, pt in enumerate(points):

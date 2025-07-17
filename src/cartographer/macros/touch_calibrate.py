@@ -186,7 +186,7 @@ class TouchCalibrateMacro(Macro):
         try:
             if not self._toolhead.is_homed("z"):
                 forced_z = True
-                _, z_max = self._toolhead.get_z_axis_limits()
+                _, z_max = self._toolhead.get_axis_limits("z")
                 self._toolhead.set_z_position(z=z_max - 10)
 
             threshold = self._find_acceptable_threshold(calibration_mode, threshold_start, threshold_max)

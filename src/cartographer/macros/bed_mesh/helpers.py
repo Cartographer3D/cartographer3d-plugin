@@ -216,7 +216,7 @@ class CoordinateTransformer:
 
 @dataclass(frozen=True)
 class MeshBounds:
-    """Represents the bounds of a mesh with adaptive capability."""
+    """Represents the bounds of a mesh."""
 
     min_point: Point
     max_point: Point

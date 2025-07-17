@@ -13,14 +13,18 @@ if TYPE_CHECKING:
 
 @final
 class AlternatingSnakePathGenerator(PathGenerator):
-    def __init__(self, main_direction: Literal["x", "y"], corner_radius: float):
+    def __init__(self, main_direction: Literal["x", "y"]):
         self.main_direction: Literal["x", "y"] = main_direction
-        self.corner_radius = corner_radius
 
     @override
-    def generate_path(self, points: list[Point]) -> Iterator[Point]:
+    def generate_path(
+        self,
+        points: list[Point],
+        x_axis_limits: tuple[float, float],
+        y_axis_limits: tuple[float, float],
+    ) -> Iterator[Point]:
         alternate_direction = "y" if self.main_direction == "x" else "x"
-        main_path = SnakePathGenerator(self.main_direction, self.corner_radius)
-        alternate_path = SnakePathGenerator(alternate_direction, self.corner_radius)
-        yield from main_path.generate_path(points)
-        yield from reversed(list(alternate_path.generate_path(points)))
+        main_path = SnakePathGenerator(self.main_direction)
+        alternate_path = SnakePathGenerator(alternate_direction)
+        yield from main_path.generate_path(points, x_axis_limits, y_axis_limits)
+        yield from reversed(list(alternate_path.generate_path(points, x_axis_limits, y_axis_limits)))

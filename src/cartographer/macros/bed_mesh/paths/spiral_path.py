@@ -18,19 +18,32 @@ from cartographer.macros.bed_mesh.paths.utils import (
 if TYPE_CHECKING:
     from cartographer.macros.bed_mesh.interfaces import Point
 
+BUFFER = 0.5
+
 
 @final
 class SpiralPathGenerator(PathGenerator):
-    def __init__(self, main_direction: Literal["x", "y"], corner_radius: float):
+    def __init__(self, main_direction: Literal["x", "y"]):
         del main_direction
-        self.corner_radius = corner_radius if corner_radius > 0.5 else 0.5
 
     @override
-    def generate_path(self, points: list[Point]) -> Iterator[Point]:
+    def generate_path(
+        self,
+        points: list[Point],
+        x_axis_limits: tuple[float, float],
+        y_axis_limits: tuple[float, float],
+    ) -> Iterator[Point]:
         grid = cluster_points(points, axis="x")  # Bottom row is index 0
         rows = len(grid)
         cols = len(grid[0]) if rows else 0
         offset = 0
+
+        mesh_min_x, mesh_min_y = grid[0][0]
+        mesh_max_x, mesh_max_y = grid[-1][-1]
+        max_radius_x = min(mesh_min_x - x_axis_limits[0], x_axis_limits[1] - mesh_max_x) - BUFFER
+        max_radius_y = min(mesh_min_y - y_axis_limits[0], y_axis_limits[1] - mesh_max_y) - BUFFER
+        corner_radius = float(max(0, min(max_radius_x, max_radius_y, 1))) * 2
+        print(corner_radius)
 
         while offset < (rows + 1) // 2 and offset < (cols + 1) // 2:
             bottom = grid[offset][offset : cols - offset]
@@ -43,21 +56,21 @@ class SpiralPathGenerator(PathGenerator):
             # === Bottom row (→)
             if right or top or left:
                 yield from bottom[:-1]
-                yield from corner(bottom[-1], (1.0, 0.0), self.corner_radius)
+                yield from corner(bottom[-1], (1.0, 0.0), corner_radius)
             else:
                 yield from bottom  # Last leg, include final point
 
             # === Right column (↑)
             if top or left:
                 yield from right[:-1]
-                yield from corner(right[-1], (0.0, 1.0), self.corner_radius)
+                yield from corner(right[-1], (0.0, 1.0), corner_radius)
             else:
                 yield from right
 
             # === Top row (←)
             if left:
                 yield from top[:-1]
-                yield from corner(top[-1], (-1.0, 0.0), self.corner_radius)
+                yield from corner(top[-1], (-1.0, 0.0), corner_radius)
             else:
                 yield from top
 
@@ -67,7 +80,7 @@ class SpiralPathGenerator(PathGenerator):
                     # There will be another ring → add corner
                     if left:
                         yield from left[:-1]
-                        yield from corner(left[-1], (0.0, -1.0), self.corner_radius)
+                        yield from corner(left[-1], (0.0, -1.0), corner_radius)
                 else:
                     # Final leg
                     yield from left

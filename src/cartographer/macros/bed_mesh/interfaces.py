@@ -14,7 +14,9 @@ Polygon: TypeAlias = "list[tuple[float, float]]"
 
 
 class PathGenerator(Protocol):
-    def generate_path(self, points: list[Point]) -> Iterator[Point]: ...
+    def generate_path(
+        self, points: list[Point], x_axis_limits: tuple[float, float], y_axis_limits: tuple[float, float]
+    ) -> Iterator[Point]: ...
 
 
 class BedMeshAdapter(Protocol):
