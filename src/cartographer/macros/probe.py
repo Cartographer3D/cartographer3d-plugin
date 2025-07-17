@@ -49,7 +49,7 @@ class ProbeAccuracyMacro(Macro):
         position = self._toolhead.get_position()
 
         logger.info(
-            "PROBE_ACCURACY at X:%.3f Y:%.3f Z:%.3f (samples=%d retract=%.3f lift_speed=%.1f)",
+            "probe accuracy at X:%.3f Y:%.3f Z:%.3f (samples=%d retract=%.3f lift_speed=%.1f)",
             position.x,
             position.y,
             position.z,
