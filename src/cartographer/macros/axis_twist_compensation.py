@@ -138,7 +138,7 @@ class AxisTwistCompensationMacro(Macro):
 
         self.adapter.apply_compensation(CompensationResult(axis=axis, start=start_pos, end=end_pos, values=results))
         logger.info("""
-            AXIS_TWIST_COMPENSATION state has been saved
+            Axis twist compensation state has been saved
             for the current session.  The SAVE_CONFIG command will
             update the printer config file and restart the printer.
             """)

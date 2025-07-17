@@ -199,7 +199,7 @@ class TouchCalibrateMacro(Macro):
                 """
                 Failed to calibrate with %s strategy (thresholds %d-%d).
                 Try increasing MAX or changing strategy.
-                TOUCH_CALIBRATE START=%d MAX=%d
+                CARTOGRAPHER_TOUCH_CALIBRATE START=%d MAX=%d
                 """,
                 strategy_type,
                 threshold_start,
