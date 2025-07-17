@@ -5,8 +5,11 @@ from typing import TYPE_CHECKING
 
 from pytest_bdd import given, parsers, scenarios, then, when
 
+from cartographer.interfaces.printer import HomingState
+
 if TYPE_CHECKING:
     from pytest import LogCaptureFixture
+    from pytest_mock import MockerFixture
 
     from cartographer.interfaces.configuration import Configuration
     from cartographer.interfaces.printer import MacroParams, Toolhead
@@ -25,6 +28,18 @@ def given_baby_step_up(toolhead: Toolhead, offset: float):
 @given(parsers.parse("I have baby stepped the nozzle {offset:g}mm down"))
 def given_baby_step_down(toolhead: Toolhead, offset: float):
     toolhead.get_gcode_z_offset = lambda: -offset
+
+
+@given("I ran G28")
+def given_g28(mocker: MockerFixture, probe: Probe):
+    homing_state = mocker.Mock(spec=HomingState, autospec=True)
+    probe.scan.on_home_end(homing_state)
+
+
+@given("I ran TOUCH_HOME")
+def given_touch_home(mocker: MockerFixture, probe: Probe):
+    homing_state = mocker.Mock(spec=HomingState, autospec=True)
+    probe.touch.on_home_end(homing_state)
 
 
 @when("I run the Z_OFFSET_APPLY_PROBE macro")

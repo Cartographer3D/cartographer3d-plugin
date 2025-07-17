@@ -42,6 +42,7 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
     mock.get_position = get_position
     mock.apply_axis_twist_compensation = apply_axis_twist_compensation
     mock.get_extruder_temperature = get_extruder_temperature
+    mock.get_last_move_time = mocker.Mock(side_effect=[10, 100, 1000])
 
     return mock
 

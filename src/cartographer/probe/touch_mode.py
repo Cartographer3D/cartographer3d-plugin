@@ -103,8 +103,14 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
     def is_ready(self) -> bool:
         return self.has_model()
 
+    @property
+    @override
+    def last_homing_time(self) -> float:
+        return self._last_homing_time
+
     def __init__(self, mcu: Mcu, toolhead: Toolhead, config: TouchModeConfiguration) -> None:
         super().__init__(config.models)
+        self._last_homing_time: float = 0.0
         self._toolhead: Toolhead = toolhead
         self._mcu: Mcu = mcu
         self._config: TouchModeConfiguration = config
@@ -204,6 +210,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             return
 
         homing_state.set_z_homed_position(self.get_model().z_offset)
+        self._last_homing_time = self._toolhead.get_last_move_time()
 
     @override
     def home_wait(self, home_end_time: float) -> float:

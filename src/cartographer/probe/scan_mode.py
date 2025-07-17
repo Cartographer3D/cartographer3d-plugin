@@ -68,6 +68,11 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
     def is_ready(self) -> bool:
         return self.has_model()
 
+    @property
+    @override
+    def last_homing_time(self) -> float:
+        return self._last_homing_time
+
     def __init__(
         self,
         mcu: Mcu,
@@ -75,6 +80,7 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         config: ScanModeConfiguration,
     ) -> None:
         super().__init__(config.models)
+        self._last_homing_time: float = 0.0
         self._toolhead: Toolhead = toolhead
         self._config: ScanModeConfiguration = config
         self.probe_height: float = TRIGGER_DISTANCE
@@ -158,11 +164,12 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         if not homing_state.is_homing_z():
             return
         distance = self.measure_distance()
-        if math.isinf(distance):
+        if not math.isfinite(distance):
             msg = "Toolhead stopped outside model range"
             raise RuntimeError(msg)
 
         homing_state.set_z_homed_position(distance)
+        self._last_homing_time = self._toolhead.get_last_move_time()
 
     @override
     def home_wait(self, home_end_time: float) -> float:

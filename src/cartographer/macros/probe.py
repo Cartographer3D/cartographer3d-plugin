@@ -8,7 +8,6 @@ import numpy as np
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams
-from cartographer.probe.scan_model import ScanModel
 
 if TYPE_CHECKING:
     from cartographer.interfaces.configuration import Configuration
@@ -116,25 +115,36 @@ class ZOffsetApplyProbeMacro(Macro):
     @override
     def run(self, params: MacroParams) -> None:
         additional_offset = self._toolhead.get_gcode_z_offset()
-        probe_mode_str, probe_mode = (
-            ("touch", self._probe.touch) if self._probe.touch.is_ready else ("scan", self._probe.scan)
-        )
-        model = probe_mode.get_model()
-        new_offset = probe_mode.offset.z - additional_offset
 
-        if isinstance(model, ScanModel):
-            self._config.save_scan_model(replace(model.config, z_offset=new_offset))
+        if self._probe.touch.last_homing_time > self._probe.scan.last_homing_time:
+            self._update_touch_offset(additional_offset)
         else:
-            if new_offset > 0:
-                msg = f"Cannot set a positive z-offset ({new_offset:.3f}) for {model.name} in {probe_mode_str} mode."
-                raise ValueError(msg)
-            self._config.save_touch_model(replace(model.config, z_offset=new_offset))
+            self._update_scan_offset(additional_offset)
 
+    def _update_touch_offset(self, additional_offset: float) -> None:
+        model = self._probe.touch.get_model()
+        new_offset = model.z_offset - additional_offset
+
+        if new_offset > 0:
+            msg = f"Cannot set a positive z-offset ({new_offset:.3f}) for {model.name} in touch mode."
+            raise ValueError(msg)
+
+        self._config.save_touch_model(replace(model.config, z_offset=new_offset))
+        self._log_offset_update("touch", model.name, new_offset)
+
+    def _update_scan_offset(self, additional_offset: float) -> None:
+        model = self._probe.scan.get_model()
+        new_offset = model.z_offset - additional_offset
+
+        self._config.save_scan_model(replace(model.config, z_offset=new_offset))
+        self._log_offset_update("scan", model.name, new_offset)
+
+    def _log_offset_update(self, mode: str, model_name: str, new_offset: float) -> None:
         logger.info(
             """cartographer: %s %s z_offset: %.3f
             The SAVE_CONFIG command will update the printer config file
             with the above and restart the printer.""",
-            probe_mode_str,
-            model.name,
+            mode,
+            model_name,
             new_offset,
         )
