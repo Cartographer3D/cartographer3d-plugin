@@ -164,7 +164,7 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         if not homing_state.is_homing_z():
             return
         distance = self.measure_distance()
-        if math.isinf(distance):
+        if not math.isfinite(distance):
             msg = "Toolhead stopped outside model range"
             raise RuntimeError(msg)
 

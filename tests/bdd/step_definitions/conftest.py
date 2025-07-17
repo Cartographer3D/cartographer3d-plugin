@@ -7,6 +7,7 @@ import pytest
 from pytest_bdd import given, parsers, then
 
 from cartographer.interfaces.configuration import Configuration, ScanModelConfiguration, TouchModelConfiguration
+from cartographer.interfaces.printer import Position, Sample
 from tests.bdd.helpers.context import Context
 
 if TYPE_CHECKING:
@@ -14,7 +15,18 @@ if TYPE_CHECKING:
     from pytest_bdd.parser import Feature, Scenario
 
     from cartographer.probe.probe import Probe
+    from cartographer.stream import Session
     from tests.mocks.params import MockParams
+
+
+def sample(frequency: float):
+    return Sample(
+        frequency=1 / frequency,
+        time=0,
+        position=Position(0, 0, frequency),
+        velocity=0,
+        temperature=0,
+    )
 
 
 @pytest.fixture
@@ -53,16 +65,18 @@ def given_probe() -> None:
 
 
 @given("the probe has scan calibrated")
-def given_scan_calibrated(probe: Probe, config: Configuration):
+def given_scan_calibrated(probe: Probe, config: Configuration, session: Session[Sample]):
     config.save_scan_model(
         ScanModelConfiguration(name="default", coefficients=[0.3] * 9, domain=(0.1, 5.5), z_offset=0.0)
     )
     probe.scan.load_model("default")
+    session.get_items = lambda: [sample(frequency=2) for _ in range(11)]
 
 
 @given(parsers.parse("the probe has scan z-offset {offset:g}"))
-def given_scan_offset(config: Configuration, offset: float):
+def given_scan_offset(probe: Probe, config: Configuration, offset: float):
     config.save_scan_model(replace(config.scan.models["default"], z_offset=offset))
+    probe.scan.load_model("default")
 
 
 @given("the probe has touch calibrated")
@@ -72,5 +86,6 @@ def given_touch_calibrated(probe: Probe, config: Configuration):
 
 
 @given(parsers.parse("the probe has touch z-offset {offset:g}"))
-def given_touch_offset(config: Configuration, offset: float):
+def given_touch_offset(probe: Probe, config: Configuration, offset: float):
     config.save_touch_model(replace(config.touch.models["default"], z_offset=offset))
+    probe.touch.load_model("default")

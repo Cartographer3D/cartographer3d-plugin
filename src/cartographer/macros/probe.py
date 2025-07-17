@@ -8,7 +8,6 @@ import numpy as np
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams
-from cartographer.probe.scan_model import ScanModel
 
 if TYPE_CHECKING:
     from cartographer.interfaces.configuration import Configuration
