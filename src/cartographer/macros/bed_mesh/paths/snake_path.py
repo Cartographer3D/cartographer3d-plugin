@@ -45,7 +45,7 @@ class SnakePathGenerator(PathGenerator):
 
         mesh_min = grid[0][0][main_index]
         mesh_max = grid[-1][-1][main_index]
-        max_radius_by_bounds = min(mesh_min - axis_min - BUFFER, axis_max - mesh_max - BUFFER)
+        max_radius_by_bounds = min(mesh_min - axis_min, axis_max - mesh_max) - BUFFER
 
         # Final corner radius
         corner_radius = float(max(0, min(max_radius_by_spacing, max_radius_by_bounds)))

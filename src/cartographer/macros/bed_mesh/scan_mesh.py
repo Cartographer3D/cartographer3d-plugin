@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from itertools import chain
 from math import isfinite
 from typing import TYPE_CHECKING, Literal, final
@@ -238,19 +238,27 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
 
         samples = session.get_items()
         logger.debug("Collected %d samples across %d runs", len(samples), params.runs)
-        return samples
+        return [self._transform_sample(s) for s in samples]
 
     def _move_probe_to_point(self, point: Point, speed: float) -> None:
         """Move probe to specified point (converts to nozzle coordinates)."""
         x, y = self.coordinate_transformer.probe_to_nozzle(point)
         self.toolhead.move(x=float(x), y=float(y), speed=speed)
 
+    def _transform_sample(self, sample: Sample) -> Sample:
+        """Transform sample to probe coordinates."""
+        if sample.position is None:
+            return sample
+
+        probe_position = self.coordinate_transformer.nozzle_to_probe((sample.position.x, sample.position.y))
+        return replace(
+            sample, position=Position(x=float(probe_position[0]), y=float(probe_position[1]), z=sample.position.z)
+        )
+
     @log_duration("Processing samples into final mesh positions")
     def _process_samples_to_positions(self, grid: MeshGrid, samples: list[Sample], height: float) -> list[Position]:
         """Process samples into final mesh positions."""
-        # Convert to nozzle coordinate grid for sample processing
-        nozzle_grid = self._convert_to_nozzle_grid(grid)
-        sample_processor = SampleProcessor(nozzle_grid)
+        sample_processor = SampleProcessor(grid)
 
         # Assign samples to grid points
         results = sample_processor.assign_samples_to_grid(samples, self.probe.scan.calculate_sample_distance)
@@ -261,30 +269,22 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         # Normalize to zero reference
         return self.coordinate_transformer.normalize_to_zero_reference(positions, self.config.zero_reference_position)
 
-    def _convert_to_nozzle_grid(self, probe_grid: MeshGrid) -> MeshGrid:
-        """Convert probe coordinate grid to nozzle coordinate grid."""
-        nozzle_min = self.coordinate_transformer.probe_to_nozzle(probe_grid.min_point)
-        nozzle_max = self.coordinate_transformer.probe_to_nozzle(probe_grid.max_point)
-        return MeshGrid(nozzle_min, nozzle_max, probe_grid.x_resolution, probe_grid.y_resolution)
-
     def _results_to_positions(self, results: list[GridPointResult], height: float) -> list[Position]:
         """Convert grid results to Position objects."""
         positions: list[Position] = []
 
         for result in results:
+            rx, ry = result.point
             if not isfinite(result.z):
-                rx, ry = result.point
                 msg = f"Grid point ({rx:.2f},{ry:.2f}) has no valid samples"
                 raise RuntimeError(msg)
 
             # Calculate compensated height
             z = height - result.z
-            compensated = self.toolhead.apply_axis_twist_compensation(
-                Position(x=float(result.point[0]), y=float(result.point[1]), z=z)
-            )
+            nx, ny = self.coordinate_transformer.probe_to_nozzle(result.point)
+            compensated = self.toolhead.apply_axis_twist_compensation(Position(x=float(nx), y=float(ny), z=z))
 
             # Convert back to probe coordinates
-            probe_point = self.coordinate_transformer.nozzle_to_probe(result.point)
-            positions.append(Position(x=float(probe_point[0]), y=float(probe_point[1]), z=compensated.z))
+            positions.append(Position(x=float(rx), y=float(ry), z=compensated.z))
 
         return positions

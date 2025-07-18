@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Callable, Generic, Protocol, TypeVar, final
+from typing import Callable, Generic, Protocol, TypeVar
 
 T = TypeVar("T")
 
@@ -15,7 +15,6 @@ class Condition(Protocol):
         ...
 
 
-@final
 class Session(Generic[T]):
     def __init__(
         self,
@@ -23,10 +22,10 @@ class Session(Generic[T]):
         condition: Condition,
         start_condition: Callable[[T], bool] | None = None,
     ):
-        self.stream = stream
+        self.stream: Stream[T] = stream
         self.items: list[T] = []
-        self.start_condition = start_condition
-        self._condition = condition
+        self.start_condition: Callable[[T], bool] | None = start_condition
+        self._condition: Condition = condition
 
     def add_item(self, item: T):
         """Adds an item to the session only after the start condition is met."""
