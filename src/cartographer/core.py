@@ -8,9 +8,10 @@ from typing import TYPE_CHECKING, final
 from cartographer.macros.axis_twist_compensation import AxisTwistCompensationMacro
 from cartographer.macros.backlash import EstimateBacklashMacro
 from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateConfiguration, BedMeshCalibrateMacro
+from cartographer.macros.migration_message import MigrationMessageMacro
 from cartographer.macros.probe import ProbeAccuracyMacro, ProbeMacro, QueryProbeMacro, ZOffsetApplyProbeMacro
 from cartographer.macros.scan_calibrate import DEFAULT_SCAN_MODEL_NAME, ScanCalibrateMacro
-from cartographer.macros.touch import TouchAccuracyMacro, TouchHomeMacro, TouchMacro
+from cartographer.macros.touch import TouchAccuracyMacro, TouchHomeMacro, TouchProbeMacro
 from cartographer.macros.touch_calibrate import DEFAULT_TOUCH_MODEL_NAME, TouchCalibrateMacro
 from cartographer.probe.probe import Probe
 from cartographer.probe.scan_mode import ScanMode, ScanModeConfiguration
@@ -91,7 +92,7 @@ class PrinterCartographer:
                     reg("SCAN_CALIBRATE", ScanCalibrateMacro(probe, toolhead, config)),
                     reg("ESTIMATE_BACKLASH", EstimateBacklashMacro(toolhead, self.scan_mode, config)),
                     reg("TOUCH_CALIBRATE", TouchCalibrateMacro(probe, self.mcu, toolhead, config)),
-                    reg("TOUCH", TouchMacro(self.touch_mode)),
+                    reg("TOUCH_PROBE", TouchProbeMacro(self.touch_mode)),
                     reg("TOUCH_ACCURACY", TouchAccuracyMacro(self.touch_mode, toolhead)),
                     reg(
                         "TOUCH_HOME", TouchHomeMacro(self.touch_mode, toolhead, config.bed_mesh.zero_reference_position)
@@ -108,6 +109,20 @@ class PrinterCartographer:
                     use_prefix=False,
                 )
             )
+
+        old_macros = list(
+            chain.from_iterable(
+                [
+                    reg("TOUCH", MigrationMessageMacro("CARTOGRAPHER_TOUCH", "CARTOGRAPHER_TOUCH_HOME")),
+                    reg("CALIBRATE", MigrationMessageMacro("CARTOGRAPHER_CALIBRATE", "CARTOGRAPHER_SCAN_CALIBRATE")),
+                    reg(
+                        "THRESHOLD_SCAN",
+                        MigrationMessageMacro("CARTOGRAPHER_THRESHOLD_SCAN", "CARTOGRAPHER_TOUCH_CALIBRATE"),
+                    ),
+                ]
+            )
+        )
+        self.macros.extend(old_macros)
 
     def get_status(self, eventtime: float) -> object:
         return {
