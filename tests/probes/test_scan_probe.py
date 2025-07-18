@@ -19,7 +19,6 @@ if TYPE_CHECKING:
 def configure_probe(probe: Probe, config: Configuration) -> None:
     poly = Polynomial([0, 1])
     poly = cast("Polynomial", poly.convert(domain=[0, 20]))
-    print(poly.coef, poly.domain)
 
     model = ScanModelConfiguration("test_scan", poly.coef, poly.domain, z_offset=0)
     config.save_scan_model(model)

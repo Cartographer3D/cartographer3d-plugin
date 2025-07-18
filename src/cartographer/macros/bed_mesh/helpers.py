@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from math import ceil
@@ -16,6 +17,8 @@ if TYPE_CHECKING:
 
 MIN_GRID_RESOLUTION = 3
 DEFAULT_MAX_SAMPLE_DISTANCE = 1.0
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -56,10 +59,13 @@ class MeshGrid:
         """Generate all grid points in y-major order."""
         return [(float(x), float(y)) for x in self.x_coords for y in self.y_coords]
 
-    def contains_point(self, point: Point) -> bool:
+    def contains_point(self, point: Point, epsilon: float = 1e-2) -> bool:
         """Check if a point is within the grid bounds."""
         x, y = point
-        return bool(self.min_point[0] <= x <= self.max_point[0] and self.min_point[1] <= y <= self.max_point[1])
+        return bool(
+            self.min_point[0] - epsilon <= x <= self.max_point[0] + epsilon
+            and self.min_point[1] - epsilon <= y <= self.max_point[1] + epsilon
+        )
 
     def point_to_grid_index(self, point: Point) -> tuple[int, int]:
         """Convert a point to grid indices (j, i) where j=row, i=col."""
@@ -97,41 +103,39 @@ class SampleProcessor:
         self.max_distance = max_distance
 
     def assign_samples_to_grid(
-        self, samples: list[Sample], calculate_height: Callable[[Sample], float]
+        self,
+        samples: list[Sample],
+        calculate_height: Callable[[Sample], float],
     ) -> list[GridPointResult]:
         """Assign samples to grid points and calculate median heights."""
-
-        # Accumulator: (row=j, col=i) → list of z values
         accumulator: dict[tuple[int, int], list[float]] = defaultdict(list)
+        sample_points = [
+            (sample.position.x, sample.position.y, sample) for sample in samples if sample.position is not None
+        ]
 
-        for sample in samples:
-            if sample.position is None:
+        for x, y, sample in sample_points:
+            if not self.grid.contains_point((x, y)):
                 continue
 
-            point = (sample.position.x, sample.position.y)
-            if not self.grid.contains_point(point):
-                continue
-
-            j, i = self.grid.point_to_grid_index(point)
+            j, i = self.grid.point_to_grid_index((x, y))
             if not self.grid.is_valid_index(j, i):
                 continue
 
-            # Check distance to grid point
             grid_point = self.grid.grid_index_to_point(j, i)
-            distance = np.hypot(point[0] - grid_point[0], point[1] - grid_point[1])
+            distance = np.hypot(x - grid_point[0], y - grid_point[1])
             if distance > self.max_distance:
                 continue
 
             sample_height = calculate_height(sample)
             accumulator[(j, i)].append(sample_height)
 
-        # Generate results for all grid points
         results: list[GridPointResult] = []
         for j in range(self.grid.y_resolution):
             for i in range(self.grid.x_resolution):
                 grid_point = self.grid.grid_index_to_point(j, i)
                 values = accumulator.get((j, i), [])
                 count = len(values)
+
                 z = float(np.median(values)) if values else np.nan
                 results.append(GridPointResult(point=grid_point, z=z, sample_count=count))
 

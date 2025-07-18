@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 HomingAxis = Literal["x", "y", "z"]
 
 
-@dataclass
+@dataclass(frozen=True)
 class Position:
     x: float
     y: float
