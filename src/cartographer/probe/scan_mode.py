@@ -60,8 +60,7 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
     @property
     @override
     def offset(self) -> Position:
-        z_offset = self.get_model().z_offset if self.has_model() else 0.0
-        return Position(self._config.x_offset, self._config.y_offset, self.probe_height + z_offset)
+        return Position(self._config.x_offset, self._config.y_offset, self.probe_height)
 
     @property
     @override
