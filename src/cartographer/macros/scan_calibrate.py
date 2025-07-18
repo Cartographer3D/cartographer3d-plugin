@@ -61,7 +61,7 @@ class ScanCalibrateMacro(Macro):
     def _run_touch(self, name: str) -> None:
         trigger_pos = self._probe.perform_touch()
         pos = self._toolhead.get_position()
-        self._toolhead.set_z_position(pos.z - (trigger_pos - self._probe.touch.offset.z))
+        self._toolhead.set_z_position(pos.z - trigger_pos)
         self._calibrate(name)
 
     def _run_manual(self, name: str) -> None:
