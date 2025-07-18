@@ -52,8 +52,8 @@ class BacklashCompensatingToolhead(Toolhead):
         self.toolhead.set_z_position(z)
 
     @override
-    def get_z_axis_limits(self) -> tuple[float, float]:
-        return self.toolhead.get_z_axis_limits()
+    def get_axis_limits(self, axis: HomingAxis) -> tuple[float, float]:
+        return self.toolhead.get_axis_limits(axis)
 
     @override
     def manual_probe(self, finalize_callback: Callable[[Position | None], None]) -> None:

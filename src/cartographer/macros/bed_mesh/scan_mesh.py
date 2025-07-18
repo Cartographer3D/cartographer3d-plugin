@@ -45,7 +45,6 @@ class BedMeshCalibrateConfiguration:
     runs: int
     direction: Literal["x", "y"]
     height: float
-    corner_radius: float
     path: Literal["snake", "alternating_snake", "spiral", "random"]
 
     @staticmethod
@@ -60,7 +59,6 @@ class BedMeshCalibrateConfiguration:
             runs=config.scan.mesh_runs,
             direction=config.scan.mesh_direction,
             height=config.scan.mesh_height,
-            corner_radius=config.scan.mesh_corner_radius,
             path=config.scan.mesh_path,
         )
 
@@ -115,9 +113,8 @@ class MeshScanParams:
 
         # Create path generator
         direction: Literal["x", "y"] = get_choice(params, "DIRECTION", _directions, default=config.direction)
-        corner_radius = params.get_float("CORNER_RADIUS", default=config.corner_radius, minval=0)
         path_type = get_choice(params, "PATH", default=config.path, choices=PATH_GENERATOR_MAP.keys())
-        path_generator = PATH_GENERATOR_MAP[path_type](direction, corner_radius)
+        path_generator = PATH_GENERATOR_MAP[path_type](direction)
 
         return cls(
             mesh_bounds=mesh_bounds,
@@ -134,8 +131,6 @@ class MeshScanParams:
 
 @final
 class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
-    """Simplified bed mesh calibration macro with clean separation of concerns."""
-
     description = "Gather samples across the bed to calibrate the bed mesh."
 
     def __init__(
@@ -180,7 +175,6 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
             scan_params.resolution[0],
             scan_params.resolution[1],
         )
-
         # Generate path and collect samples
         path = self._generate_path(grid, scan_params)
         samples = self._collect_samples(path, scan_params)
@@ -211,7 +205,10 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
     def _generate_path(self, grid: MeshGrid, params: MeshScanParams) -> list[Point]:
         """Generate scanning path from grid points."""
         mesh_points = grid.generate_points()
-        return list(params.path_generator.generate_path(mesh_points))
+        x_axis_limits = self.toolhead.get_axis_limits("x")
+        y_axis_limits = self.toolhead.get_axis_limits("y")
+
+        return list(params.path_generator.generate_path(mesh_points, x_axis_limits, y_axis_limits))
 
     @log_duration("Collecting samples along the scanning path")
     def _collect_samples(self, path: list[Point], params: MeshScanParams) -> list[Sample]:

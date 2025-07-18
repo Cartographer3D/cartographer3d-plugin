@@ -65,7 +65,7 @@ class ScanCalibrateMacro(Macro):
         self._calibrate(name)
 
     def _run_manual(self, name: str) -> None:
-        _, z_max = self._toolhead.get_z_axis_limits()
+        _, z_max = self._toolhead.get_axis_limits("z")
         self._toolhead.set_z_position(z=z_max - 10)
 
         logger.info("Triggering manual probe, please bring nozzle to 0.1mm above the bed")

@@ -11,6 +11,7 @@ import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 
 from cartographer.macros.bed_mesh.paths.alternating_snake import AlternatingSnakePathGenerator
+from cartographer.macros.bed_mesh.paths.random_path import RandomPathGenerator
 from cartographer.macros.bed_mesh.paths.snake_path import SnakePathGenerator
 from cartographer.macros.bed_mesh.paths.spiral_path import SpiralPathGenerator
 
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 
 
 def make_grid(nx: int, ny: int, spacing: float) -> list[Point]:
-    return [(x * spacing, y * spacing) for y in range(ny) for x in range(nx)]
+    return [(1 + x * spacing, 1 + y * spacing) for y in range(ny) for x in range(nx)]
 
 
 def plot_grid_and_path(ax, name: str, grid: list[Point], path: list[Point]):
@@ -49,7 +50,7 @@ def animate_paths(generator: PathGenerator, grid_shapes: list[tuple[int, int]], 
     # Prepare plots & arrows
     for ax, (nx, ny) in zip(axes, grid_shapes):
         grid = make_grid(nx, ny, spacing)
-        path = list(generator.generate_path(grid))
+        path = list(generator.generate_path(grid, (0, nx * spacing + 2), (0, ny * spacing + 2)))
         plot_grid_and_path(ax, f"{nx}×{ny} grid", grid, path)
         all_grids.append(grid)
         all_paths.append(path)
@@ -85,6 +86,7 @@ PATH_STRATEGY_MAP = {
     "snake": SnakePathGenerator,
     "alternating_snake": AlternatingSnakePathGenerator,
     "spiral": SpiralPathGenerator,
+    "random": RandomPathGenerator,
 }
 
 if __name__ == "__main__":
@@ -93,7 +95,7 @@ if __name__ == "__main__":
     if path_strategy is None:
         msg = f"Unknown path strategy: {path_strategy_type}"
         raise ValueError(msg)
-    generator = path_strategy("x", 2)
+    generator = path_strategy("x")
 
     grid_shapes = [
         (3, 3),

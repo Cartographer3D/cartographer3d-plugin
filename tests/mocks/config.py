@@ -30,7 +30,6 @@ default_scan_config = ScanConfig(
     mesh_runs=1,
     mesh_direction="x",
     mesh_height=4.0,
-    mesh_corner_radius=2.0,
     mesh_path="snake",
 )
 default_touch_config = TouchConfig(

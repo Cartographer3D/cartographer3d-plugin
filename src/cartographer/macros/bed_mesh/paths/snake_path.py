@@ -19,32 +19,50 @@ from cartographer.macros.bed_mesh.paths.utils import (
 if TYPE_CHECKING:
     from cartographer.macros.bed_mesh.interfaces import Point
 
+BUFFER = 0.5
+
 
 @final
 class SnakePathGenerator(PathGenerator):
-    def __init__(self, main_direction: Literal["x", "y"], corner_radius: float):
+    def __init__(self, main_direction: Literal["x", "y"]):
         self.main_direction: Literal["x", "y"] = main_direction
-        self.corner_radius = corner_radius
 
     @override
-    def generate_path(self, points: list[Point]) -> Iterator[Point]:
-        rows = cluster_points(points, self.main_direction)
+    def generate_path(
+        self,
+        points: list[Point],
+        x_axis_limits: tuple[float, float],
+        y_axis_limits: tuple[float, float],
+    ) -> Iterator[Point]:
+        grid = cluster_points(points, self.main_direction)
 
-        prev_row = rows[0]
+        axis_min, axis_max = x_axis_limits if self.main_direction == "x" else y_axis_limits
+        main_index = 0 if self.main_direction == "x" else 1
+        secondary_index = 1 if self.main_direction == "x" else 0
 
-        for i, row in enumerate(rows):
+        row_spacing = abs(grid[1][0][secondary_index] - grid[0][0][secondary_index])
+        max_radius_by_spacing = round(row_spacing / 2, 2)
+
+        mesh_min = grid[0][0][main_index]
+        mesh_max = grid[-1][-1][main_index]
+        max_radius_by_bounds = min(mesh_min - axis_min - BUFFER, axis_max - mesh_max - BUFFER)
+
+        # Final corner radius
+        corner_radius = float(max(0, min(max_radius_by_spacing, max_radius_by_bounds)))
+
+        prev_row = grid[0]
+
+        for i, row in enumerate(grid):
             row = list(row)
             if i % 2 == 1:
-                row = row[::-1]
+                row.reverse()
 
             if i > 0:
-                # Create U-turn arc between previous end and current start
                 prev_last = prev_row[-1]
-                print(f"prev_last: {prev_last}, row: {row}, prev_row: {prev_row}")
                 curr_first = row[0]
-                entry_dir = row_direction(prev_row[-2:])
+                entry_dir = row_direction(prev_row[-2:])  # You must define this separately
 
-                yield from u_turn(prev_last, curr_first, entry_dir, self.corner_radius)
+                yield from u_turn(prev_last, curr_first, entry_dir, corner_radius)
 
             yield from row
             prev_row = row
