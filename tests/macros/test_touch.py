@@ -7,7 +7,7 @@ import pytest
 from typing_extensions import TypeAlias
 
 from cartographer.interfaces.printer import MacroParams, Position, Toolhead
-from cartographer.macros.touch import TouchAccuracyMacro, TouchHomeMacro, TouchMacro
+from cartographer.macros.touch import TouchAccuracyMacro, TouchHomeMacro, TouchProbeMacro
 from cartographer.probe.touch_mode import TouchMode, TouchModeConfiguration
 
 if TYPE_CHECKING:
@@ -37,7 +37,7 @@ def test_touch_macro_output(
     probe: Probe,
     params: MacroParams,
 ):
-    macro = TouchMacro(probe)
+    macro = TouchProbeMacro(probe)
     probe.perform_probe = mocker.Mock(return_value=5.0)
 
     with caplog.at_level(logging.INFO):

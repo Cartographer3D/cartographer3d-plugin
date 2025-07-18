@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 @final
-class TouchMacro(Macro):
+class TouchProbeMacro(Macro):
     description = "Touch the bed to get the height offset at the current position."
     last_trigger_position: float | None = None
 
