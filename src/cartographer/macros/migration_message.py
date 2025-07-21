@@ -9,7 +9,7 @@ from cartographer.interfaces.printer import Macro, MacroParams
 
 @final
 class MigrationMessageMacro(Macro):
-    description = "Implements and old macro and informs of the new"
+    description = "Implements an old macro and informs of the new"
 
     def __init__(self, name: str, new_macro: str) -> None:
         self.name = name
