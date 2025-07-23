@@ -95,8 +95,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
     @property
     @override
     def offset(self) -> Position:
-        z_offset = self.get_model().z_offset if self.has_model() else 0.0
-        return Position(0.0, 0.0, z_offset)
+        return Position(0.0, 0.0, 0.0)
 
     @property
     @override

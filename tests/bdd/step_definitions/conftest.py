@@ -14,7 +14,8 @@ if TYPE_CHECKING:
     from pytest import LogCaptureFixture
     from pytest_bdd.parser import Feature, Scenario
 
-    from cartographer.probe.probe import Probe
+    from cartographer.probe.scan_mode import ScanMode
+    from cartographer.probe.touch_mode import TouchMode
     from cartographer.stream import Session
     from tests.mocks.params import MockParams
 
@@ -65,27 +66,27 @@ def given_probe() -> None:
 
 
 @given("the probe has scan calibrated")
-def given_scan_calibrated(probe: Probe, config: Configuration, session: Session[Sample]):
+def given_scan_calibrated(scan: ScanMode, config: Configuration, session: Session[Sample]):
     config.save_scan_model(
         ScanModelConfiguration(name="default", coefficients=[0.3] * 9, domain=(0.1, 5.5), z_offset=0.0)
     )
-    probe.scan.load_model("default")
+    scan.load_model("default")
     session.get_items = lambda: [sample(frequency=2) for _ in range(11)]
 
 
 @given(parsers.parse("the probe has scan z-offset {offset:g}"))
-def given_scan_offset(probe: Probe, config: Configuration, offset: float):
+def given_scan_offset(scan: ScanMode, config: Configuration, offset: float):
     config.save_scan_model(replace(config.scan.models["default"], z_offset=offset))
-    probe.scan.load_model("default")
+    scan.load_model("default")
 
 
 @given("the probe has touch calibrated")
-def given_touch_calibrated(probe: Probe, config: Configuration):
+def given_touch_calibrated(touch: TouchMode, config: Configuration):
     config.touch.models["default"] = TouchModelConfiguration(name="default", threshold=1000, speed=3, z_offset=0.0)
-    probe.touch.load_model("default")
+    touch.load_model("default")
 
 
 @given(parsers.parse("the probe has touch z-offset {offset:g}"))
-def given_touch_offset(probe: Probe, config: Configuration, offset: float):
+def given_touch_offset(touch: TouchMode, config: Configuration, offset: float):
     config.save_touch_model(replace(config.touch.models["default"], z_offset=offset))
-    probe.touch.load_model("default")
+    touch.load_model("default")

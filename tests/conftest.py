@@ -42,7 +42,16 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
     mock.get_position = get_position
     mock.apply_axis_twist_compensation = apply_axis_twist_compensation
     mock.get_extruder_temperature = get_extruder_temperature
-    mock.get_last_move_time = mocker.Mock(side_effect=[10, 100, 1000])
+    last_move_time = 0
+
+    def get_last_move_time() -> float:
+        nonlocal last_move_time
+        last_move_time += 1
+        return last_move_time
+
+    mock.get_last_move_time = get_last_move_time
+
+    mock.z_homing_move = mocker.Mock(return_value=0)
 
     return mock
 
@@ -70,9 +79,17 @@ def config() -> Configuration:
 
 
 @pytest.fixture
-def probe(mcu: Mcu, toolhead: Toolhead, config: Configuration) -> Probe:
-    scan = ScanMode(mcu, toolhead, ScanModeConfiguration.from_config(config))
-    touch = TouchMode(mcu, toolhead, TouchModeConfiguration.from_config(config))
+def scan(mcu: Mcu, toolhead: Toolhead, config: Configuration):
+    return ScanMode(mcu, toolhead, ScanModeConfiguration.from_config(config))
+
+
+@pytest.fixture
+def touch(mcu: Mcu, toolhead: Toolhead, config: Configuration):
+    return TouchMode(mcu, toolhead, TouchModeConfiguration.from_config(config))
+
+
+@pytest.fixture
+def probe(scan: ScanMode, touch: TouchMode) -> Probe:
     return Probe(scan, touch)
 
 
