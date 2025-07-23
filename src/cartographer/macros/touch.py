@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, final
 import numpy as np
 from typing_extensions import override
 
-from cartographer.interfaces.printer import Macro, MacroParams
+from cartographer.interfaces.printer import HomingState, Macro, MacroParams
 from cartographer.lib.statistics import compute_mad
 
 if TYPE_CHECKING:
@@ -91,6 +91,16 @@ class TouchAccuracyMacro(Macro):
         )
 
 
+class _FakeHomingState(HomingState):
+    @override
+    def is_homing_z(self) -> bool:
+        return True
+
+    @override
+    def set_z_homed_position(self, position: float) -> None:
+        pass
+
+
 @final
 class TouchHomeMacro(Macro):
     description = "Touch the bed to home Z axis"
@@ -138,6 +148,8 @@ class TouchHomeMacro(Macro):
 
         pos = self._toolhead.get_position()
         self._toolhead.set_z_position(pos.z - trigger_pos)
+        # Simulate home end to update last homing time
+        self._probe.on_home_end(_FakeHomingState())
         logger.info(
             "Touch home at (%.3f,%.3f) adjusted z by %.3f",
             pos.x,
