@@ -9,6 +9,7 @@ from pins import PrinterPins
 from reactor import Reactor
 from stepper import PrinterRail
 from toolhead import ToolHead
+from webhooks import WebHooks
 
 from cartographer.core import PrinterCartographer
 from extras.axis_twist_compensation import AxisTwistCompensation
@@ -103,6 +104,8 @@ class Printer:
     def lookup_object(self, name: Literal["pins"]) -> PrinterPins: ...
     @overload
     def lookup_object(self, name: Literal["toolhead"]) -> ToolHead: ...
+    @overload
+    def lookup_object(self, name: Literal["webhooks"]) -> WebHooks: ...
     @overload
     def lookup_object(self, name: Literal["cartographer"]) -> PrinterCartographer: ...
     def send_event(self, event: Literal["probe:update_results"], pos: list[float]) -> None: ...

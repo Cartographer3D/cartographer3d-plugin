@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Callable, Protocol, TypeVar, final
 import greenlet
 from typing_extensions import override
 
-from cartographer.stream import Condition, Session, Stream
+from cartographer.stream import Condition, Stream
 
 if TYPE_CHECKING:
     from reactor import Reactor
@@ -67,13 +67,9 @@ class KlipperStream(Stream[T]):
         return KlipperCondition(self.reactor)
 
     @override
-    def start_session(self, start_condition: Callable[[T], bool] | None = None) -> Session[T]:
-        if len(self.sessions) == 0:
-            self.mcu.start_streaming()
-        return super().start_session(start_condition)
+    def start_streaming(self) -> None:
+        self.mcu.start_streaming()
 
     @override
-    def end_session(self, session: Session[T]) -> None:
-        super().end_session(session)
-        if len(self.sessions) == 0:
-            self.mcu.stop_streaming()
+    def stop_streaming(self) -> None:
+        self.mcu.stop_streaming()
