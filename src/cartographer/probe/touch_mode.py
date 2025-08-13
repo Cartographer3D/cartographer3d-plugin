@@ -153,24 +153,23 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             if len(collected) < touch_samples:
                 continue
 
-            valid_combo = self._find_valid_combination(collected, touch_samples)
-            if valid_combo is None:
+            best_combo = self._find_best_combination(collected, touch_samples)
+            if best_combo is None or compute_mad(best_combo) > MAD_TOLERANCE:
                 continue
 
-            self._log_sample_stats("Acceptable touch combination found", valid_combo)
+            self._log_sample_stats("Acceptable touch combination found", best_combo)
 
-            return float(np.median(valid_combo) if len(valid_combo) > 3 else np.mean(valid_combo))
+            return float(np.median(best_combo) if len(best_combo) > 3 else np.mean(best_combo))
 
-        self._log_sample_stats("No valid touch combination found in samples", collected)
+        self._log_sample_stats("No acceptable touch combination found in samples", collected)
+        self._log_sample_stats(
+            "Best combination found was", self._find_best_combination(collected, touch_samples) or []
+        )
         msg = f"Unable to find {touch_samples} samples within tolerance after {touch_max_samples} touches"
         raise TouchError(msg)
 
-    def _find_valid_combination(self, samples: list[float], size: int) -> tuple[float, ...] | None:
-        for combo in combinations(samples, size):
-            current_mad = compute_mad(combo)
-            if current_mad <= MAD_TOLERANCE:
-                return tuple(sorted(combo))
-        return None
+    def _find_best_combination(self, samples: list[float], size: int) -> tuple[float, ...] | None:
+        return min(combinations(samples, size), key=compute_mad, default=None)
 
     def _perform_single_probe(self) -> float:
         model = self.get_model()
