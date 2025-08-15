@@ -166,7 +166,6 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
 
         # Parse parameters and validate
         scan_params = MeshScanParams.from_macro_params(params, self.config, self.adapter)
-        self._validate_zero_reference(scan_params.mesh_bounds)
 
         # Create mesh grid and processors
         grid = MeshGrid(
@@ -177,30 +176,29 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         )
         # Generate path and collect samples
         path = self._generate_path(grid, scan_params)
+        self.adapter.clear_mesh()
         samples = self._collect_samples(path, scan_params)
 
         # Process samples and create mesh
         positions = self.task_executor.run(self._process_samples_to_positions, grid, samples, scan_params.height)
+        positions = self._apply_zero_reference_height(positions, scan_params, grid)
 
         # Apply mesh to adapter
-        self.adapter.clear_mesh()
         self.adapter.apply_mesh(positions, scan_params.profile)
 
-    def _validate_zero_reference(self, mesh_bounds: MeshBounds) -> None:
-        """Validate that zero reference position is within mesh bounds."""
-        zero_ref = self.config.zero_reference_position
+    def _apply_zero_reference_height(
+        self, positions: list[Position], params: MeshScanParams, grid: MeshGrid
+    ) -> list[Position]:
+        zrp = self.config.zero_reference_position
+        if grid.contains_point(zrp):
+            return self.coordinate_transformer.normalize_to_zero_reference_point(positions, zero_ref=zrp)
 
-        if not (
-            mesh_bounds.min_point[0] <= zero_ref[0] <= mesh_bounds.max_point[0]
-            and mesh_bounds.min_point[1] <= zero_ref[1] <= mesh_bounds.max_point[1]
-        ):
-            zrp = f"({zero_ref[0]:.2f},{zero_ref[1]:.2f})"
-            bounds_str = (
-                f"({mesh_bounds.min_point[0]:.2f},{mesh_bounds.min_point[1]:.2f}) - "
-                f"({mesh_bounds.max_point[0]:.2f},{mesh_bounds.max_point[1]:.2f})"
-            )
-            msg = f"Zero reference position {zrp} must be within mesh bounds {bounds_str}"
-            raise RuntimeError(msg)
+        self._move_probe_to_point(zrp, params.speed)
+        zero_measure = params.height - self.probe.scan.measure_distance()
+        nx, ny = self.coordinate_transformer.probe_to_nozzle(zrp)
+        compensated = self.toolhead.apply_axis_twist_compensation(Position(x=float(nx), y=float(ny), z=zero_measure))
+
+        return self.coordinate_transformer.normalize_to_zero_reference_point(positions, zero_height=compensated.z)
 
     def _generate_path(self, grid: MeshGrid, params: MeshScanParams) -> list[Point]:
         """Generate scanning path from grid points."""
@@ -264,10 +262,7 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         results = sample_processor.assign_samples_to_grid(samples, self.probe.scan.calculate_sample_distance)
 
         # Convert results to positions
-        positions = self._results_to_positions(results, height)
-
-        # Normalize to zero reference
-        return self.coordinate_transformer.normalize_to_zero_reference(positions, self.config.zero_reference_position)
+        return self._results_to_positions(results, height)
 
     def _results_to_positions(self, results: list[GridPointResult], height: float) -> list[Position]:
         """Convert grid results to Position objects."""

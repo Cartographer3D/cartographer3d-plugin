@@ -222,11 +222,35 @@ class TestCoordinateTransformer:
         positions = [Position(0.0, 0.0, 1.0), Position(1.0, 0.0, 2.0), Position(0.0, 1.0, 1.5), Position(1.0, 1.0, 2.5)]
 
         zero_ref = (0.0, 0.0)
-        normalized = transformer.normalize_to_zero_reference(positions, zero_ref)
+        normalized = transformer.normalize_to_zero_reference_point(positions, zero_ref=zero_ref)
 
         # The point at (0,0) should become z=0
         normalized_00 = next(p for p in normalized if p.x == 0.0 and p.y == 0.0)
         assert abs(normalized_00.z) < 1e-10  # Should be very close to 0
+
+    def test_small_grid_with_interpolation(self):
+        positions = [
+            Position(0, 0, 1.0),
+            Position(1, 0, 2.0),
+            Position(0, 1, 3.0),
+            Position(1, 1, 4.0),
+        ]
+        zero_ref = (0.5, 0.5)  # Middle point, bilinear = 2.5
+        result = transformer.normalize_to_zero_reference_point(positions, zero_ref=zero_ref)
+        z_values = [p.z for p in result]
+        assert all(abs(z - expected) < 1e-9 for z, expected in zip(z_values, [-1.5, -0.5, 0.5, 1.5]))
+
+    def test_grid_with_explicit_height(self):
+        positions = [Position(x, y, float(x + y)) for y in range(3) for x in range(3)]
+        zero_height = 2.0
+        result = transformer.normalize_to_zero_reference_point(positions, zero_height=zero_height)
+        z_values = [p.z for p in result]
+        assert all(abs(z - ((p.x + p.y) - 2.0)) < 1e-9 for p, z in zip(positions, z_values))
+
+    def test_all_same_height(self):
+        positions = [Position(x, y, 5.0) for y in range(2) for x in range(2)]
+        result = transformer.normalize_to_zero_reference_point(positions, zero_height=5.0)
+        assert all(p.z == 0.0 for p in result)
 
 
 class TestMeshBounds:
@@ -388,7 +412,7 @@ class TestIntegration:
         positions = [Position(0.0, 0.0, 1.0), Position(0.0, 2.0, 1.0), Position(2.0, 0.0, 2.0), Position(2.0, 2.0, 2.0)]
 
         # Normalize to zero reference
-        normalized = transformer.normalize_to_zero_reference(positions, (0.0, 0.0))
+        normalized = transformer.normalize_to_zero_reference_point(positions, zero_ref=(0.0, 0.0))
 
         # Verify normalization
         assert len(normalized) == 4

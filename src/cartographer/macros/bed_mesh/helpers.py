@@ -4,7 +4,7 @@ import logging
 from collections import defaultdict
 from dataclasses import dataclass
 from math import ceil
-from typing import TYPE_CHECKING, Callable, Sequence, final
+from typing import TYPE_CHECKING, Callable, Sequence, final, overload
 
 import numpy as np
 
@@ -159,32 +159,48 @@ class CoordinateTransformer:
         x, y = point
         return (x + self.probe_offset.x, y + self.probe_offset.y)
 
-    def normalize_to_zero_reference(self, positions: list[Position], zero_ref: Point) -> list[Position]:
+    @overload
+    def normalize_to_zero_reference_point(self, positions: list[Position], *, zero_ref: Point) -> list[Position]: ...
+    @overload
+    def normalize_to_zero_reference_point(self, positions: list[Position], *, zero_height: float) -> list[Position]: ...
+    def normalize_to_zero_reference_point(
+        self,
+        positions: list[Position],
+        *,
+        zero_ref: Point | None = None,
+        zero_height: float | None = None,
+    ) -> list[Position]:
         """Normalize positions to a zero reference point using bilinear interpolation."""
         if not positions:
             return []
+        # Convert to NumPy array (shape: (N, 3))
+        arr: NDArray[np.float64] = np.array([(p.x, p.y, p.z) for p in positions], dtype=float)
 
-        # Extract sorted unique coordinates
-        xs = np.array(sorted({p.x for p in positions}))
-        ys = np.array(sorted({p.y for p in positions}))
+        # Extract sorted unique coords
+        xs = np.unique(arr[:, 0])
+        ys = np.unique(arr[:, 1])
 
-        # Build a mapping from (x, y) to z
-        z_map = {(p.x, p.y): p.z for p in positions}
+        # Sort positions in matching y-major order and reshape z
+        # This works if positions form a complete rectangular grid
+        # and can be sorted by (y, x)
+        sort_idx = np.lexsort((arr[:, 0], arr[:, 1]))
+        z_grid = arr[sort_idx, 2].reshape(len(ys), len(xs))
 
-        # Build Z grid with shape (y_count, x_count)
-        z_grid = np.array([[z_map[(x, y)] for x in xs] for y in ys])
+        # Determine zero reference height
+        if zero_height is not None:
+            z_ref = zero_height
+        elif zero_ref is not None:
+            z_ref = self._bilinear_interpolate(xs, ys, z_grid, zero_ref)
+        else:
+            msg = "Either zero_ref or zero_height must be provided."
+            raise ValueError(msg)
 
-        # Compute reference height using bilinear interpolation
-        z_ref = self._bilinear_interpolate(xs, ys, z_grid, zero_ref)
-
-        # Normalize all heights
+        # Normalize
         z_grid -= z_ref
 
-        # Rebuild list in y-major order
+        # Rebuild output in y-major order
         normalized_positions = [
-            Position(x=float(x), y=float(y), z=float(z_grid[yi, xi]))
-            for yi, y in enumerate(ys)
-            for xi, x in enumerate(xs)
+            Position(x=float(x), y=float(y), z=float(z)) for y, row in zip(ys, z_grid) for x, z in zip(xs, row)
         ]
         return normalized_positions
 
