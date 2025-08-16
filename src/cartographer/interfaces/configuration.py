@@ -29,6 +29,7 @@ class ScanConfig:
 class TouchConfig:
     samples: int
     max_samples: int
+    max_touch_temperature: int
     models: dict[str, TouchModelConfiguration]
 
 
