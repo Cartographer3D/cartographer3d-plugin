@@ -105,12 +105,22 @@ class KlipperConfiguration(Configuration):
         self.scan.models[config.name] = config
 
     @override
+    def remove_scan_model(self, name: str) -> None:
+        self._config.remove_section(f"{self.scan_model_prefix} {name}")
+        _ = self.scan.models.pop(name, None)
+
+    @override
     def save_touch_model(self, config: TouchModelConfiguration) -> None:
         save = partial(self._config.set, f"{self.touch_model_prefix} {config.name}")
         save("threshold", config.threshold)
         save("speed", config.speed)
         save("z_offset", config.z_offset)
         self.touch.models[config.name] = config
+
+    @override
+    def remove_touch_model(self, name: str) -> None:
+        self._config.remove_section(f"{self.touch_model_prefix} {name}")
+        _ = self.touch.models.pop(name, None)
 
     @override
     def save_z_backlash(self, backlash: float) -> None:

@@ -69,8 +69,16 @@ class MockConfiguration(Configuration):
         self.scan.models[config.name] = config
 
     @override
+    def remove_scan_model(self, name: str) -> None:
+        _ = self.scan.models.pop(name, None)
+
+    @override
     def save_touch_model(self, config: TouchModelConfiguration) -> None:
         self.touch.models[config.name] = config
+
+    @override
+    def remove_touch_model(self, name: str) -> None:
+        _ = self.touch.models.pop(name, None)
 
     @override
     def save_z_backlash(self, backlash: float) -> None:
