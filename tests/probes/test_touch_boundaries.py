@@ -41,6 +41,7 @@ def make_config(
         max_samples=1,
         mesh_min=mesh_min,
         mesh_max=mesh_max,
+        max_touch_temperature=150,
         x_offset=x_offset,
         y_offset=y_offset,
         models={},

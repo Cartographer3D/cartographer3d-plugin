@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 MAD_TOLERANCE = 0.0054  # Statistically equivalent to 0.008mm stddev
 RETRACT_DISTANCE = 2.0
-MAX_TOUCH_TEMPERATURE = 155
+MAX_TOUCH_TEMPERATURE_EPSILON = 2  # Allow some temperature overshoot
 
 
 @dataclass(frozen=True)
@@ -34,6 +34,7 @@ class TouchModeConfiguration:
     y_offset: float
     mesh_min: tuple[float, float]
     mesh_max: tuple[float, float]
+    max_touch_temperature: int
 
     models: dict[str, TouchModelConfiguration]
 
@@ -47,6 +48,7 @@ class TouchModeConfiguration:
             y_offset=config.general.y_offset,
             mesh_min=config.bed_mesh.mesh_min,
             mesh_max=config.bed_mesh.mesh_max,
+            max_touch_temperature=config.touch.max_touch_temperature,
         )
 
 
@@ -193,9 +195,9 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             msg = f"Position ({pos.x:.2f},{pos.y:.2f}) is outside of the touch boundaries"
             raise RuntimeError(msg)
 
-        nozzle = self._toolhead.get_extruder_temperature()
-        if nozzle.current > MAX_TOUCH_TEMPERATURE or nozzle.target > MAX_TOUCH_TEMPERATURE:
-            msg = f"Nozzle temperature must be below {MAX_TOUCH_TEMPERATURE - 5:d}C"
+        nozzle_temperature = max(self._toolhead.get_extruder_temperature())
+        if nozzle_temperature > self._config.max_touch_temperature + MAX_TOUCH_TEMPERATURE_EPSILON:
+            msg = f"Nozzle temperature must be below {self._config.max_touch_temperature:d}C"
             raise RuntimeError(msg)
         return self._mcu.start_homing_touch(print_time, model.threshold)
 

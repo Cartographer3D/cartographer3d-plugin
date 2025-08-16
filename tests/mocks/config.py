@@ -35,6 +35,7 @@ default_scan_config = ScanConfig(
 default_touch_config = TouchConfig(
     samples=5,
     max_samples=10,
+    max_touch_temperature=150,
     models={},
 )
 default_bed_mesh_config = BedMeshConfig(
