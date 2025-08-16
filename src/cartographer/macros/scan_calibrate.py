@@ -37,7 +37,7 @@ class ScanCalibrateMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        name = params.get("MODEL_NAME", DEFAULT_SCAN_MODEL_NAME)
+        name = params.get("MODEL", DEFAULT_SCAN_MODEL_NAME).lower()
         method = get_enum_choice(params, "METHOD", ScanCalibrateMethod, default=ScanCalibrateMethod.MANUAL)
 
         if not self._toolhead.is_homed("x") or not self._toolhead.is_homed("y"):

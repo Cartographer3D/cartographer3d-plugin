@@ -147,7 +147,7 @@ class TouchCalibrateMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        name = params.get("MODEL_NAME", DEFAULT_TOUCH_MODEL_NAME)
+        name = params.get("MODEL", DEFAULT_TOUCH_MODEL_NAME).lower()
         speed = params.get_int("SPEED", default=3, minval=1, maxval=5)
         threshold_start = params.get_int("START", default=500, minval=100)
         threshold_max = params.get_int("MAX", default=3000, minval=threshold_start)
@@ -214,6 +214,7 @@ class TouchCalibrateMacro(Macro):
         )
         model = TouchModelConfiguration(name, threshold, speed, DEFAULT_Z_OFFSET)
         self._config.save_touch_model(model)
+        self._probe.touch.load_model(name)
         logger.info(
             """
             Touch model %s has been saved for the current session.

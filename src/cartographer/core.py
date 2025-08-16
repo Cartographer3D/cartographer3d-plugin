@@ -9,6 +9,7 @@ from cartographer.macros.axis_twist_compensation import AxisTwistCompensationMac
 from cartographer.macros.backlash import EstimateBacklashMacro
 from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateConfiguration, BedMeshCalibrateMacro
 from cartographer.macros.migration_message import MigrationMessageMacro
+from cartographer.macros.model_manager import ScanModelManager, TouchModelManager
 from cartographer.macros.probe import ProbeAccuracyMacro, ProbeMacro, QueryProbeMacro, ZOffsetApplyProbeMacro
 from cartographer.macros.scan_calibrate import DEFAULT_SCAN_MODEL_NAME, ScanCalibrateMacro
 from cartographer.macros.touch import TouchAccuracyMacro, TouchHomeMacro, TouchProbeMacro
@@ -90,8 +91,10 @@ class PrinterCartographer:
                         use_prefix=False,
                     ),
                     reg("SCAN_CALIBRATE", ScanCalibrateMacro(probe, toolhead, config)),
+                    reg("SCAN_MODEL", ScanModelManager(self.scan_mode, config)),
                     reg("ESTIMATE_BACKLASH", EstimateBacklashMacro(toolhead, self.scan_mode, config)),
                     reg("TOUCH_CALIBRATE", TouchCalibrateMacro(probe, self.mcu, toolhead, config)),
+                    reg("TOUCH_MODEL", TouchModelManager(self.touch_mode, config)),
                     reg("TOUCH_PROBE", TouchProbeMacro(self.touch_mode)),
                     reg("TOUCH_ACCURACY", TouchAccuracyMacro(self.touch_mode, toolhead)),
                     reg(
