@@ -16,6 +16,7 @@ from cartographer.macros.bed_mesh.helpers import (
     GridPointResult,
     MeshBounds,
     MeshGrid,
+    Region,
     SampleProcessor,
 )
 from cartographer.macros.bed_mesh.paths.alternating_snake import AlternatingSnakePathGenerator
@@ -41,6 +42,7 @@ class BedMeshCalibrateConfiguration:
     speed: float
     adaptive_margin: float
     zero_reference_position: Point
+    faulty_regions: list[Region]
 
     runs: int
     direction: Literal["x", "y"]
@@ -60,6 +62,7 @@ class BedMeshCalibrateConfiguration:
             direction=config.scan.mesh_direction,
             height=config.scan.mesh_height,
             path=config.scan.mesh_path,
+            faulty_regions=list(map(lambda r: Region(r[0], r[1]), config.bed_mesh.faulty_regions)),
         )
 
 
@@ -262,7 +265,8 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         results = sample_processor.assign_samples_to_grid(samples, self.probe.scan.calculate_sample_distance)
 
         # Convert results to positions
-        return self._results_to_positions(results, height)
+        positions = self._results_to_positions(results, height)
+        return self.coordinate_transformer.apply_faulty_regions(positions, self.config.faulty_regions)
 
     def _results_to_positions(self, results: list[GridPointResult], height: float) -> list[Position]:
         """Convert grid results to Position objects."""

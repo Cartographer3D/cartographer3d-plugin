@@ -57,6 +57,10 @@ class KlipperConfigWrapper(ParseConfigWrapper):
         return self._config.getfloatlist(option, count=count)
 
     @override
+    def get_float_list(self, option: str, count: int | None = None) -> list[float] | None:
+        return self._config.getfloatlist(option, count=count, default=None)
+
+    @override
     def get_int(self, option: str, default: int) -> int:
         return self._config.getint(option, default=default)
 

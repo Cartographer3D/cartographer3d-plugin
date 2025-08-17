@@ -42,6 +42,7 @@ class BedMeshConfig:
     horizontal_move_z: float
     adaptive_margin: float
     zero_reference_position: tuple[float, float]
+    faulty_regions: list[tuple[tuple[float, float], tuple[float, float]]]
 
 
 @dataclass(frozen=True)
