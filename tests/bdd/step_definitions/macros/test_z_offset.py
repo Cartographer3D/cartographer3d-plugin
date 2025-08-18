@@ -40,7 +40,7 @@ def given_g28(mocker: MockerFixture, probe: Probe):
 
 @given("I ran TOUCH_HOME")
 def given_touch_home(touch: TouchMode, toolhead: Toolhead, params: MacroParams):
-    macro = TouchHomeMacro(touch, toolhead, (10, 10))
+    macro = TouchHomeMacro(touch, toolhead, home_position=(10, 10), travel_speed=50)
     macro.run(params)
     # homing_state = mocker.Mock(spec=HomingState, autospec=True)
     # probe.touch.on_home_end(homing_state)

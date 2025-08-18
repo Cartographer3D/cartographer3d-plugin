@@ -109,11 +109,14 @@ class TouchHomeMacro(Macro):
         self,
         probe: TouchMode,
         toolhead: Toolhead,
+        *,
         home_position: tuple[float, float],
+        travel_speed: float,
     ) -> None:
         self._probe = probe
         self._toolhead = toolhead
         self._home_position = home_position
+        self._travel_speed = travel_speed
 
     @override
     def run(self, params: MacroParams) -> None:
@@ -136,7 +139,7 @@ class TouchHomeMacro(Macro):
         self._toolhead.move(
             x=self._home_position[0],
             y=self._home_position[1],
-            speed=50,
+            speed=self._travel_speed,
         )
         self._toolhead.wait_moves()
 
