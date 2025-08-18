@@ -98,7 +98,13 @@ class PrinterCartographer:
                     reg("TOUCH_PROBE", TouchProbeMacro(self.touch_mode)),
                     reg("TOUCH_ACCURACY", TouchAccuracyMacro(self.touch_mode, toolhead)),
                     reg(
-                        "TOUCH_HOME", TouchHomeMacro(self.touch_mode, toolhead, config.bed_mesh.zero_reference_position)
+                        "TOUCH_HOME",
+                        TouchHomeMacro(
+                            self.touch_mode,
+                            toolhead,
+                            home_position=config.bed_mesh.zero_reference_position,
+                            travel_speed=config.general.travel_speed,
+                        ),
                     ),
                 ]
             )
