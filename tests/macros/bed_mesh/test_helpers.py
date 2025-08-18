@@ -12,6 +12,7 @@ from cartographer.macros.bed_mesh.helpers import (
     GridPointResult,
     MeshBounds,
     MeshGrid,
+    Region,
     SampleProcessor,
 )
 
@@ -251,6 +252,45 @@ class TestCoordinateTransformer:
         positions = [Position(x, y, 5.0) for y in range(2) for x in range(2)]
         result = transformer.normalize_to_zero_reference_point(positions, zero_height=5.0)
         assert all(p.z == 0.0 for p in result)
+
+    def _create_test_grid(self, faulty_regions: list[Region] | None = None, size: int = 4) -> list[Position]:
+        """Create a simple grid of positions with optional faulty regions assigned a distinct z-value."""
+        positions: list[Position] = []
+        for y in range(size):
+            for x in range(size):
+                z = x + y
+                if faulty_regions:
+                    for region in faulty_regions:
+                        if region.contains_point((x, y)):
+                            z = -1000  # clearly wrong value
+                positions.append(Position(x, y, z))
+        return positions
+
+    def test_single_faulty_point_rbf(self):
+        region = Region(min_point=(1, 1), max_point=(1, 1))
+        positions = self._create_test_grid(faulty_regions=[region])
+
+        output = transformer.apply_faulty_regions(positions, faulty_regions=[region])
+
+        for p_old, p_new in zip(positions, output):
+            pt = (p_old.x, p_old.y)
+            if region.contains_point(pt):
+                assert p_new.z != -1000  # must be replaced
+            else:
+                assert p_new.z == p_old.z  # unchanged
+
+    def test_multiple_faulty_points_rbf(self):
+        regions = [Region(min_point=(0, 0), max_point=(1, 1)), Region(min_point=(2, 2), max_point=(3, 3))]
+        positions = self._create_test_grid(faulty_regions=regions)
+
+        output = transformer.apply_faulty_regions(positions, faulty_regions=regions)
+
+        for p_old, p_new in zip(positions, output):
+            pt = (p_old.x, p_old.y)
+            if any(region.contains_point(pt) for region in regions):
+                assert p_new.z != -1000  # replaced by RBF
+            else:
+                assert p_new.z == p_old.z  # unchanged
 
 
 class TestMeshBounds:

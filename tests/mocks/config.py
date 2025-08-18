@@ -46,6 +46,7 @@ default_bed_mesh_config = BedMeshConfig(
     horizontal_move_z=3,
     adaptive_margin=2,
     zero_reference_position=(100, 100),
+    faulty_regions=[],
 )
 
 

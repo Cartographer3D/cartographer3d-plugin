@@ -8,6 +8,11 @@ from typing import TYPE_CHECKING, Callable, Sequence, final, overload
 
 import numpy as np
 
+try:
+    from scipy.interpolate import RBFInterpolator
+except ImportError:
+    RBFInterpolator = None
+
 from cartographer.interfaces.printer import Position, Sample
 
 if TYPE_CHECKING:
@@ -22,7 +27,21 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
-class MeshGrid:
+class Region:
+    min_point: Point
+    max_point: Point
+
+    def contains_point(self, point: Point, epsilon: float = 1e-2) -> bool:
+        """Check if a point is within the region bounds."""
+        x, y = point
+        return bool(
+            self.min_point[0] - epsilon <= x <= self.max_point[0] + epsilon
+            and self.min_point[1] - epsilon <= y <= self.max_point[1] + epsilon
+        )
+
+
+@dataclass(frozen=True)
+class MeshGrid(Region):
     """Represents a 2D mesh grid with coordinate mappings and bounds."""
 
     min_point: Point
@@ -58,14 +77,6 @@ class MeshGrid:
     def generate_points(self) -> list[Point]:
         """Generate all grid points in y-major order."""
         return [(float(x), float(y)) for x in self.x_coords for y in self.y_coords]
-
-    def contains_point(self, point: Point, epsilon: float = 1e-2) -> bool:
-        """Check if a point is within the grid bounds."""
-        x, y = point
-        return bool(
-            self.min_point[0] - epsilon <= x <= self.max_point[0] + epsilon
-            and self.min_point[1] - epsilon <= y <= self.max_point[1] + epsilon
-        )
 
     def point_to_grid_index(self, point: Point) -> tuple[int, int]:
         """Convert a point to grid indices (j, i) where j=row, i=col."""
@@ -232,6 +243,61 @@ class CoordinateTransformer:
         z_ref = (1 - ty) * z0 + ty * z1
 
         return float(z_ref)
+
+    def apply_faulty_regions(
+        self,
+        positions: list[Position],
+        faulty_regions: list[Region],
+    ) -> list[Position]:
+        """
+        Mask faulty regions in a rectangular heightmap and interpolate them using scipy if available.
+        """
+        if not positions:
+            return []
+
+        # Convert to array (N,3)
+        arr: NDArray[np.float_] = np.array([(p.x, p.y, p.z) for p in positions], dtype=float)
+
+        xs = np.unique(arr[:, 0])
+        ys = np.unique(arr[:, 1])
+
+        # Sort into y-major order and reshape
+        sort_idx = np.lexsort((arr[:, 0], arr[:, 1]))
+        z_grid = arr[sort_idx, 2].reshape(len(ys), len(xs))
+
+        # Build meshgrid of (x,y)
+        X, Y = np.meshgrid(xs, ys)  # noqa: N806
+        points_grid = np.column_stack([X.ravel(), Y.ravel()])
+
+        # Mask faulty regions
+        mask: NDArray[np.bool_] = np.zeros_like(z_grid, dtype=bool)
+        for i, (px, py) in enumerate(points_grid):
+            point = (px, py)
+            if any(region.contains_point(point) for region in faulty_regions):
+                mask.ravel()[i] = True
+
+        z_grid_masked = np.where(mask, np.nan, z_grid)
+
+        # Interpolate missing values if scipy is available
+        if np.any(mask):
+            if RBFInterpolator is None:
+                msg = "scipy is required for interpolation of faulty regions"
+                raise RuntimeError(msg)
+
+            valid_points = points_grid[~mask.ravel()]
+            valid_values = z_grid_masked[~mask]
+
+            rbf = RBFInterpolator(valid_points, valid_values, neighbors=64, smoothing=0.0)
+
+            missing_points = points_grid[mask.ravel()]
+            interpolated = rbf(missing_points)
+
+            z_grid_masked[mask] = interpolated
+
+        new_positions = [
+            Position(x=float(x), y=float(y), z=float(z)) for y, row in zip(ys, z_grid_masked) for x, z in zip(xs, row)
+        ]
+        return new_positions
 
 
 @dataclass(frozen=True)

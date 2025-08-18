@@ -119,6 +119,7 @@ class TestBedMeshIntegration:
             direction="x",
             height=2.0,
             path="snake",
+            faulty_regions=[],
         )
 
     def create_samples_at_probe_positions(

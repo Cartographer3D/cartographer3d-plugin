@@ -36,6 +36,7 @@ class ParseConfigWrapper(Protocol):
     ) -> float: ...
     def get_required_float(self, option: str) -> float: ...
     def get_required_float_list(self, option: str, count: int | None = None) -> list[float]: ...
+    def get_float_list(self, option: str, count: int | None = None) -> list[float] | None: ...
     def get_int(self, option: str, default: int) -> int: ...
     def get_required_int_list(self, option: str, count: int | None = None) -> list[int]: ...
     def get_bool(self, option: str, default: bool) -> bool: ...
@@ -94,6 +95,19 @@ def parse_touch_config(wrapper: ParseConfigWrapper, models: dict[str, TouchModel
 
 
 def parse_bed_mesh_config(wrapper: ParseConfigWrapper) -> BedMeshConfig:
+    # NOTE: Validations are assumed to be done by the bed_mesh module.
+    config_regions = [
+        (
+            wrapper.get_float_list(f"faulty_region_{i}_min", None),
+            wrapper.get_float_list(f"faulty_region_{i}_max", None),
+        )
+        for i in list(range(1, 100, 1))
+    ]
+
+    faulty_regions = [
+        (list_to_tuple(min), list_to_tuple(max)) for (min, max) in config_regions if min is not None and max is not None
+    ]
+
     return BedMeshConfig(
         mesh_min=list_to_tuple(wrapper.get_required_float_list("mesh_min", count=2)),
         mesh_max=list_to_tuple(wrapper.get_required_float_list("mesh_max", count=2)),
@@ -102,6 +116,7 @@ def parse_bed_mesh_config(wrapper: ParseConfigWrapper) -> BedMeshConfig:
         horizontal_move_z=wrapper.get_float("horizontal_move_z", default=4, minimum=1),
         adaptive_margin=wrapper.get_float("adaptive_margin", default=5, minimum=0),
         zero_reference_position=list_to_tuple(wrapper.get_required_float_list("zero_reference_position", count=2)),
+        faulty_regions=faulty_regions,
     )
 
 
