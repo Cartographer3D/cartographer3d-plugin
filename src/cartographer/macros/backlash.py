@@ -39,7 +39,7 @@ class EstimateBacklashMacro(Macro):
         self._toolhead.move(z=height, speed=speed)
         if calibrate:
             x, y = self._config.bed_mesh.zero_reference_position
-            self._toolhead.move(x=x, y=y, speed=speed)
+            self._toolhead.move(x=x, y=y, speed=self._config.general.travel_speed)
         self._toolhead.wait_moves()
 
         samples: dict[Literal["up", "down"], list[float]] = {"up": [], "down": []}
