@@ -4,6 +4,8 @@ import logging
 from abc import ABC, abstractmethod
 from typing import Generic, TypeVar
 
+from cartographer.lib.str import removesuffix
+
 TModel = TypeVar("TModel")
 TModelConfig = TypeVar("TModelConfig")
 
@@ -33,7 +35,7 @@ class ModelSelectorMixin(Generic[TModel, TModelConfig], ABC):
 
     def _get_type(self) -> str:
         """Dynamically retrieve the class name for type."""
-        return self.__class__.__name__.removesuffix("Mode")
+        return removesuffix(self.__class__.__name__, "Mode")
 
     @abstractmethod
     def _create_model(self, config: TModelConfig) -> TModel:
