@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Iterable, Literal, Protocol, TypeVar
 
+from typing_extensions import TypeAlias
+
 from cartographer.interfaces.configuration import (
     BedMeshConfig,
     GeneralConfig,
@@ -94,19 +96,42 @@ def parse_touch_config(wrapper: ParseConfigWrapper, models: dict[str, TouchModel
     )
 
 
-def parse_bed_mesh_config(wrapper: ParseConfigWrapper) -> BedMeshConfig:
-    # NOTE: Validations are assumed to be done by the bed_mesh module.
-    config_regions = [
-        (
-            wrapper.get_float_list(f"faulty_region_{i}_min", None),
-            wrapper.get_float_list(f"faulty_region_{i}_max", None),
-        )
-        for i in list(range(1, 100, 1))
-    ]
+Region: TypeAlias = "tuple[tuple[float, float], tuple[float, float]]"
 
-    faulty_regions = [
-        (list_to_tuple(min), list_to_tuple(max)) for (min, max) in config_regions if min is not None and max is not None
-    ]
+
+def _parse_faulty_regions(wrapper: ParseConfigWrapper) -> list[Region]:
+    """Parse and validate faulty regions from config."""
+    faulty_regions: list[Region] = []
+    region_errors: list[str] = []
+
+    for idx in range(1, 100):
+        min_vals = wrapper.get_float_list(f"faulty_region_{idx}_min", None)
+        max_vals = wrapper.get_float_list(f"faulty_region_{idx}_max", None)
+        if min_vals is None or max_vals is None:
+            continue
+
+        min_tuple = list_to_tuple(min_vals)
+        max_tuple = list_to_tuple(max_vals)
+        errors = [
+            f"faulty_region_{idx}: min[{axis}]={min_v} > max[{axis}]={max_v}"
+            for axis, (min_v, max_v) in enumerate(zip(min_tuple, max_tuple))
+            if min_v > max_v
+        ]
+        region_errors.extend(errors)
+        faulty_regions.append((min_tuple, max_tuple))
+
+    if region_errors:
+        msg = (
+            f"Invalid region bounds detected: {'; '.join(region_errors)}. "
+            "Please verify that all min values are less than or equal to their corresponding max values."
+        )
+        raise ValueError(msg)
+
+    return faulty_regions
+
+
+def parse_bed_mesh_config(wrapper: ParseConfigWrapper) -> BedMeshConfig:
+    faulty_regions = _parse_faulty_regions(wrapper)
 
     return BedMeshConfig(
         mesh_min=list_to_tuple(wrapper.get_required_float_list("mesh_min", count=2)),

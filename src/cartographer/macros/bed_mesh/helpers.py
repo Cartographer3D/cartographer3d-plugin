@@ -265,16 +265,13 @@ class CoordinateTransformer:
         sort_idx = np.lexsort((arr[:, 0], arr[:, 1]))
         z_grid = arr[sort_idx, 2].reshape(len(ys), len(xs))
 
-        # Build meshgrid of (x,y)
-        X, Y = np.meshgrid(xs, ys)  # noqa: N806
-        points_grid = np.column_stack([X.ravel(), Y.ravel()])
-
-        # Mask faulty regions
+        # Build mask (ys major, xs minor)
         mask: NDArray[np.bool_] = np.zeros_like(z_grid, dtype=bool)
-        for i, (px, py) in enumerate(points_grid):
-            point = (px, py)
-            if any(region.contains_point(point) for region in faulty_regions):
-                mask.ravel()[i] = True
+        for i in range(len(ys)):
+            for j in range(len(xs)):
+                point = (xs[j], ys[i])
+                if any(region.contains_point(point) for region in faulty_regions):
+                    mask[i, j] = True
 
         z_grid_masked = np.where(mask, np.nan, z_grid)
 
@@ -283,6 +280,11 @@ class CoordinateTransformer:
             if RBFInterpolator is None:
                 msg = "scipy is required for interpolation of faulty regions"
                 raise RuntimeError(msg)
+            logger.info("Interpolating %d faulty points", np.sum(mask))
+
+            # Use the same order as flattening the mask/grid
+            X, Y = np.meshgrid(xs, ys)  # noqa: N806
+            points_grid = np.column_stack([X.ravel(), Y.ravel()])
 
             valid_points = points_grid[~mask.ravel()]
             valid_values = z_grid_masked[~mask]
