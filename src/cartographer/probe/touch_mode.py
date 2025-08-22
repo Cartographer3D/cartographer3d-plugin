@@ -199,6 +199,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         if nozzle_temperature > self._config.max_touch_temperature + MAX_TOUCH_TEMPERATURE_EPSILON:
             msg = f"Nozzle temperature must be below {self._config.max_touch_temperature:d}C"
             raise RuntimeError(msg)
+
         return self._mcu.start_homing_touch(print_time, model.threshold)
 
     def is_within_boundaries(self, *, x: float, y: float) -> bool:
@@ -214,7 +215,8 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
 
     @override
     def home_wait(self, home_end_time: float) -> float:
-        return self._mcu.stop_homing(home_end_time)
+        trigger_time = self._mcu.stop_homing(home_end_time)
+        return trigger_time
 
     @override
     def query_is_triggered(self, print_time: float) -> bool:
