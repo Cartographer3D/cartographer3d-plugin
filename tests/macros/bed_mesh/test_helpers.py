@@ -248,6 +248,45 @@ class TestCoordinateTransformer:
         z_values = [p.z for p in result]
         assert all(abs(z - ((p.x + p.y) - 2.0)) < 1e-9 for p, z in zip(positions, z_values))
 
+    def test_zero_reference_at_edge(self):
+        """Test that interpolation handles zero reference points at grid edges properly."""
+        transformer = CoordinateTransformer(probe_offset=Position(0.0, 0.0, 0.0))
+
+        # Create a 4x4 grid of positions
+        positions: list[Position] = []
+        for y in range(4):
+            for x in range(4):
+                positions.append(Position(x, y, float(x + y)))
+
+        result = transformer.normalize_to_zero_reference_point(positions, zero_ref=(3.0, 3.0))
+
+        # Verify the normalization was done correctly
+        # The position at (3,3) should have z=0 after normalization
+        edge_pos = next(p for p in result if p.x == 3.0 and p.y == 3.0)
+        assert abs(edge_pos.z) < 1e-10, "Zero reference point should have z≈0"
+
+        # Check a different point to ensure values were properly adjusted
+        # For example, position (0,0) should be 0 - 6 = -6
+        origin_pos = next(p for p in result if p.x == 0.0 and p.y == 0.0)
+        assert abs(origin_pos.z + 6.0) < 1e-10, "Points should be normalized relative to reference"
+
+    @pytest.mark.parametrize("corner", [(0.0, 0.0), (3.0, 0.0), (0.0, 3.0), (3.0, 3.0)])
+    def test_zero_reference_at_corner(self, corner: tuple[float, float]):
+        """Test interpolation with zero reference at all four corners."""
+        transformer = CoordinateTransformer(probe_offset=Position(0.0, 0.0, 0.0))
+
+        # Create a 4x4 grid of positions
+        positions: list[Position] = []
+        for y in range(4):
+            for x in range(4):
+                positions.append(Position(x, y, float(x + y)))
+
+        result = transformer.normalize_to_zero_reference_point(positions, zero_ref=corner)
+
+        # The corner point should have z=0
+        corner_pos = next(p for p in result if p.x == corner[0] and p.y == corner[1])
+        assert abs(corner_pos.z) < 1e-10, f"Corner {corner} should have z≈0"
+
     def test_all_same_height(self):
         positions = [Position(x, y, 5.0) for y in range(2) for x in range(2)]
         result = transformer.normalize_to_zero_reference_point(positions, zero_height=5.0)
