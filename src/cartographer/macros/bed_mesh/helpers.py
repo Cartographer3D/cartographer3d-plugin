@@ -228,8 +228,14 @@ class CoordinateTransformer:
 
         tx = (point[0] - xs[0]) / dx
         ty = (point[1] - ys[0]) / dy
-        xi = int(np.floor(tx))
-        yi = int(np.floor(ty))
+
+        # Clamp to valid indices within the grid
+        max_x_idx = len(xs) - 1
+        max_y_idx = len(ys) - 1
+
+        xi = min(int(np.floor(tx)), max_x_idx - 1)  # Ensure xi+1 is valid
+        yi = min(int(np.floor(ty)), max_y_idx - 1)  # Ensure yi+1 is valid
+
         tx -= xi
         ty -= yi
 
