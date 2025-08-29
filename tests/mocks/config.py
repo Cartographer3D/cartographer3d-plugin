@@ -13,6 +13,7 @@ from cartographer.interfaces.configuration import (
     ScanModelConfiguration,
     TouchConfig,
     TouchModelConfiguration,
+    ExtruderConfig
 )
 
 default_general_config = GeneralConfig(

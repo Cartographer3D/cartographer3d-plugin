@@ -45,6 +45,7 @@ class BedMeshConfig:
     zero_reference_position: tuple[float, float]
     faulty_regions: list[tuple[tuple[float, float], tuple[float, float]]]
 
+
 @dataclass(frozen=True)
 class ExtruderConfig:
     nozzle_diameter: float
