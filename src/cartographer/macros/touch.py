@@ -114,20 +114,18 @@ class TouchHomeMacro(Macro):
         *,
         home_position: tuple[float, float],
         travel_speed: float,
-        nozzle_diameter: float,
         random_touch_home: int
     ) -> None:
         self._probe = probe
         self._toolhead = toolhead
         self._home_position = home_position
         self._travel_speed = travel_speed
-        self._nozzle_diameter = nozzle_diameter
         self._random_touch_home = random_touch_home
 
     def generatePoolOfHomePos(self):
       """"Generates a rows+1*cols+1 of points centered in home_position."""
       rows = 10; cols = 10
-      nozzle_spacing = self._nozzle_diameter/2*1.5 #just a tad extra for the nozzle brim
+      nozzle_spacing = 1/2*2.5 #1mm nozzle, / 2 for its radius,  times 2.5 based on V6 nozzle external diameter tables.
       center_offset_x = (cols*nozzle_spacing)/2.0
       center_offset_y = (rows*nozzle_spacing)/2.0
       hp = self._home_position

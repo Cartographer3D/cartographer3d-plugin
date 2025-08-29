@@ -47,11 +47,6 @@ class BedMeshConfig:
 
 
 @dataclass(frozen=True)
-class ExtruderConfig:
-    nozzle_diameter: float
-    
-    
-@dataclass(frozen=True)
 class ScanModelConfiguration:
     name: str
     coefficients: list[float]
@@ -72,7 +67,6 @@ class Configuration(Protocol):
     scan: ScanConfig
     touch: TouchConfig
     bed_mesh: BedMeshConfig
-    extruder: ExtruderConfig
 
     def save_scan_model(self, config: ScanModelConfiguration) -> None: ...
     def save_touch_model(self, config: TouchModelConfiguration) -> None: ...

@@ -13,7 +13,6 @@ from cartographer.interfaces.configuration import (
     ScanModelConfiguration,
     TouchConfig,
     TouchModelConfiguration,
-    ExtruderConfig
 )
 
 default_general_config = GeneralConfig(
@@ -51,10 +50,6 @@ default_bed_mesh_config = BedMeshConfig(
     faulty_regions=[],
 )
 
-default_extruder_config = ExtruderConfig(
-    nozzle_diameter = 0.4
-)
-
 
 @final
 class MockConfiguration(Configuration):
@@ -65,14 +60,12 @@ class MockConfiguration(Configuration):
         scan: ScanConfig | None = None,
         touch: TouchConfig | None = None,
         bed_mesh: BedMeshConfig | None = None,
-        extruder: ExtruderConfig | None = None
         
     ):
         self.general = general or default_general_config
         self.scan = scan or default_scan_config
         self.touch = touch or default_touch_config
         self.bed_mesh = bed_mesh or default_bed_mesh_config
-        self.extruder = extruder or default_extruder_config
 
     @override
     def save_scan_model(self, config: ScanModelConfiguration) -> None:
