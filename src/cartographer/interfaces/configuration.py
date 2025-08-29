@@ -30,6 +30,7 @@ class TouchConfig:
     samples: int
     max_samples: int
     max_touch_temperature: int
+    random_touch_home: int
     models: dict[str, TouchModelConfiguration]
 
 
@@ -44,7 +45,11 @@ class BedMeshConfig:
     zero_reference_position: tuple[float, float]
     faulty_regions: list[tuple[tuple[float, float], tuple[float, float]]]
 
-
+@dataclass(frozen=True)
+class ExtruderConfig:
+    nozzle_diameter: float
+    
+    
 @dataclass(frozen=True)
 class ScanModelConfiguration:
     name: str
@@ -66,6 +71,7 @@ class Configuration(Protocol):
     scan: ScanConfig
     touch: TouchConfig
     bed_mesh: BedMeshConfig
+    extruder: ExtruderConfig
 
     def save_scan_model(self, config: ScanModelConfiguration) -> None: ...
     def save_touch_model(self, config: TouchModelConfiguration) -> None: ...

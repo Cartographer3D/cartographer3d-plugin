@@ -104,6 +104,8 @@ class PrinterCartographer:
                             toolhead,
                             home_position=config.bed_mesh.zero_reference_position,
                             travel_speed=config.general.travel_speed,
+                            nozzle_diameter=config.extruder.nozzle_diameter,
+                            random_touch_home=config.touch.random_touch_home
                         ),
                     ),
                 ]

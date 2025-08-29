@@ -6,6 +6,8 @@ from typing import TYPE_CHECKING, final
 import numpy as np
 from typing_extensions import override
 
+import random
+
 from cartographer.interfaces.printer import HomingState, Macro, MacroParams
 from cartographer.lib.statistics import compute_mad
 
@@ -112,11 +114,32 @@ class TouchHomeMacro(Macro):
         *,
         home_position: tuple[float, float],
         travel_speed: float,
+        nozzle_diameter: float,
+        random_touch_home: int
     ) -> None:
         self._probe = probe
         self._toolhead = toolhead
         self._home_position = home_position
         self._travel_speed = travel_speed
+        self._nozzle_diameter = nozzle_diameter
+        self._random_touch_home = random_touch_home
+
+    def generatePoolOfHomePos(self):
+      """"Generates a rows+1*cols+1 of points centered in home_position."""
+      rows = 10; cols = 10
+      nozzle_spacing = self._nozzle_diameter/2*1.5 #just a tad extra for the nozzle brim
+      center_offset_x = (cols*nozzle_spacing)/2.0
+      center_offset_y = (rows*nozzle_spacing)/2.0
+      hp = self._home_position
+      origin = (hp[0]-center_offset_x, hp[1]-center_offset_y)
+      points = []
+      for r in range(rows+1):
+        for c in range(cols+1):
+          point_x = origin[0]+c*nozzle_spacing
+          point_y = origin[1]+r*nozzle_spacing
+          points.append((point_x, point_y))
+
+      return points
 
     @override
     def run(self, params: MacroParams) -> None:
@@ -136,11 +159,17 @@ class TouchHomeMacro(Macro):
             z=pos.z + 2,
             speed=5,
         )
+
+        home_pos = self._home_position
+        if self._random_touch_home==1:
+          home_pos = random.choice(self.generatePoolOfHomePos())
+
         self._toolhead.move(
-            x=self._home_position[0],
-            y=self._home_position[1],
+            x=home_pos[0],
+            y=home_pos[1],
             speed=self._travel_speed,
         )
+        print(home_pos)
         self._toolhead.wait_moves()
 
         try:
