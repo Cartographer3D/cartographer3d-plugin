@@ -118,7 +118,7 @@ def test_touch_home_macro_moves(
     toolhead: Toolhead,
     params: MacroParams,
 ):
-    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), travel_speed=50,random_touch_home=0)
+    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), travel_speed=50, random_touch_distance=0)
     probe.perform_probe = mocker.Mock(return_value=0.1)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 2))
     move_spy = mocker.spy(toolhead, "move")
@@ -144,7 +144,7 @@ def test_touch_home_macro(
     # so we need to move the z axis "down".
     expected = height - trigger
 
-    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), travel_speed=50,random_touch_home=1)
+    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), travel_speed=50, random_touch_distance=10)
     probe.perform_probe = mocker.Mock(return_value=trigger)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, height))
     set_z_position_spy = mocker.spy(toolhead, "set_z_position")

@@ -35,7 +35,7 @@ class TouchModeConfiguration:
     mesh_min: tuple[float, float]
     mesh_max: tuple[float, float]
     max_touch_temperature: int
-    random_touch_home: int
+    random_touch_distance: int
 
     models: dict[str, TouchModelConfiguration]
 
@@ -50,8 +50,7 @@ class TouchModeConfiguration:
             mesh_min=config.bed_mesh.mesh_min,
             mesh_max=config.bed_mesh.mesh_max,
             max_touch_temperature=config.touch.max_touch_temperature,
-            random_touch_home=config.touch.random_touch_home
-
+            random_touch_distance=config.touch.random_touch_distance,
         )
 
 

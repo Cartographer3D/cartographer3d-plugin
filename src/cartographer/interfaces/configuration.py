@@ -30,7 +30,7 @@ class TouchConfig:
     samples: int
     max_samples: int
     max_touch_temperature: int
-    random_touch_home: int
+    random_touch_distance: float
     models: dict[str, TouchModelConfiguration]
 
 

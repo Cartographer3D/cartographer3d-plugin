@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import logging
+import random
 from typing import TYPE_CHECKING, final
 
 import numpy as np
 from typing_extensions import override
-
-import random
 
 from cartographer.interfaces.printer import HomingState, Macro, MacroParams
 from cartographer.lib.statistics import compute_mad
@@ -105,6 +104,11 @@ class _FakeHomingState(HomingState):
 
 @final
 class TouchHomeMacro(Macro):
+    RANDOM_TOUCH_NOZZLE_DIAMETER = 1  # average user uses 0.8 tops.
+    V6_NOZZLE_INTERNAL_EXTERNAL_DIAMETER_RATIO = 2.5
+    RANDOM_TOUCH_SPACING = RANDOM_TOUCH_NOZZLE_DIAMETER * V6_NOZZLE_INTERNAL_EXTERNAL_DIAMETER_RATIO
+    # This is to avoid overlapping touches.
+
     description = "Touch the bed to home Z axis"
 
     def __init__(
@@ -114,30 +118,33 @@ class TouchHomeMacro(Macro):
         *,
         home_position: tuple[float, float],
         travel_speed: float,
-        random_touch_home: int
+        random_touch_distance: float,
     ) -> None:
         self._probe = probe
         self._toolhead = toolhead
         self._home_position = home_position
         self._travel_speed = travel_speed
-        self._random_touch_home = random_touch_home
+        self._random_touch_distance = random_touch_distance
 
-    def generatePoolOfHomePos(self):
-      """"Generates a rows+1*cols+1 of points centered in home_position."""
-      rows = 10; cols = 10
-      nozzle_spacing = 1/2*2.5 #1mm nozzle, / 2 for its radius,  times 2.5 based on V6 nozzle external diameter tables.
-      center_offset_x = (cols*nozzle_spacing)/2.0
-      center_offset_y = (rows*nozzle_spacing)/2.0
-      hp = self._home_position
-      origin = (hp[0]-center_offset_x, hp[1]-center_offset_y)
-      points = []
-      for r in range(rows+1):
-        for c in range(cols+1):
-          point_x = origin[0]+c*nozzle_spacing
-          point_y = origin[1]+r*nozzle_spacing
-          points.append((point_x, point_y))
+    def generate_pool_of_home_pos(self) -> list[tuple[float, float]]:
+        """ "Generates a rows+1*cols+1 of points centered in home_position."""
+        rows = cols = int(self._random_touch_distance / self.RANDOM_TOUCH_SPACING)
+        center_offset_x = self._random_touch_distance / 2.0
+        center_offset_y = self._random_touch_distance / 2.0
+        hp = self._home_position
+        origin = (hp[0] - center_offset_x, hp[1] - center_offset_y)
+        points: list[tuple[float, float]] = []
+        for r in range(rows):
+            for c in range(cols):
+                point_x = origin[0] + c * self.RANDOM_TOUCH_SPACING
+                point_y = origin[1] + r * self.RANDOM_TOUCH_SPACING
+                points.append((point_x, point_y))
 
-      return points
+        if len(points) < 4:
+            msg = "Random points pool too low (<4). Increase random_touch_distance (10 recommended)."
+            raise RuntimeError(msg)
+
+        return points
 
     @override
     def run(self, params: MacroParams) -> None:
@@ -159,8 +166,8 @@ class TouchHomeMacro(Macro):
         )
 
         home_pos = self._home_position
-        if self._random_touch_home==1:
-          home_pos = random.choice(self.generatePoolOfHomePos())
+        if self._random_touch_distance > 0:
+            home_pos = random.choice(self.generate_pool_of_home_pos())
 
         self._toolhead.move(
             x=home_pos[0],

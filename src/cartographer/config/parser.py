@@ -93,7 +93,7 @@ def parse_touch_config(wrapper: ParseConfigWrapper, models: dict[str, TouchModel
         max_samples=wrapper.get_int("max_samples", default=samples * 2),
         max_touch_temperature=wrapper.get_int("UNSAFE_max_touch_temperature", default=150),
         models=models,
-        random_touch_home=wrapper.get_int("random_touch_home", default=0),
+        random_touch_distance=wrapper.get_int("random_touch_distance", default=0),
     )
 
 

@@ -33,11 +33,7 @@ default_scan_config = ScanConfig(
     mesh_path="snake",
 )
 default_touch_config = TouchConfig(
-    samples=5,
-    max_samples=10,
-    max_touch_temperature=150,
-    models={},
-    random_touch_home=0
+    samples=5, max_samples=10, max_touch_temperature=150, models={}, random_touch_distance=0
 )
 default_bed_mesh_config = BedMeshConfig(
     mesh_min=(0.0, 0.0),
@@ -60,7 +56,6 @@ class MockConfiguration(Configuration):
         scan: ScanConfig | None = None,
         touch: TouchConfig | None = None,
         bed_mesh: BedMeshConfig | None = None,
-        
     ):
         self.general = general or default_general_config
         self.scan = scan or default_scan_config
