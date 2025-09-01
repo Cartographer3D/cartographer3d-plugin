@@ -196,11 +196,9 @@ class TouchCalibrateMacro(Macro):
 
         if threshold is None:
             logger.info(
-                """
-                Failed to calibrate with %s strategy (thresholds %d-%d).
-                Try increasing MAX or changing strategy.
-                CARTOGRAPHER_TOUCH_CALIBRATE START=%d MAX=%d
-                """,
+                "Failed to calibrate with %s strategy (thresholds %d-%d).\n"
+                "Try increasing MAX or changing strategy.\n"
+                "CARTOGRAPHER_TOUCH_CALIBRATE START=%d MAX=%d",
                 strategy_type,
                 threshold_start,
                 threshold_max,
@@ -216,10 +214,8 @@ class TouchCalibrateMacro(Macro):
         self._config.save_touch_model(model)
         self._probe.touch.load_model(name)
         logger.info(
-            """
-            Touch model %s has been saved for the current session.
-            The SAVE_CONFIG command will update the printer config file and restart the printer.
-            """,
+            "Touch model %s has been saved for the current session.\n"
+            "The SAVE_CONFIG command will update the printer config file and restart the printer.",
             name,
         )
 

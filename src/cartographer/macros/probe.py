@@ -74,11 +74,8 @@ class ProbeAccuracyMacro(Macro):
         std_dev = np.std(measurements)
 
         logger.info(
-            """
-            probe accuracy results:\n
-            maximum %.6f, minimum %.6f, range %.6f,
-            average %.6f, median %.6f, standard deviation %.6f
-            """,
+            "probe accuracy results:\n"
+            "maximum %.6f, minimum %.6f, range %.6f, average %.6f, median %.6f, standard deviation %.6f",
             max_value,
             min_value,
             range_value,
@@ -141,9 +138,8 @@ class ZOffsetApplyProbeMacro(Macro):
 
     def _log_offset_update(self, mode: str, model_name: str, new_offset: float) -> None:
         logger.info(
-            """cartographer: %s %s z_offset: %.3f
-            The SAVE_CONFIG command will update the printer config file
-            with the above and restart the printer.""",
+            "cartographer: %s %s z_offset: %.3f\n"
+            "The SAVE_CONFIG command will update the printer config file with the above and restart the printer.",
             mode,
             model_name,
             new_offset,

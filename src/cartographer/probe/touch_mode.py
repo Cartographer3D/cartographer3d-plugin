@@ -233,12 +233,10 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         std_dev = np.std(samples)
         mad = compute_mad(samples)
         logger.debug(
-            """
-                %s: (%s)
-                maximum %.6f, minimum %.6f, range %.6f,
-                average %.6f, median %.6f, standard deviation %.6f,
-                median absolute deviation %.6f
-                """,
+            "%s: (%s)\n"
+            "maximum %.6f, minimum %.6f, range %.6f,\n"
+            "average %.6f, median %.6f,\n"
+            "standard deviation %.6f, median absolute deviation %.6f",
             message,
             ", ".join(f"{s:.6f}" for s in samples),
             max_v,

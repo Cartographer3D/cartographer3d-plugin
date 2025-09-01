@@ -45,6 +45,7 @@ allowedUntypedLibraries = ["numpy.polynomial"]
 reportMissingModuleSource = false              # klippy imports are always missing sources
 reportMissingTypeStubs = true
 reportAny = false                              # Consider if we can get rid of this
+reportImplicitStringConcatenation = false      # Handled by ruff
 
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
