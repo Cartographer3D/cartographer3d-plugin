@@ -104,7 +104,7 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         dist = self.measure_distance()
         if dist > self.probe_height + 0.5:
             # Safely move downwards
-            _ = self._toolhead.z_homing_move(self, speed=self._config.probe_speed)
+            _ = self._toolhead.z_probing_move(self, speed=self._config.probe_speed)
         elif self._toolhead.get_position().z < self.probe_height:
             self._toolhead.move(z=self.probe_height, speed=self._config.probe_speed)
             self._toolhead.wait_moves()

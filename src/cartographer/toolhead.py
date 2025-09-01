@@ -44,8 +44,8 @@ class BacklashCompensatingToolhead(Toolhead):
         return self.toolhead.get_gcode_z_offset()
 
     @override
-    def z_homing_move(self, endstop: Endstop, *, speed: float) -> float:
-        return self.toolhead.z_homing_move(endstop, speed=speed)
+    def z_probing_move(self, endstop: Endstop, *, speed: float) -> float:
+        return self.toolhead.z_probing_move(endstop, speed=speed)
 
     @override
     def set_z_position(self, z: float) -> None:

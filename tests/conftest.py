@@ -51,7 +51,7 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
 
     mock.get_last_move_time = get_last_move_time
 
-    mock.z_homing_move = mocker.Mock(return_value=0)
+    mock.z_probing_move = mocker.Mock(return_value=0)
 
     return mock
 

@@ -20,7 +20,7 @@ def configure_probe(probe: Probe, config: Configuration) -> None:
 
 
 def test_probe_success(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
-    toolhead.z_homing_move = mocker.Mock(return_value=0.5)
+    toolhead.z_probing_move = mocker.Mock(return_value=0.5)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
     assert probe.touch.perform_probe() == 0.5
@@ -31,14 +31,14 @@ def test_probe_includes_z_offset(
 ) -> None:
     config.save_touch_model(TouchModelConfiguration(name="test_touch", speed=3, threshold=1000, z_offset=-0.5))
     probe.touch.load_model("test_touch")
-    toolhead.z_homing_move = mocker.Mock(return_value=-0.5)
+    toolhead.z_probing_move = mocker.Mock(return_value=-0.5)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
     assert probe.touch.perform_probe() == 0
 
 
 def test_probe_moves_below_5(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
-    toolhead.z_homing_move = mocker.Mock(return_value=0.5)
+    toolhead.z_probing_move = mocker.Mock(return_value=0.5)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
     move_spy = mocker.spy(toolhead, "move")
 
@@ -48,7 +48,7 @@ def test_probe_moves_below_5(mocker: MockerFixture, toolhead: Toolhead, probe: P
 
 
 def test_does_not_move_above_5(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
-    toolhead.z_homing_move = mocker.Mock(return_value=0.5)
+    toolhead.z_probing_move = mocker.Mock(return_value=0.5)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 10))
     move_spy = mocker.spy(toolhead, "move")
 
@@ -58,7 +58,7 @@ def test_does_not_move_above_5(mocker: MockerFixture, toolhead: Toolhead, probe:
 
 
 def test_probe_standard_deviation_failure(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
-    toolhead.z_homing_move = mocker.Mock(side_effect=[1 + i * 0.1 for i in range(20)])
+    toolhead.z_probing_move = mocker.Mock(side_effect=[1 + i * 0.1 for i in range(20)])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
     with pytest.raises(RuntimeError, match="Unable to find"):
@@ -66,14 +66,14 @@ def test_probe_standard_deviation_failure(mocker: MockerFixture, toolhead: Toolh
 
 
 def test_probe_suceeds_on_more(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
-    toolhead.z_homing_move = mocker.Mock(side_effect=[1.0, 1.01, 1.5, 0.5, 0.5, 0.5, 0.5, 0.5])
+    toolhead.z_probing_move = mocker.Mock(side_effect=[1.0, 1.01, 1.5, 0.5, 0.5, 0.5, 0.5, 0.5])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
     assert probe.touch.perform_probe() == 0.5
 
 
 def test_probe_suceeds_on_spread_samples(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
-    toolhead.z_homing_move = mocker.Mock(side_effect=[0.5, 1.0, 1.5, 0.5, 2.5, 0.5, 3.5, 0.5, 4.5, 0.5])
+    toolhead.z_probing_move = mocker.Mock(side_effect=[0.5, 1.0, 1.5, 0.5, 2.5, 0.5, 3.5, 0.5, 4.5, 0.5])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
     assert probe.touch.perform_probe() == 0.5

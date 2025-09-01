@@ -178,7 +178,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         if self._toolhead.get_position().z < RETRACT_DISTANCE:
             self._toolhead.move(z=RETRACT_DISTANCE, speed=5)
         self._toolhead.wait_moves()
-        trigger_pos = self._toolhead.z_homing_move(self, speed=model.speed)
+        trigger_pos = self._toolhead.z_probing_move(self, speed=model.speed)
         pos = self._toolhead.get_position()
         self._toolhead.move(z=max(pos.z + RETRACT_DISTANCE, RETRACT_DISTANCE), speed=5)
         return trigger_pos - model.z_offset
