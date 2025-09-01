@@ -67,11 +67,13 @@ class AxisTwistCompensationMacro(Macro):
         try:
             self._calibrate(axis, sample_count, start_pos, end_pos, line_pos)
         except RuntimeError:
-            logger.info("""
-                Error during axis twist compensation calibration,
-                existing compensation has been cleared.
-                Restart firmware to restore.
-                """)
+            logger.info(
+                
+                    "Error during axis twist compensation calibration,\n"
+                    "existing compensation has been cleared.\n"
+                    "Restart firmware to restore."
+                
+            )
             raise
 
     def _get_calibration_positions(self, params: MacroParams, axis: Literal["x", "y"]) -> tuple[float, float, float]:
@@ -137,11 +139,13 @@ class AxisTwistCompensationMacro(Macro):
         results = [avg - x for x in results]
 
         self.adapter.apply_compensation(CompensationResult(axis=axis, start=start_pos, end=end_pos, values=results))
-        logger.info("""
-            Axis twist compensation state has been saved
-            for the current session.  The SAVE_CONFIG command will
-            update the printer config file and restart the printer.
-            """)
+        logger.info(
+            
+                "Axis twist compensation state has been saved\n"
+                "for the current session.  The SAVE_CONFIG command will\n"
+                "update the printer config file and restart the printer."
+            
+        )
         logger.info(
             "Touch %s axis twist compensation calibration complete: mean z_offset: %.6f, offsets: (%s)",
             axis.upper(),

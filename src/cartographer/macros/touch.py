@@ -75,12 +75,12 @@ class TouchAccuracyMacro(Macro):
         mad = compute_mad(measurements)
 
         logger.info(
-            """
-            touch accuracy results:\n
-            maximum %.6f, minimum %.6f, range %.6f,\n
-            average %.6f, median %.6f,\n
-            standard deviation %.6f, median absolute deviation %.6f
-            """,
+            (
+                "touch accuracy results:\n"
+                "maximum %.6f, minimum %.6f, range %.6f,\n"
+                "average %.6f, median %.6f,\n"
+                "standard deviation %.6f, median absolute deviation %.6f"
+            ),
             max_value,
             min_value,
             range_value,
