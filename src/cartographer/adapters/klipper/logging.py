@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import logging
 import re
-from textwrap import dedent
 from typing import Protocol
 
 from typing_extensions import override
@@ -41,7 +40,7 @@ class GCodeConsoleFormatter(logging.Formatter):
     @override
     def format(self, record: logging.LogRecord) -> str:
         prefix = "!! " if record.levelno >= logging.ERROR else ""
-        message = dedent(super().format(record)).replace("\n", " ").replace("  ", "\n").strip()
+        message = super().format(record)
         return prefix + MACRO_PATTERN.sub(lambda m: format_macro(m.group(0)), message)
 
 

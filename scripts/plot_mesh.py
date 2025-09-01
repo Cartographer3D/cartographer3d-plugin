@@ -22,8 +22,7 @@ PositionList = List[Position]
 def load_bed_mesh(
     path: str, section: str = "bed_mesh"
 ) -> tuple[PositionList, int, int, FaultyRegionList, float, float, float, float]:
-    """
-    Load bed mesh data and faulty regions from a config file.
+    """Load bed mesh data and faulty regions from a config file.
 
     Returns:
         positions: List[Position]
@@ -81,9 +80,7 @@ def visualize_faulty_interpolation(
     min_y: float,
     max_y: float,
 ) -> None:
-    """
-    Visualize the mesh and interpolation of faulty regions.
-    """
+    """Visualize the mesh and interpolation of faulty regions."""
     Z = np.array([p.z for p in positions]).reshape(size_y, size_x)  # noqa: N806
 
     output = transformer.apply_faulty_regions(positions, faulty_regions=faulty_regions)

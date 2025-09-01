@@ -255,9 +255,7 @@ class CoordinateTransformer:
         positions: list[Position],
         faulty_regions: list[Region],
     ) -> list[Position]:
-        """
-        Mask faulty regions in a rectangular heightmap and interpolate them using scipy if available.
-        """
+        """Mask faulty regions in a rectangular heightmap and interpolate them using scipy if available."""
         if not positions:
             return []
 

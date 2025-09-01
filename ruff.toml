@@ -42,6 +42,7 @@ select = [
   "TID",
   # flake8-type-checking
   "TC",
+  "ISC002",
 ]
 
 
