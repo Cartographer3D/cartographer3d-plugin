@@ -48,6 +48,10 @@ class BacklashCompensatingToolhead(Toolhead):
         return self.toolhead.z_probing_move(endstop, speed=speed)
 
     @override
+    def home_end(self, endstop: Endstop, *, axis: HomingAxis) -> None:
+        return self.toolhead.home_end(endstop, axis=axis)
+
+    @override
     def set_z_position(self, z: float) -> None:
         self.toolhead.set_z_position(z)
 

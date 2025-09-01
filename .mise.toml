@@ -3,7 +3,7 @@ project_name = "{{ config_root | basename }}"
 # printer_host = "pi@printer.local" # Set this in mise.local.toml
 
 [tasks.restart]
-run = "ssh {{ vars.printer_host }} 'systemctl stop klipper && rm ~/printer_data/comms/* ~/printer_data/logs/klippy.log && systemctl start klipper'"
+run = "ssh -t {{ vars.printer_host }} 'sudo systemctl stop klipper && rm ~/printer_data/comms/* ~/printer_data/logs/klippy.log && sudo systemctl start klipper'"
 wait_for = ["install:*"]
 
 [tasks."install:copy"]

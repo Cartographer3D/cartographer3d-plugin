@@ -5,12 +5,10 @@ from typing import TYPE_CHECKING
 
 from pytest_bdd import given, parsers, scenarios, then, when
 
-from cartographer.interfaces.printer import HomingState
 from cartographer.macros.touch import TouchHomeMacro
 
 if TYPE_CHECKING:
     from pytest import LogCaptureFixture
-    from pytest_mock import MockerFixture
 
     from cartographer.interfaces.configuration import Configuration
     from cartographer.interfaces.printer import MacroParams, Toolhead
@@ -33,17 +31,14 @@ def given_baby_step_down(toolhead: Toolhead, offset: float):
 
 
 @given("I ran G28")
-def given_g28(mocker: MockerFixture, probe: Probe):
-    homing_state = mocker.Mock(spec=HomingState, autospec=True)
-    probe.scan.on_home_end(homing_state)
+def given_g28(probe: Probe, toolhead: Toolhead):
+    toolhead.home_end(probe.scan, axis="z")
 
 
 @given("I ran TOUCH_HOME")
 def given_touch_home(touch: TouchMode, toolhead: Toolhead, params: MacroParams):
     macro = TouchHomeMacro(touch, toolhead, home_position=(10, 10), travel_speed=50)
     macro.run(params)
-    # homing_state = mocker.Mock(spec=HomingState, autospec=True)
-    # probe.touch.on_home_end(homing_state)
 
 
 @when("I run the Z_OFFSET_APPLY_PROBE macro")

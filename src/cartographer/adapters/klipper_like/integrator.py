@@ -4,7 +4,7 @@ import logging
 from abc import ABC
 from functools import wraps
 from textwrap import dedent
-from typing import TYPE_CHECKING, Callable, Protocol, final
+from typing import TYPE_CHECKING, Callable, Protocol, Sequence, final
 
 from gcode import CommandError, GCodeCommand, GCodeDispatch
 from typing_extensions import override
@@ -20,7 +20,8 @@ from cartographer.runtime.integrator import Integrator
 if TYPE_CHECKING:
     from extras.homing import Homing
     from klippy import Printer
-    from stepper import PrinterRail
+    from mcu import MCU_endstop
+    from stepper import MCU_stepper
 
     from cartographer.adapters.klipper.configuration import KlipperConfiguration
     from cartographer.adapters.klipper.mcu import KlipperCartographerMcu
@@ -36,6 +37,11 @@ class KlipperLikeAdapters(Protocol):
     toolhead: KlipperToolhead
     printer: Printer
     config: KlipperConfiguration
+
+
+class _Rail(Protocol):
+    def get_steppers(self) -> list[MCU_stepper]: ...
+    def get_endstops(self) -> list[tuple[MCU_endstop, str]]: ...
 
 
 class KlipperLikeIntegrator(Integrator, ABC):
@@ -78,7 +84,7 @@ class KlipperLikeIntegrator(Integrator, ABC):
         )
 
     @reraise_as(CommandError)
-    def _handle_home_rails_end(self, homing: Homing, rails: list[PrinterRail]) -> None:
+    def _handle_home_rails_end(self, homing: Homing, rails: Sequence[_Rail]) -> None:
         homing_state = KlipperHomingState(homing)
         klipper_endstops = [
             es.endstop for rail in rails for es, _ in rail.get_endstops() if isinstance(es, KlipperEndstop)
