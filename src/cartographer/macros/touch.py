@@ -174,7 +174,6 @@ class TouchHomeMacro(Macro):
             y=home_pos[1],
             speed=self._travel_speed,
         )
-        print(home_pos)
         self._toolhead.wait_moves()
 
         try:
