@@ -131,7 +131,7 @@ class TouchHomeMacro(Macro):
         rows = cols = int(self._random_touch_distance / self.RANDOM_TOUCH_SPACING)
         center_offset_x = self._random_touch_distance / 2.0
         center_offset_y = self._random_touch_distance / 2.0
-        hp = self._home_position
+        home_x, _home_y = self._home_position
         origin = (hp[0] - center_offset_x, hp[1] - center_offset_y)
         points: list[tuple[float, float]] = []
         for r in range(rows):
