@@ -5,7 +5,17 @@ from typing import TYPE_CHECKING
 
 import pytest
 
-from cartographer.interfaces.printer import HomingState, MacroParams, Mcu, Position, Sample, TemperatureStatus, Toolhead
+from cartographer.interfaces.printer import (
+    Endstop,
+    HomingAxis,
+    HomingState,
+    MacroParams,
+    Mcu,
+    Position,
+    Sample,
+    TemperatureStatus,
+    Toolhead,
+)
 from cartographer.probe.probe import Probe
 from cartographer.probe.scan_mode import ScanMode, ScanModeConfiguration
 from cartographer.probe.touch_mode import TouchMode, TouchModeConfiguration
@@ -39,9 +49,15 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
     def get_extruder_temperature() -> TemperatureStatus:
         return TemperatureStatus(30, 30)
 
+    def home_end(endstop: Endstop, *, axis: HomingAxis) -> None:
+        homing_state = mocker.Mock(spec=HomingState, autospec=True)
+        homing_state.is_homing_z = mocker.Mock(return_value=axis == "z")
+        endstop.on_home_end(homing_state)
+
     mock.get_position = get_position
     mock.apply_axis_twist_compensation = apply_axis_twist_compensation
     mock.get_extruder_temperature = get_extruder_temperature
+    mock.home_end = home_end
     last_move_time = 0
 
     def get_last_move_time() -> float:
@@ -51,7 +67,7 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
 
     mock.get_last_move_time = get_last_move_time
 
-    mock.z_homing_move = mocker.Mock(return_value=0)
+    mock.z_probing_move = mocker.Mock(return_value=0)
 
     return mock
 

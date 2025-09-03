@@ -7,7 +7,7 @@ from gcode import CommandError, GCodeDispatch
 from gcode_move import GCodeMove
 from pins import PrinterPins
 from reactor import Reactor
-from stepper import PrinterRail
+from stepper import GenericPrinterRail
 from toolhead import ToolHead
 
 from cartographer.core import PrinterCartographer
@@ -65,13 +65,13 @@ class Printer:
     def register_event_handler(
         self,
         event: Literal["homing:home_rails_begin"],
-        callback: Callable[[Homing, list[PrinterRail]], None],
+        callback: Callable[[Homing, list[GenericPrinterRail]], None],
     ) -> None: ...
     @overload
     def register_event_handler(
         self,
         event: Literal["homing:home_rails_end"],
-        callback: Callable[[Homing, list[PrinterRail]], None],
+        callback: Callable[[Homing, list[GenericPrinterRail]], None],
     ) -> None: ...
     @overload
     def register_event_handler(
@@ -105,4 +105,9 @@ class Printer:
     def lookup_object(self, name: Literal["toolhead"]) -> ToolHead: ...
     @overload
     def lookup_object(self, name: Literal["cartographer"]) -> PrinterCartographer: ...
+    @overload
     def send_event(self, event: Literal["probe:update_results"], pos: list[float]) -> None: ...
+    @overload
+    def send_event(
+        self, event: Literal["homing:home_rails_end"], homing: Homing, rails: list[GenericPrinterRail]
+    ) -> None: ...

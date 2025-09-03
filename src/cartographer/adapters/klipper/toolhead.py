@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, Callable, final
 
+from extras.homing import Homing
 from extras.manual_probe import ManualProbeHelper
 from typing_extensions import override
 
@@ -11,6 +12,8 @@ from cartographer.interfaces.printer import Endstop, HomingAxis, Position, Tempe
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
+    from mcu import MCU_endstop
+    from stepper import MCU_stepper
     from toolhead import ToolHead as KlippyToolhead
 
     from cartographer.adapters.klipper.mcu import KlipperCartographerMcu
@@ -26,6 +29,18 @@ axis_mapping: dict[HomingAxis, int] = {
 
 def axis_to_index(axis: HomingAxis) -> int:
     return axis_mapping[axis]
+
+
+@final
+class FakeRail:
+    def __init__(self, endstop: MCU_endstop) -> None:
+        self.endstop = endstop
+
+    def get_steppers(self) -> list[MCU_stepper]:
+        return self.endstop.get_steppers()
+
+    def get_endstops(self) -> list[tuple[MCU_endstop, str]]:
+        return [(self.endstop, "cartographer")]
 
 
 @final
@@ -79,7 +94,7 @@ class KlipperToolhead(Toolhead):
         return gcode_move.get_status()["homing_origin"].z
 
     @override
-    def z_homing_move(self, endstop: Endstop, *, speed: float) -> float:
+    def z_probing_move(self, endstop: Endstop, *, speed: float) -> float:
         klipper_endstop = KlipperEndstop(self.mcu, endstop)
         self.wait_moves()
         z_min, _ = self.get_axis_limits("z")
@@ -89,6 +104,13 @@ class KlipperToolhead(Toolhead):
 
         epos = self.printer.lookup_object("homing").probing_move(klipper_endstop, pos, speed)
         return epos[2]
+
+    @override
+    def home_end(self, endstop: Endstop, *, axis: HomingAxis) -> None:
+        homing = Homing(self.printer)
+        homing.set_axes([axis_to_index(axis)])
+        klipper_endstop = KlipperEndstop(self.mcu, endstop)
+        self.printer.send_event("homing:home_rails_end", homing, [FakeRail(klipper_endstop)])
 
     @override
     def set_z_position(self, z: float) -> None:
