@@ -209,7 +209,6 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         if not homing_state.is_homing_z():
             return
 
-        homing_state.set_z_homed_position(self.get_model().z_offset)
         self._last_homing_time = self._toolhead.get_last_move_time()
 
     @override

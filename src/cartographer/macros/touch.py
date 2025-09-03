@@ -137,9 +137,9 @@ class TouchHomeMacro(Macro):
             if forced_z:
                 self._toolhead.clear_z_homing_state()
 
+        self._toolhead.home_end(self._probe, axis="z")
         pos = self._toolhead.get_position()
         self._toolhead.set_z_position(pos.z - trigger_pos)
-        self._toolhead.home_end(self._probe, axis="z")
 
         logger.info(
             "Touch home at (%.3f,%.3f) adjusted z by %.3f",
