@@ -15,4 +15,4 @@ wait_for = ["install:copy"]
 
 [tasks.install]
 depends = ["install:copy", "install:pip"]
-run = "ssh {{ vars.printer_host }} '$HOME/klippy-env/bin/pip list --disable-pip-version-check | grep cartographer | cut -d \" \" -f 3'"
+run = "ssh {{ vars.printer_host }} '$HOME/klippy-env/bin/pip list --disable-pip-version-check | grep cartographer | cut -d \" \" -f 2'"
