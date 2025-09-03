@@ -31,6 +31,7 @@ class TouchConfig:
     max_samples: int
     max_touch_temperature: int
     models: dict[str, TouchModelConfiguration]
+    home_random_radius: float
 
 
 @dataclass(frozen=True)

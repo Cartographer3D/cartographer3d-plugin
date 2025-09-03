@@ -37,7 +37,7 @@ def given_g28(probe: Probe, toolhead: Toolhead):
 
 @given("I ran TOUCH_HOME")
 def given_touch_home(touch: TouchMode, toolhead: Toolhead, params: MacroParams):
-    macro = TouchHomeMacro(touch, toolhead, home_position=(10, 10), travel_speed=50)
+    macro = TouchHomeMacro(touch, toolhead, home_position=(10, 10), travel_speed=50, random_radius=0)
     macro.run(params)
 
 
