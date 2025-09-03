@@ -118,7 +118,7 @@ def test_touch_home_macro_moves(
     toolhead: Toolhead,
     params: MacroParams,
 ):
-    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), travel_speed=50)
+    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), travel_speed=50, random_radius=0)
     probe.perform_probe = mocker.Mock(return_value=0.1)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 2))
     move_spy = mocker.spy(toolhead, "move")
@@ -144,7 +144,7 @@ def test_touch_home_macro(
     # so we need to move the z axis "down".
     expected = height - trigger
 
-    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), travel_speed=50)
+    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), travel_speed=50, random_radius=0)
     probe.perform_probe = mocker.Mock(return_value=trigger)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, height))
     set_z_position_spy = mocker.spy(toolhead, "set_z_position")
@@ -152,3 +152,37 @@ def test_touch_home_macro(
     macro.run(params)
 
     assert set_z_position_spy.mock_calls == [mocker.call(expected)]
+
+
+@pytest.mark.parametrize(
+    "u1, u2, expected_x, expected_y",
+    [
+        (0.0, 0.0, 50.0, 50.0),  # Center point
+        (1.0, 0.0, 60.0, 50.0),  # Max radius, 0 angle
+        (0.25, 0.25, 50.0, 55.0),  # radius=5, angle=π/2
+        (0.16, 0.5, 46.0, 50.0),  # radius=4, angle=π
+    ],
+)
+def test_random_radius_uniform_distribution(
+    mocker: MockerFixture,
+    probe: TouchMode,
+    toolhead: Toolhead,
+    params: MacroParams,
+    u1: float,
+    u2: float,
+    expected_x: float,
+    expected_y: float,
+):
+    """Test that random positions are generated correctly with square root method."""
+    macro = TouchHomeMacro(probe, toolhead, home_position=(50, 50), travel_speed=50, random_radius=10.0)
+    probe.perform_probe = mocker.Mock(return_value=0.1)
+    toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 2))
+    move_spy = mocker.spy(toolhead, "move")
+
+    _ = mocker.patch("cartographer.macros.touch.random", side_effect=[u1, u2])
+    macro.run(params)
+
+    assert move_spy.mock_calls == [
+        mocker.call(z=4, speed=mocker.ANY),
+        mocker.call(x=expected_x, y=expected_y, speed=mocker.ANY),
+    ]
