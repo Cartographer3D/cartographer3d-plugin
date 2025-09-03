@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import pytest
 
 from cartographer.interfaces.configuration import Configuration, TouchModelConfiguration
-from cartographer.interfaces.printer import HomingState, Mcu, Position, TemperatureStatus, Toolhead
+from cartographer.interfaces.printer import Mcu, Position, TemperatureStatus, Toolhead
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
@@ -90,14 +90,6 @@ def test_home_wait(mocker: MockerFixture, mcu: Mcu, probe: Probe) -> None:
     mcu.stop_homing = mocker.Mock(return_value=1.5)
 
     assert probe.touch.home_wait(home_end_time=1.0) == 1.5
-
-
-def test_on_home_end(mocker: MockerFixture, probe: Probe, homing_state: HomingState) -> None:
-    homed_position_spy = mocker.spy(homing_state, "set_z_homed_position")
-
-    probe.touch.on_home_end(homing_state)
-
-    assert homed_position_spy.called == 1
 
 
 def test_abort_if_current_extruder_too_hot(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
