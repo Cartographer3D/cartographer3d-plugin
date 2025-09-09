@@ -14,10 +14,10 @@ function display_help() {
   echo "Options:"
   echo "  -k, --klipper       Set the Klipper directory (default: $DEFAULT_KLIPPER_DIR)"
   echo "  -e, --klippy-env    Set the Klippy virtual environment directory (default: $DEFAULT_KLIPPY_ENV)"
-  echo "  --uninstall         Uninstall the package and remove the scaffolding"
+  echo "  --uninstall         Uninstall the package and remove all scaffolding files"
   echo "  --help              Show this help message and exit"
   echo ""
-  echo "The script also removes legacy files 'idm.py' and 'scanner.py' if found."
+  echo "The script automatically removes all legacy and scaffolding files before installation."
   exit 0
 }
 
@@ -110,44 +110,43 @@ function create_scaffolding() {
   fi
 }
 
-function uninstall_scaffolding_in_path() {
-  local target_dir="$1"
-  local rel_path="${target_dir#"$klipper_dir"/}/$MODULE_NAME"
-  local full_path="$target_dir/$MODULE_NAME"
+function remove_plugin_files() {
+  echo "Cleaning up legacy and scaffolding files..."
 
-  if [ -f "$full_path" ]; then
-    rm "$full_path"
-    echo "Removed file '$full_path'."
-
-    local exclude_file="$klipper_dir/.git/info/exclude"
-    if [ -f "$exclude_file" ]; then
-      sed -i "\|^$rel_path\$|d" "$exclude_file" && echo "Removed '$rel_path' from git exclude."
-    fi
-  fi
-}
-
-function remove_legacy_files() {
-  local legacy_files=("idm.py" "scanner.py")
+  local files=("idm.py" "scanner.py" "cartographer.py")
   local paths=(
     "$klipper_dir/klippy/extras"
     "$klipper_dir/klippy/plugins"
   )
 
   for dir in "${paths[@]}"; do
-    for file in "${legacy_files[@]}"; do
+    if [ ! -d "$dir" ]; then
+      continue # Skip if directory doesn't exist
+    fi
+
+    for file in "${files[@]}"; do
       local full_path="$dir/$file"
       local rel_path="${dir#"$klipper_dir"/}/$file"
-      if [ -f "$full_path" ]; then
-        rm "$full_path"
-        echo "Removed legacy file '$full_path'."
 
+      if [ -f "$full_path" ] || [ -L "$full_path" ]; then
+        if [ -L "$full_path" ]; then
+          local original_target
+          original_target=$(readlink "$full_path" 2>/dev/null || echo "unknown")
+          echo "Removing symlink '$full_path' (was pointing to: $original_target)"
+        else
+          echo "Removing file '$full_path'"
+        fi
+        rm "$full_path"
+
+        # Clean up git exclude entries
         local exclude_file="$klipper_dir/.git/info/exclude"
         if [ -f "$exclude_file" ]; then
-          sed -i "\|^$rel_path\$|d" "$exclude_file" && echo "Removed '$rel_path' from git exclude."
+          sed -i "\|^$rel_path\$|d" "$exclude_file" 2>/dev/null || true
         fi
       fi
     done
   done
+  echo "File cleanup completed."
 }
 
 function main() {
@@ -159,13 +158,10 @@ function main() {
   check_directory_exists "$klipper_dir"
   check_virtualenv_exists
 
-  # Remove any old legacy files
-  remove_legacy_files
+  remove_plugin_files
 
   if [ "$uninstall" = true ]; then
     uninstall_dependencies
-    uninstall_scaffolding_in_path "$klipper_dir/klippy/extras"
-    uninstall_scaffolding_in_path "$klipper_dir/klippy/plugins"
   else
     install_dependencies
     create_scaffolding
