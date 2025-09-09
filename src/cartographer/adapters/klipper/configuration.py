@@ -82,6 +82,8 @@ class KlipperConfiguration(Configuration):
         self.name = config.get_name()
 
         self.general = parse_general_config(KlipperConfigWrapper(config))
+        self.coil_sensor = config.getsection("cartographer coil")
+
         self.bed_mesh = parse_bed_mesh_config(KlipperConfigWrapper(config.getsection("bed_mesh")))
 
         self.scan_model_prefix = f"{self.name} scan_model"

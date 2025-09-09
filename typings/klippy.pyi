@@ -17,7 +17,6 @@ from extras.exclude_object import ExcludeObject
 from extras.heaters import PrinterHeaters
 from extras.homing import Homing, HomingMove, PrinterHoming
 from extras.motion_report import PrinterMotionReport
-from extras.probe import PrinterProbe
 
 # TODO: Kalico specific
 APP_NAME: str
@@ -25,7 +24,7 @@ APP_NAME: str
 class Printer:
     config_error: type[configfile.error]
     command_error: type[CommandError]
-    def add_object(self, name: Literal["probe"], obj: PrinterProbe) -> None: ...
+    def add_object(self, name: str, obj: object) -> None: ...
     @overload
     def load_object(
         self,

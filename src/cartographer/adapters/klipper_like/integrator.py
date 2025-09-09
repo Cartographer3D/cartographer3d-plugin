@@ -78,10 +78,13 @@ class KlipperLikeIntegrator(Integrator, ABC):
         self._gcode.register_command(name, _catch_macro_errors(macro.run), desc=macro.description)
 
     @override
-    def register_temperature_sensor_factories(self) -> None:
-        self._printer.load_object(self._config.wrapper, "heaters").add_sensor_factory(
-            "cartographer_coil", PrinterTemperatureCoil
-        )
+    def register_coil_temperature_sensor(self) -> None:
+        pheaters = self._printer.load_object(self._config.wrapper, "heaters")
+        sensor = PrinterTemperatureCoil(self._config.coil_sensor)
+
+        object_name = f"temperature_sensor {sensor.name}"
+        self._printer.add_object(object_name, sensor)
+        pheaters.available_sensors.append(object_name)
 
     @reraise_as(CommandError)
     def _handle_home_rails_end(self, homing: Homing, rails: Sequence[_Rail]) -> None:
