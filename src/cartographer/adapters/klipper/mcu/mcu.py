@@ -186,7 +186,7 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         if error is None:
             return
 
-        logger.error(error, {"data": data})
+        logger.debug(error, {"data": data})
         if len(self._stream.sessions) > 0:
             self.klipper_mcu.get_printer().invoke_shutdown(error % {"data": data})
 
