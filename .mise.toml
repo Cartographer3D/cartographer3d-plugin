@@ -7,7 +7,7 @@ run = "ssh -t {{ vars.printer_host }} 'sudo systemctl stop klipper && rm ~/print
 wait_for = ["install:*"]
 
 [tasks."install:copy"]
-run = "rsync -azqP --delete --filter=':- .gitignore' '{{ config_root }}/' '{{ vars.printer_host }}:~/{{ vars.project_name }}/'"
+run = "rsync -azqP --delete --filter=':- .gitignore' --filter='- .jj' '{{ config_root }}/' '{{ vars.printer_host }}:~/{{ vars.project_name }}/'"
 
 [tasks."install:pip"]
 run = "ssh {{ vars.printer_host }} '$HOME/klippy-env/bin/pip install --upgrade --disable-pip-version-check -qU $HOME/{{ vars.project_name }}'"

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import TYPE_CHECKING, Callable, final
+from typing import TYPE_CHECKING, final
 
 from cartographer.adapters.klipper.mcu import KlipperCartographerMcu
 
@@ -19,11 +19,15 @@ logger = logging.getLogger(__name__)
 class PrinterTemperatureCoil:
     def __init__(self, config: ConfigWrapper):
         self.printer = config.get_printer()
-        self.name = config.get_name()
-        self.min_temp = float("-inf")
-        self.max_temp = float("inf")
-        self.temperature_callback = None
+        self.name = config.get("name", default="cartographer_coil")
+
+        self.min_temp = config.getfloat("min_temp", default=-300, minval=-300)
+        self.max_temp = config.getfloat("max_temp", 9999, above=self.min_temp)
         self.printer.register_event_handler("klippy:mcu_identify", self._handle_mcu_identify)
+
+        self.last_temp = 0.0
+        self.measured_min = 99999.0
+        self.measured_max = -300
 
     def _handle_mcu_identify(self) -> None:
         carto = self.printer.lookup_object("cartographer")
@@ -32,20 +36,17 @@ class PrinterTemperatureCoil:
             return
         carto.mcu.register_callback(self._sample_callback)
 
-    def setup_callback(self, temperature_callback: Callable[[float, float], None]) -> None:
-        self.temperature_callback = temperature_callback
+    def temperature_callback(self, temp: float):
+        self.last_temp = temp
+        if temp:
+            self.measured_min = min(self.measured_min, temp)
+            self.measured_max = max(self.measured_max, temp)
 
     def get_report_time_delta(self) -> float:
         return REPORT_TIME
 
-    def setup_minmax(self, min_temp: float, max_temp: float) -> None:
-        self.min_temp = min_temp
-        self.max_temp = max_temp
-
     def _sample_callback(self, sample: Sample) -> None:
-        if self.temperature_callback is None:
-            return
-        self.temperature_callback(sample.time, sample.temperature)
+        self.temperature_callback(sample.temperature)
         if not (self.min_temp <= sample.temperature <= self.max_temp):
             logger.warning(
                 "temperature for %(sensor_name)s at %(temperature)s is out of range [%(min_temp)s, %(max_temp)s]",
@@ -57,3 +58,19 @@ class PrinterTemperatureCoil:
                 ),
             )
         return
+
+    def get_temp(self, eventtime: float):
+        del eventtime
+        return self.last_temp, 0.0
+
+    def stats(self, eventtime: float):
+        del eventtime
+        return False, f"{self.name}: temp={self.last_temp:.1f}"
+
+    def get_status(self, eventtime: float):
+        del eventtime
+        return {
+            "temperature": round(self.last_temp, 2),
+            "measured_min_temp": round(self.measured_min, 2),
+            "measured_max_temp": round(self.measured_max, 2),
+        }

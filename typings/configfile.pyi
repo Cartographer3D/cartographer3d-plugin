@@ -9,6 +9,10 @@ error = configparser.Error
 class ConfigWrapper:
     error: type[configparser.Error]
     printer: Printer
+    fileconfig: configparser.ConfigParser
+    access_tracking: dict[str, str]
+    section: str
+
     def __init__(
         self, printer: Printer, fileconfig: configparser.ConfigParser, access_tracking: dict[str, str], section: str
     ) -> None: ...

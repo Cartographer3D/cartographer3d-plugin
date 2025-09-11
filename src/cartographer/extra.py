@@ -21,7 +21,7 @@ def load_config(config: object) -> object:
     for macro in cartographer.macros:
         integrator.register_macro(macro)
 
-    integrator.register_temperature_sensor_factories()
+    integrator.register_coil_temperature_sensor()
     integrator.register_endstop_pin("probe", "z_virtual_endstop", cartographer.scan_mode)
 
     return cartographer
