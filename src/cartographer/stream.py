@@ -59,9 +59,8 @@ class Session(Generic[T]):
 
 
 class Stream(ABC, Generic[T]):
-    def __init__(self, smoothing_fn: Callable[[T], T] | None = None):
-        """Initializes a stream with optional smoothing function."""
-        self.smoothing_fn: Callable[[T], T] | None = smoothing_fn
+    def __init__(self):
+        """Initializes a stream."""
         self.sessions: set[Session[T]] = set()
         self.callbacks: set[Callable[[T], None]] = set()
 
@@ -91,9 +90,6 @@ class Stream(ABC, Generic[T]):
 
     def add_item(self, item: T):
         """Pushes the item to all active sessions."""
-
-        if self.smoothing_fn is not None:
-            item = self.smoothing_fn(item)
 
         for session in self.sessions:
             session.add_item(item)
