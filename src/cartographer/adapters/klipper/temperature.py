@@ -10,9 +10,11 @@ if TYPE_CHECKING:
 
     from cartographer.interfaces.printer import Sample
 
-REPORT_TIME = 0.300
-
 logger = logging.getLogger(__name__)
+
+REPORT_TIME = 0.300
+ABSOLUTE_ZERO_TEMP = -273.15  # Celsius
+ARBITRARY_MAX_TEMP = 9999.0
 
 
 @final
@@ -21,13 +23,13 @@ class PrinterTemperatureCoil:
         self.printer = config.get_printer()
         self.name = config.get("name", default="cartographer_coil")
 
-        self.min_temp = config.getfloat("min_temp", default=-300, minval=-300)
-        self.max_temp = config.getfloat("max_temp", 9999, above=self.min_temp)
+        self.min_temp = config.getfloat("min_temp", default=0, minval=ABSOLUTE_ZERO_TEMP)
+        self.max_temp = config.getfloat("max_temp", default=105, above=self.min_temp)
         self.printer.register_event_handler("klippy:mcu_identify", self._handle_mcu_identify)
 
         self.last_temp = 0.0
-        self.measured_min = 99999.0
-        self.measured_max = -300
+        self.measured_min = ARBITRARY_MAX_TEMP
+        self.measured_max = ABSOLUTE_ZERO_TEMP
 
     def _handle_mcu_identify(self) -> None:
         carto = self.printer.lookup_object("cartographer")
