@@ -148,7 +148,7 @@ class TouchCalibrateMacro(Macro):
     @override
     def run(self, params: MacroParams) -> None:
         name = params.get("MODEL", DEFAULT_TOUCH_MODEL_NAME).lower()
-        speed = params.get_int("SPEED", default=3, minval=1, maxval=5)
+        speed = params.get_int("SPEED", default=0, minval=1, maxval=5)
         threshold_start = params.get_int("START", default=500, minval=100)
         threshold_max = params.get_int("MAX", default=3000, minval=threshold_start)
         strategy_type = get_choice(params, "STRATEGY", default="default", choices=STRATEGY_MAP.keys())
