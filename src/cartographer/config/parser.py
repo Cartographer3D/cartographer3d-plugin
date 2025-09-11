@@ -81,7 +81,7 @@ def parse_scan_config(wrapper: ParseConfigWrapper, models: dict[str, ScanModelCo
         probe_speed=wrapper.get_float("probe_speed", default=5, minimum=0.1),
         mesh_runs=wrapper.get_int("mesh_runs", default=1),
         mesh_direction=get_choice(wrapper, "mesh_direction", _directions, default="x"),
-        mesh_height=wrapper.get_float("mesh_height", default=4, minimum=1),
+        mesh_height=wrapper.get_float("mesh_height", default=3, minimum=1),
         mesh_path=get_choice(wrapper, "mesh_path", _paths, default="snake"),
     )
 
@@ -139,7 +139,7 @@ def parse_bed_mesh_config(wrapper: ParseConfigWrapper) -> BedMeshConfig:
         mesh_max=list_to_tuple(wrapper.get_required_float_list("mesh_max", count=2)),
         probe_count=list_to_tuple(wrapper.get_required_int_list("probe_count", count=2)),
         speed=wrapper.get_float("speed", default=50, minimum=1),
-        horizontal_move_z=wrapper.get_float("horizontal_move_z", default=3, minimum=1),
+        horizontal_move_z=wrapper.get_float("horizontal_move_z", default=5, minimum=1),
         adaptive_margin=wrapper.get_float("adaptive_margin", default=5, minimum=0),
         zero_reference_position=list_to_tuple(wrapper.get_required_float_list("zero_reference_position", count=2)),
         faulty_regions=faulty_regions,
