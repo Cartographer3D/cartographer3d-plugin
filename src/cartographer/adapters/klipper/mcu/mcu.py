@@ -60,11 +60,10 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     def __init__(
         self,
         config: ConfigWrapper,
-        smoothing_fn: Callable[[Sample], Sample] | None = None,
     ):
         self.printer = config.get_printer()
         self.klipper_mcu = mcu.get_printer_mcu(self.printer, config.get("mcu"))
-        self._stream = KlipperStream[Sample](self, self.klipper_mcu.get_printer().get_reactor(), smoothing_fn)
+        self._stream = KlipperStream[Sample](self, self.klipper_mcu.get_printer().get_reactor())
         self.dispatch = KlipperTriggerDispatch(self.klipper_mcu)
 
         self.motion_report = self.printer.load_object(config, "motion_report")

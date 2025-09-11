@@ -56,11 +56,10 @@ class KlipperStream(Stream[T]):
         self,
         mcu: KlipperStreamMcu,
         reactor: Reactor,
-        smoothing_fn: Callable[[T], T] | None = None,
     ):
+        super().__init__()
         self.reactor = reactor
         self.mcu = mcu
-        super().__init__(smoothing_fn)
 
     @override
     def condition(self) -> Condition:
