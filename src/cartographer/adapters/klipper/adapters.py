@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, final
 from cartographer.adapters.klipper.axis_twist_compensation import KlipperAxisTwistCompensationHelper
 from cartographer.adapters.klipper.bed_mesh import KlipperBedMesh
 from cartographer.adapters.klipper.configuration import KlipperConfiguration
+from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
 from cartographer.adapters.klipper.mcu import KlipperCartographerMcu
 from cartographer.adapters.klipper.task_executor import KlipperMultiprocessingExecutor
 from cartographer.adapters.klipper.toolhead import KlipperToolhead
@@ -29,6 +30,7 @@ class KlipperAdapters(Adapters):
 
         self.toolhead = KlipperToolhead(config, self.mcu)
         self.bed_mesh = KlipperBedMesh(config)
+        self.gcode = KlipperGCodeDispatch(self.printer)
 
         self.axis_twist_compensation = None
         if config.has_section("axis_twist_compensation"):

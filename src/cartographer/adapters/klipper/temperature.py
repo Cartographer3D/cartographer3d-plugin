@@ -4,9 +4,8 @@ import logging
 from typing import TYPE_CHECKING, final
 
 if TYPE_CHECKING:
-    from configfile import ConfigWrapper
-
     from cartographer.adapters.klipper.mcu import KlipperCartographerMcu
+    from cartographer.interfaces.configuration import CoilConfiguration
     from cartographer.interfaces.printer import Sample
 
 logger = logging.getLogger(__name__)
@@ -23,13 +22,12 @@ class PrinterTemperatureCoil:
     measured_max = ABSOLUTE_ZERO_TEMP
     temperature_warning = False
 
-    def __init__(self, config: ConfigWrapper, mcu: KlipperCartographerMcu) -> None:
+    def __init__(self, mcu: KlipperCartographerMcu, config: CoilConfiguration) -> None:
         self.mcu = mcu
-        self.name = config.get("name", default="cartographer_coil")
+        self.name = config.name
 
-        self.min_temp = config.getfloat("min_temp", default=0, minval=ABSOLUTE_ZERO_TEMP)
-        self.max_temp = config.getfloat("max_temp", default=105, above=self.min_temp)
-
+        self.min_temp = config.min_temp
+        self.max_temp = config.max_temp
         self.mcu.register_callback(self._sample_callback)
 
     def get_report_time_delta(self) -> float:
