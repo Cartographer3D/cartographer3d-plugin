@@ -8,11 +8,16 @@ from typing import TYPE_CHECKING, Protocol
 import numpy as np
 from typing_extensions import override
 
+from cartographer.coil.temperature_compensation import CoilTemperatureCompensationModel
 from cartographer.interfaces.printer import Endstop, HomingState, Position, ProbeMode, Sample
-from cartographer.probe.scan_model import ScanModelSelectorMixin
+from cartographer.probe.scan_model import ScanModelSelectorMixin, TemperatureCompensationModel
 
 if TYPE_CHECKING:
-    from cartographer.interfaces.configuration import Configuration, ScanModelConfiguration
+    from cartographer.interfaces.configuration import (
+        CoilCalibrationConfiguration,
+        Configuration,
+        ScanModelConfiguration,
+    )
     from cartographer.interfaces.printer import Mcu, Toolhead
     from cartographer.stream import Session
 
@@ -41,6 +46,7 @@ class ScanModeConfiguration:
 
     samples: int
     models: dict[str, ScanModelConfiguration]
+    coil_calibration: CoilCalibrationConfiguration | None
 
     @staticmethod
     def from_config(config: Configuration):
@@ -51,6 +57,7 @@ class ScanModeConfiguration:
             probe_speed=config.scan.probe_speed,
             samples=config.scan.samples,
             models=config.scan.models,
+            coil_calibration=config.coil.calibration,
         )
 
 
@@ -86,6 +93,12 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         self._mcu: Mcu = mcu
 
         self.last_z_result: float | None = None
+
+    @override
+    def get_compensation_model(self) -> TemperatureCompensationModel | None:
+        if self._config.coil_calibration is None:
+            return None
+        return CoilTemperatureCompensationModel(self._config.coil_calibration, self._mcu)
 
     @override
     def get_status(self, eventtime: float) -> object:
@@ -135,12 +148,16 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
             session.wait_for(lambda samples: len(samples) >= min_sample_count + skip_count)
         samples = session.get_items()[skip_count:]
 
-        dist = float(np.median([model.frequency_to_distance(sample.frequency) for sample in samples]))
+        dist = float(
+            np.median(
+                [model.frequency_to_distance(sample.frequency, temperature=sample.temperature) for sample in samples]
+            )
+        )
         return dist
 
     def calculate_sample_distance(self, sample: Sample) -> float:
         model = self.get_model()
-        return model.frequency_to_distance(sample.frequency)
+        return model.frequency_to_distance(sample.frequency, temperature=sample.temperature)
 
     @override
     def query_is_triggered(self, print_time: float) -> bool:
@@ -155,7 +172,10 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
 
     @override
     def home_start(self, print_time: float) -> object:
-        trigger_frequency = self.get_model().distance_to_frequency(self.probe_height)
+        # TODO: We should get the temperature from the coil
+        # This is good enough, as we will correct the distance
+        # with the measurement after homing triggers.
+        trigger_frequency = self.get_model().distance_to_frequency(self.probe_height, temperature=40)
         return self._mcu.start_homing_scan(print_time, trigger_frequency)
 
     @override

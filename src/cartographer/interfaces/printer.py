@@ -65,11 +65,17 @@ class Sample:
     temperature: float
 
 
+class CoilCalibrationReference(NamedTuple):
+    min_frequency: float
+    min_frequency_temperature: float
+
+
 class Mcu(Protocol):
     def start_homing_scan(self, print_time: float, frequency: float) -> object: ...
     def start_homing_touch(self, print_time: float, threshold: int) -> object: ...
     def stop_homing(self, home_end_time: float) -> float: ...
     def start_session(self, start_condition: Callable[[Sample], bool] | None = None) -> Session[Sample]: ...
+    def get_coil_reference(self) -> CoilCalibrationReference: ...
 
 
 class MacroParams(Protocol):
