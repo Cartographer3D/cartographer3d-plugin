@@ -67,7 +67,9 @@ def given_probe() -> None:
 @given("the probe has scan calibrated")
 def given_scan_calibrated(scan: ScanMode, config: Configuration, session: Session[Sample]):
     config.save_scan_model(
-        ScanModelConfiguration(name="default", coefficients=[0.3] * 9, domain=(0.1, 5.5), z_offset=0.0)
+        ScanModelConfiguration(
+            name="default", coefficients=[0.3] * 9, domain=(0.1, 5.5), z_offset=0.0, reference_temperature=30
+        )
     )
     scan.load_model("default")
     session.get_items = lambda: [sample(frequency=2) for _ in range(11)]
