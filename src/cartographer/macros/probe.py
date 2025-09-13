@@ -62,8 +62,9 @@ class ProbeAccuracyMacro(Macro):
         while len(measurements) < sample_count:
             trigger_pos = self._probe.perform_scan()
             measurements.append(trigger_pos)
-            pos = self._toolhead.get_position()
-            self._toolhead.move(z=pos.z + retract, speed=lift_speed)
+            if retract > 0:
+                pos = self._toolhead.get_position()
+                self._toolhead.move(z=pos.z + retract, speed=lift_speed)
         logger.debug("Measurements gathered: %s", measurements)
 
         max_value = max(measurements)
