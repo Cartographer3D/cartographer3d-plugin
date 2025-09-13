@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING, final
 from cartographer.adapters.klipper.mcu import KlipperCartographerMcu
 
 if TYPE_CHECKING:
-    from configfile import ConfigWrapper
+    from klippy import Printer
 
+    from cartographer.interfaces.configuration import CoilConfiguration
     from cartographer.interfaces.printer import Sample
 
 logger = logging.getLogger(__name__)
@@ -19,12 +20,12 @@ ARBITRARY_MAX_TEMP = 9999.0
 
 @final
 class PrinterTemperatureCoil:
-    def __init__(self, config: ConfigWrapper):
-        self.printer = config.get_printer()
-        self.name = config.get("name", default="cartographer_coil")
+    def __init__(self, printer: Printer, config: CoilConfiguration):
+        self.printer = printer
+        self.name = config.name
 
-        self.min_temp = config.getfloat("min_temp", default=0, minval=ABSOLUTE_ZERO_TEMP)
-        self.max_temp = config.getfloat("max_temp", default=105, above=self.min_temp)
+        self.min_temp = config.min_temp
+        self.max_temp = config.max_temp
         self.printer.register_event_handler("klippy:mcu_identify", self._handle_mcu_identify)
 
         self.last_temp = 0.0

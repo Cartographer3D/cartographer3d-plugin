@@ -73,9 +73,9 @@ class KlipperCartographerConstants:
         self.minimum_count = f_count
 
     def _clock_to_sensor_frequency(self, clock_frequency: float) -> float:
-        if clock_frequency < 20e6:  # noqa: PLR2004
+        if clock_frequency < 20e6:
             return clock_frequency
-        if clock_frequency < 100e6:  # noqa: PLR2004
+        if clock_frequency < 100e6:
             return clock_frequency / 2
         return clock_frequency / 6
 
