@@ -7,6 +7,7 @@ import numpy as np
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams, Toolhead
+from cartographer.toolhead import BacklashCompensatingToolhead
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -16,8 +17,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-NOISE_THRESHOLD = 0.005  # mm, threshold for noise in backlash measurement
-
 
 @final
 class EstimateBacklashMacro(Macro):
@@ -25,7 +24,7 @@ class EstimateBacklashMacro(Macro):
 
     def __init__(self, toolhead: Toolhead, scan: ScanMode, config: Configuration) -> None:
         self._scan = scan
-        self._toolhead = toolhead
+        self._toolhead = toolhead.toolhead if isinstance(toolhead, BacklashCompensatingToolhead) else toolhead
         self._config = config
 
     @override
