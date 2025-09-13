@@ -30,6 +30,14 @@ class MockStream(Stream[object]):
     def condition(self) -> Condition:
         return MockCondition()
 
+    @override
+    def start_streaming(self) -> None:
+        pass
+
+    @override
+    def stop_streaming(self) -> None:
+        pass
+
 
 @pytest.fixture
 def stream() -> Stream[object]:
