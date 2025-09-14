@@ -64,7 +64,6 @@ class KlipperToolhead(Toolhead):
     def __init__(self, config: ConfigWrapper, mcu: KlipperCartographerMcu) -> None:
         self.mcu = mcu
         self.printer = config.get_printer()
-        self.reactor = self.printer.get_reactor()
 
     @override
     def get_last_move_time(self) -> float:
@@ -85,7 +84,7 @@ class KlipperToolhead(Toolhead):
 
     @override
     def is_homed(self, axis: HomingAxis) -> bool:
-        time = self.reactor.monotonic()
+        time = self.mcu.get_current_time()
         return axis in self.toolhead.get_status(time)["homed_axes"]
 
     @override
@@ -151,8 +150,8 @@ class KlipperToolhead(Toolhead):
 
     @override
     def get_extruder_temperature(self) -> TemperatureStatus:
-        eventtime = self.printer.get_reactor().monotonic()
-        heater = self.toolhead.get_extruder().get_heater().get_status(eventtime)
+        time = self.mcu.get_current_time()
+        heater = self.toolhead.get_extruder().get_heater().get_status(time)
         return TemperatureStatus(heater["temperature"], heater["target"])
 
     @override
