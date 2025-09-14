@@ -43,8 +43,8 @@ class ProbeAccuracyMacro(Macro):
     @override
     def run(self, params: MacroParams) -> None:
         lift_speed = params.get_float("LIFT_SPEED", 5.0, above=0)
-        retract = params.get_float("SAMPLE_RETRACT_DIST", 1.0, minval=0)
-        sample_count = params.get_int("SAMPLES", 10, minval=1)
+        retract = params.get_float("SAMPLE_RETRACT_DIST", default=1.0, minval=1.0)
+        sample_count = params.get_int("SAMPLES", default=10, minval=3)
         position = self._toolhead.get_position()
 
         logger.info(
@@ -62,9 +62,8 @@ class ProbeAccuracyMacro(Macro):
         while len(measurements) < sample_count:
             trigger_pos = self._probe.perform_scan()
             measurements.append(trigger_pos)
-            if retract > 0:
-                pos = self._toolhead.get_position()
-                self._toolhead.move(z=pos.z + retract, speed=lift_speed)
+            pos = self._toolhead.get_position()
+            self._toolhead.move(z=pos.z + retract, speed=lift_speed)
         logger.debug("Measurements gathered: %s", measurements)
 
         max_value = max(measurements)

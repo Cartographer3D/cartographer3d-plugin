@@ -138,6 +138,10 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     def stop_streaming(self) -> None:
         self.commands.send_stream_state(enable=False)
 
+    @override
+    def get_current_time(self) -> float:
+        return self.printer.get_reactor().monotonic()
+
     def _set_threshold(self, trigger_frequency: float) -> None:
         trigger = self.constants.frequency_to_count(trigger_frequency)
         untrigger = self.constants.frequency_to_count(trigger_frequency * (1 - TRIGGER_HYSTERESIS))
