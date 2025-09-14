@@ -107,7 +107,7 @@ class KlipperConfiguration(Configuration):
         save = partial(self._config.set, f"{self.scan_model_prefix} {config.name}")
         save("coefficients", ",".join(map(str, config.coefficients)))
         save("domain", ",".join(map(str, config.domain)))
-        save("z_offset", config.z_offset)
+        save("z_offset", round(config.z_offset, 3))
         self.scan.models[config.name] = config
 
     @override
@@ -120,7 +120,7 @@ class KlipperConfiguration(Configuration):
         save = partial(self._config.set, f"{self.touch_model_prefix} {config.name}")
         save("threshold", config.threshold)
         save("speed", config.speed)
-        save("z_offset", config.z_offset)
+        save("z_offset", round(config.z_offset, 3))
         self.touch.models[config.name] = config
 
     @override
@@ -130,4 +130,4 @@ class KlipperConfiguration(Configuration):
 
     @override
     def save_z_backlash(self, backlash: float) -> None:
-        self._config.set(self.name, "z_backlash", backlash)
+        self._config.set(self.name, "z_backlash", round(backlash, 5))
