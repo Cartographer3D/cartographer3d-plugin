@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from math import isfinite
 from typing import TYPE_CHECKING, final
 
 import numpy as np
@@ -31,10 +32,11 @@ class ScanAccuracyMacro(Macro):
         position = self._toolhead.get_position()
 
         logger.info(
-            "scan accuracy at X:%.3f Y:%.3f Z:%.3f (samples=%d)",
+            "scan accuracy at X:%.3f Y:%.3f Z:%.3f (readings=%d, samples=%d)",
             position.x,
             position.y,
             position.z,
+            readings,
             sample_count,
         )
 
@@ -44,16 +46,28 @@ class ScanAccuracyMacro(Macro):
             measurements.append(dist)
         logger.debug("Measurements gathered: %s", measurements)
 
-        max_value = max(measurements)
-        min_value = min(measurements)
+        finite_measurements = [x for x in measurements if isfinite(x)]
+        infinite_count = len(measurements) - len(finite_measurements)
+
+        if infinite_count > 0:
+            logger.warning("Found %d infinite values in measurements, excluding from calculations", infinite_count)
+
+        if len(finite_measurements) == 0:
+            logger.error("No finite measurements available for calculations")
+            return
+
+        # Use finite_measurements for all calculations
+        max_value = max(finite_measurements)
+        min_value = min(finite_measurements)
         range_value = max_value - min_value
-        avg_value = np.mean(measurements)
-        median = np.median(measurements)
-        std_dev = np.std(measurements)
+        avg_value = np.mean(finite_measurements)
+        median = np.median(finite_measurements)
+        std_dev = np.std(finite_measurements)
 
         logger.info(
-            "scan accuracy results:\n"
+            "scan accuracy results (using %d finite measurements):\n"
             "maximum %.6f, minimum %.6f, range %.6f, average %.6f, median %.6f, standard deviation %.6f",
+            len(finite_measurements),
             max_value,
             min_value,
             range_value,
