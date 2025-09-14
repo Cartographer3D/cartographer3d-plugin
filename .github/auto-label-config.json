@@ -1,0 +1,17 @@
+{
+  "managedLabels": [
+    "fix",
+    "enhancement",
+    "chore",
+    "breaking change",
+    "ignore-for-release"
+  ],
+  "titleMappings": {
+    "fix": "fix",
+    "feat": "enhancement",
+    "chore": "chore"
+  },
+  "releaseRelevantPaths": ["^src/", "^scripts/", "^uv\\.lock$"],
+  "breakingChangeIndicator": "!",
+  "ignoreForReleaseLabel": "ignore-for-release"
+}
