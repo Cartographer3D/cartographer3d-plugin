@@ -26,7 +26,7 @@ class ScanAccuracyMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        readings = params.get_int("READINGS", 20, minval=10)
+        readings = params.get_int("READINGS", 20, minval=1)
         sample_count = params.get_int("SAMPLES", 100, minval=10)
         position = self._toolhead.get_position()
 
