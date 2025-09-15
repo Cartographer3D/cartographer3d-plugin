@@ -143,7 +143,7 @@ class TouchHomeMacro(Macro):
             if forced_z:
                 self._toolhead.clear_z_homing_state()
 
-        self._toolhead.home_end(self._probe, axis="z")
+        self._toolhead.z_home_end(self._probe)
         pos = self._toolhead.get_position()
         self._toolhead.set_z_position(pos.z - trigger_pos)
 

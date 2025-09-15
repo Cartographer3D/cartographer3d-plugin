@@ -152,8 +152,8 @@ class Toolhead(Protocol):
         """Starts probing move towards the given endstop."""
         ...
 
-    def home_end(self, endstop: Endstop, *, axis: HomingAxis) -> None:
-        """Informs the modules that homing has ended on the given axis."""
+    def z_home_end(self, endstop: Endstop) -> None:
+        """Informs the modules that homing has ended on the z axis."""
         ...
 
     def set_z_position(self, z: float) -> None:

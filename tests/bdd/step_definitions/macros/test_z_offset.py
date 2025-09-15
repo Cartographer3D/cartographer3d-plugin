@@ -32,7 +32,7 @@ def given_baby_step_down(toolhead: Toolhead, offset: float):
 
 @given("I ran G28")
 def given_g28(probe: Probe, toolhead: Toolhead):
-    toolhead.home_end(probe.scan, axis="z")
+    toolhead.z_home_end(probe.scan)
 
 
 @given("I ran TOUCH_HOME")

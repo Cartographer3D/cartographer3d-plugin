@@ -105,10 +105,13 @@ class KlipperToolhead(Toolhead):
         return epos[2]
 
     @override
-    def home_end(self, endstop: Endstop, *, axis: HomingAxis) -> None:
-        homing = Homing(self.printer)
-        homing.set_axes([axis_to_index(axis)])
+    def z_home_end(self, endstop: Endstop) -> None:
         klipper_endstop = KlipperEndstop(self.mcu, endstop)
+
+        homing = Homing(self.printer)
+        homing.set_axes([axis_to_index("z")])
+        homing.trigger_mcu_pos = {sp.get_name(): sp.get_mcu_position() for sp in klipper_endstop.get_steppers()}
+
         self.printer.send_event("homing:home_rails_end", homing, [FakeRail(klipper_endstop)])
 
     @override
