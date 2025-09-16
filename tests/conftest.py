@@ -7,7 +7,6 @@ import pytest
 
 from cartographer.interfaces.printer import (
     Endstop,
-    HomingAxis,
     HomingState,
     MacroParams,
     Mcu,
@@ -49,15 +48,15 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
     def get_extruder_temperature() -> TemperatureStatus:
         return TemperatureStatus(30, 30)
 
-    def home_end(endstop: Endstop, *, axis: HomingAxis) -> None:
+    def z_home_end(endstop: Endstop) -> None:
         homing_state = mocker.Mock(spec=HomingState, autospec=True)
-        homing_state.is_homing_z = mocker.Mock(return_value=axis == "z")
+        homing_state.is_homing_z = mocker.Mock(return_value=True)
         endstop.on_home_end(homing_state)
 
     mock.get_position = get_position
     mock.apply_axis_twist_compensation = apply_axis_twist_compensation
     mock.get_extruder_temperature = get_extruder_temperature
-    mock.home_end = home_end
+    mock.z_home_end = z_home_end
     last_move_time = 0
 
     def get_last_move_time() -> float:
