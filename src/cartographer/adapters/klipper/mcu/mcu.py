@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from functools import cached_property
 from typing import TYPE_CHECKING, Callable, TypedDict, final
 
 import mcu
@@ -56,6 +57,10 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
             msg = "Mcu not initialized"
             raise RuntimeError(msg)
         return self._commands
+
+    @cached_property
+    def kinematics(self):
+        return self.printer.lookup_object("toolhead").get_kinematics()
 
     def __init__(
         self,
@@ -150,8 +155,7 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         self.commands.send_threshold(ThresholdCommand(trigger, untrigger))
 
     def _handle_mcu_identify(self) -> None:
-        kin = self.printer.lookup_object("toolhead").get_kinematics()
-        for stepper in kin.get_steppers():
+        for stepper in self.kinematics.get_steppers():
             if stepper.is_active_axis("z"):
                 self.dispatch.add_stepper(stepper)
 
@@ -168,9 +172,14 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
 
         frequency = self.constants.count_to_frequency(data["data"])
         temperature = self.constants.calculate_temperature(data["temp"])
-        position, velocity = self.get_requested_position(time)
+        position = self.get_requested_position(time)
 
-        sample = Sample(time=time, frequency=frequency, temperature=temperature, position=position, velocity=velocity)
+        sample = Sample(
+            time=time,
+            frequency=frequency,
+            temperature=temperature,
+            position=position,
+        )
         self._stream.add_item(sample)
 
     _data_error: str | None = None
@@ -194,12 +203,11 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         if len(self._stream.sessions) > 0:
             self.klipper_mcu.get_printer().invoke_shutdown(error % {"data": data})
 
-    def get_requested_position(self, time: float) -> tuple[Position | None, float | None]:
-        trapq = self.motion_report.trapqs.get("toolhead")
-        if trapq is None:
-            logger.warning("No dump trapq for toolhead, cannot get position at time %.3f", time)
-            return None, None
-        position, velocity = trapq.get_trapq_position(time)
-        if position is None:
-            return None, velocity
-        return Position(x=position[0], y=position[1], z=position[2]), velocity
+    def get_requested_position(self, time: float) -> Position | None:
+        kinematics = self.kinematics
+        stepper_pos = {
+            stepper.get_name(): stepper.mcu_to_commanded_position(stepper.get_past_mcu_position(time))
+            for stepper in kinematics.get_steppers()
+        }
+        position = kinematics.calc_position(stepper_pos)
+        return Position(x=position[0], y=position[1], z=position[2])

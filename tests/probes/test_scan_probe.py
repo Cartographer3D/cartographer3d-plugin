@@ -29,14 +29,12 @@ def sample(
     frequency: float = 1,
     time: float = 0,
     position: Position | None = None,
-    velocity: float | None = 0,
     temperature: float = 0,
 ):
     return Sample(
         frequency=1 / frequency,
         time=time,
         position=position,
-        velocity=velocity,
         temperature=temperature,
     )
 

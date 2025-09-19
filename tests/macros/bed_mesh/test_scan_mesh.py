@@ -138,7 +138,6 @@ class TestBedMeshIntegration:
                 frequency=1000.0,
                 temperature=25.0,
                 position=Position(x=nozzle_x, y=nozzle_y, z=height),
-                velocity=100.0,
             )
             samples.append(sample)
 
