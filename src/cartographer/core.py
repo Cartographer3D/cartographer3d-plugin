@@ -13,6 +13,7 @@ from cartographer.macros.model_manager import ScanModelManager, TouchModelManage
 from cartographer.macros.probe import ProbeAccuracyMacro, ProbeMacro, QueryProbeMacro, ZOffsetApplyProbeMacro
 from cartographer.macros.scan import ScanAccuracyMacro
 from cartographer.macros.scan_calibrate import DEFAULT_SCAN_MODEL_NAME, ScanCalibrateMacro
+from cartographer.macros.stream import StreamMacro
 from cartographer.macros.touch import TouchAccuracyMacro, TouchHomeMacro, TouchProbeMacro
 from cartographer.macros.touch_calibrate import DEFAULT_TOUCH_MODEL_NAME, TouchCalibrateMacro
 from cartographer.probe.probe import Probe
@@ -91,6 +92,7 @@ class PrinterCartographer:
                         ),
                         use_prefix=False,
                     ),
+                    reg("STREAM", StreamMacro(self.mcu)),
                     reg("SCAN_CALIBRATE", ScanCalibrateMacro(probe, toolhead, config)),
                     reg("SCAN_ACCURACY", ScanAccuracyMacro(self.scan_mode, toolhead, self.mcu)),
                     reg("SCAN_MODEL", ScanModelManager(self.scan_mode, config)),
