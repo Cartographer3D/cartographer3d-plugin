@@ -25,7 +25,6 @@ def sample(frequency: float):
         frequency=1 / frequency,
         time=0,
         position=Position(0, 0, frequency),
-        velocity=0,
         temperature=0,
     )
 

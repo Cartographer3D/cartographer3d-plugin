@@ -61,7 +61,6 @@ class Sample:
     frequency: float
     time: float
     position: Position | None
-    velocity: float | None
     temperature: float
 
 
