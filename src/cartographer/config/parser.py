@@ -36,7 +36,7 @@ class ParseConfigWrapper(Protocol):
     def get_float(
         self, option: str, default: float, minimum: float | None = None, maximum: float | None = None
     ) -> float: ...
-    def get_required_float(self, option: str) -> float: ...
+    def get_required_float(self, option: str, minimum: float = ..., maximum: float = ...) -> float: ...
     def get_required_float_list(self, option: str, count: int | None = None) -> list[float]: ...
     def get_float_list(self, option: str, count: int | None = None) -> list[float] | None: ...
     def get_int(self, option: str, default: int) -> int: ...
@@ -151,7 +151,7 @@ def parse_scan_model_config(wrapper: ParseConfigWrapper) -> ScanModelConfigurati
         name=wrapper.get_name(),
         coefficients=wrapper.get_required_float_list("coefficients"),
         domain=list_to_tuple(wrapper.get_required_float_list("domain", count=2)),
-        z_offset=wrapper.get_float("z_offset", default=0),
+        z_offset=wrapper.get_required_float("z_offset"),
     )
 
 
@@ -159,6 +159,6 @@ def parse_touch_model_config(wrapper: ParseConfigWrapper) -> TouchModelConfigura
     return TouchModelConfiguration(
         name=wrapper.get_name(),
         threshold=wrapper.get_int("threshold", default=100),
-        speed=wrapper.get_float("speed", default=50, minimum=1),
-        z_offset=wrapper.get_float("z_offset", default=0, maximum=0),
+        speed=wrapper.get_required_float("speed", minimum=1),
+        z_offset=wrapper.get_required_float("z_offset", maximum=0),
     )
