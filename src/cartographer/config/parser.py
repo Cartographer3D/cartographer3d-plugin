@@ -6,6 +6,8 @@ from typing_extensions import TypeAlias
 
 from cartographer.interfaces.configuration import (
     BedMeshConfig,
+    CoilCalibrationConfiguration,
+    CoilConfiguration,
     GeneralConfig,
     ScanConfig,
     ScanModelConfiguration,
@@ -152,6 +154,7 @@ def parse_scan_model_config(wrapper: ParseConfigWrapper) -> ScanModelConfigurati
         coefficients=wrapper.get_required_float_list("coefficients"),
         domain=list_to_tuple(wrapper.get_required_float_list("domain", count=2)),
         z_offset=wrapper.get_required_float("z_offset"),
+        reference_temperature=wrapper.get_required_float("reference_temperature"),
     )
 
 
@@ -161,4 +164,30 @@ def parse_touch_model_config(wrapper: ParseConfigWrapper) -> TouchModelConfigura
         threshold=wrapper.get_int("threshold", default=100),
         speed=wrapper.get_required_float("speed", minimum=1),
         z_offset=wrapper.get_required_float("z_offset", maximum=0),
+    )
+
+
+ABSOLUTE_ZERO_TEMP = -273.15  # Celsius
+ARBITRARY_MAX_TEMP = 9999.0
+
+
+def parse_coil_config(wrapper: ParseConfigWrapper) -> CoilConfiguration:
+    min_temp = wrapper.get_float("min_temp", default=0, minimum=ABSOLUTE_ZERO_TEMP)
+    calibration = wrapper.get_float_list("calibration", count=4)
+    calibration_config = (
+        CoilCalibrationConfiguration(
+            a_a=calibration[0],
+            a_b=calibration[1],
+            b_a=calibration[2],
+            b_b=calibration[3],
+        )
+        if calibration
+        else None
+    )
+
+    return CoilConfiguration(
+        name=wrapper.get_str("name", default="cartographer_coil"),
+        min_temp=min_temp,
+        max_temp=wrapper.get_float("max_temp", default=105, minimum=min_temp),
+        calibration=calibration_config,
     )

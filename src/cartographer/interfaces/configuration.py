@@ -52,6 +52,7 @@ class ScanModelConfiguration:
     coefficients: list[float]
     domain: tuple[float, float]
     z_offset: float
+    reference_temperature: float
 
 
 @dataclass(frozen=True)
@@ -62,14 +63,32 @@ class TouchModelConfiguration:
     z_offset: float
 
 
+@dataclass(frozen=True)
+class CoilCalibrationConfiguration:
+    a_a: float
+    a_b: float
+    b_a: float
+    b_b: float
+
+
+@dataclass(frozen=True)
+class CoilConfiguration:
+    name: str
+    min_temp: float
+    max_temp: float
+    calibration: CoilCalibrationConfiguration | None
+
+
 class Configuration(Protocol):
     general: GeneralConfig
     scan: ScanConfig
     touch: TouchConfig
     bed_mesh: BedMeshConfig
+    coil: CoilConfiguration
 
     def save_scan_model(self, config: ScanModelConfiguration) -> None: ...
     def save_touch_model(self, config: TouchModelConfiguration) -> None: ...
+    def save_coil_model(self, config: CoilCalibrationConfiguration) -> None: ...
     def remove_scan_model(self, name: str) -> None: ...
     def remove_touch_model(self, name: str) -> None: ...
     def save_z_backlash(self, backlash: float) -> None: ...
