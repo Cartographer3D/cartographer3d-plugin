@@ -26,7 +26,7 @@ def setup_console_logger(console: Console) -> logging.Handler:
     return console_handler
 
 
-MACRO_PATTERN = re.compile(r"\b([A-Z_]+(?:\s+[A-Z0-9_]+=.*?)*)(?=\s|$)")
+MACRO_PATTERN = re.compile(r"\b([A-Z_]{2,}(?:\s+[A-Z0-9_]+=.*?)*)(?=\s|$)")
 
 
 def format_macro(macro: str) -> str:

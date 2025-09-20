@@ -34,6 +34,7 @@ def log_record() -> LogRecordFactory:
             "Multiple TOUCH X=1 Y=2 SAVE_CONFIG",
             f"Multiple {format_macro('TOUCH X=1 Y=2')} {format_macro('SAVE_CONFIG')}",
         ),
+        ("Ignore single capital C", "Ignore single capital C"),
     ],
 )
 def test_macro_formatting_info(
