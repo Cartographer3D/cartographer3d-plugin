@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from functools import partial
+from math import inf
 from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
@@ -49,8 +50,8 @@ class KlipperConfigWrapper(ParseConfigWrapper):
         return self._config.getfloat(option, default=default, minval=minimum, maxval=maximum)
 
     @override
-    def get_required_float(self, option: str) -> float:
-        return self._config.getfloat(option)
+    def get_required_float(self, option: str, minimum: float = -inf, maximum: float = inf) -> float:
+        return self._config.getfloat(option, minval=minimum, maxval=maximum)
 
     @override
     def get_required_float_list(self, option: str, count: int | None = None) -> list[float]:
