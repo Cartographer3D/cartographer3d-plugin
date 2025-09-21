@@ -190,7 +190,7 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         if count == SHORTED_FREQUENCY_VALUE:
             error = "coil is shorted or not connected."
         elif count > self.constants.minimum_count * FREQUENCY_RANGE_PERCENT:
-            error = "coil frequency reading exceeded max expected value, received %(data)d"
+            error = "coil frequency reading exceeded max expected value, received %(count)d"
 
         if self._data_error == error:
             return
@@ -199,9 +199,9 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         if error is None:
             return
 
-        logger.debug(error, {"data": data})
+        logger.debug(error, {"count": count})
         if len(self._stream.sessions) > 0:
-            self.klipper_mcu.get_printer().invoke_shutdown(error % {"data": data})
+            self.klipper_mcu.get_printer().invoke_shutdown(error % {"count": count})
 
     def get_requested_position(self, time: float) -> Position | None:
         kinematics = self.kinematics
