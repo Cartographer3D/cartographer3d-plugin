@@ -1,7 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from abc import ABC, abstractmethod
+from functools import cached_property
+from typing import TYPE_CHECKING, Protocol, cast
 
+import numpy as np
 from numpy.polynomial import Polynomial
 from typing_extensions import override
 
@@ -19,10 +22,17 @@ ITERATIONS = 50
 DEGREES = 9
 
 
-# TODO: Temperature compensation
-class ScanModel:
-    _poly: Polynomial | None = None
+class TemperatureCompensationModel(Protocol):
+    def compensate(self, frequency: float, temp_source: float, temp_target: float) -> float: ...
 
+
+class _NoTemperatureCompensationModel(TemperatureCompensationModel):
+    @override
+    def compensate(self, frequency: float, temp_source: float, temp_target: float) -> float:
+        return frequency
+
+
+class ScanModel:
     @property
     def name(self) -> str:
         return self.config.name
@@ -31,14 +41,17 @@ class ScanModel:
     def z_offset(self) -> float:
         return self.config.z_offset
 
-    @property
-    def poly(self) -> Polynomial:
-        if self._poly is None:
-            self._poly = Polynomial(self.config.coefficients, domain=self.config.domain)
-        return self._poly
+    @cached_property
+    def _poly(self) -> Polynomial:
+        return Polynomial(self.config.coefficients, domain=self.config.domain)
 
-    def __init__(self, config: ScanModelConfiguration) -> None:
+    def __init__(
+        self, config: ScanModelConfiguration, temperature_compensation: TemperatureCompensationModel | None
+    ) -> None:
         self.config: ScanModelConfiguration = config
+        self.temperature_compensation: TemperatureCompensationModel = (
+            temperature_compensation or _NoTemperatureCompensationModel()
+        )
 
     @staticmethod
     def fit(name: str, samples: Sequence[Sample], z_offset: float) -> ScanModelConfiguration:
@@ -52,15 +65,26 @@ class ScanModel:
 
         poly = cast("Polynomial", Polynomial.fit(inverse_frequencies, z_offsets, DEGREES))
         converted = cast("Polynomial", poly.convert(domain=poly.domain))
+        temperature = float(np.mean([sample.temperature for sample in samples]))
 
         return ScanModelConfiguration(
             name=name,
             coefficients=converted.coef,
             domain=converted.domain,
             z_offset=z_offset,
+            reference_temperature=temperature,
         )
 
-    def frequency_to_distance(self, frequency: float) -> float:
+    def frequency_to_distance(self, frequency: float, *, temperature: float) -> float:
+        return self._raw_frequency_to_distance(
+            self.temperature_compensation.compensate(
+                frequency,
+                temp_source=temperature,
+                temp_target=self.config.reference_temperature,
+            )
+        )
+
+    def _raw_frequency_to_distance(self, frequency: float) -> float:
         lower_bound, upper_bound = self.config.domain
         inverse_frequency = 1 / frequency
 
@@ -71,7 +95,16 @@ class ScanModel:
 
         return self._eval(inverse_frequency) + self.config.z_offset
 
-    def distance_to_frequency(self, distance: float) -> float:
+    def distance_to_frequency(self, distance: float, *, temperature: float) -> float:
+        frequency = self._distance_to_raw_frequency(distance)
+
+        return self.temperature_compensation.compensate(
+            frequency,
+            temp_source=self.config.reference_temperature,
+            temp_target=temperature,
+        )
+
+    def _distance_to_raw_frequency(self, distance: float) -> float:
         # PERF: We can use brentq if scipy is available
         # https://docs.scipy.org/doc/scipy/reference/generated/scipy.optimize.brentq.html#scipy.optimize.brentq
         distance -= self.config.z_offset
@@ -105,10 +138,13 @@ class ScanModel:
         return self._z_range
 
     def _eval(self, x: float) -> float:
-        return float(self.poly(x))  # pyright: ignore[reportUnknownArgumentType]
+        return float(self._poly(x))  # pyright: ignore[reportUnknownArgumentType]
 
 
-class ScanModelSelectorMixin(ModelSelectorMixin[ScanModel, ScanModelConfiguration]):
+class ScanModelSelectorMixin(ModelSelectorMixin[ScanModel, ScanModelConfiguration], ABC):
+    @abstractmethod
+    def get_compensation_model(self) -> TemperatureCompensationModel | None: ...
+
     @override
     def _create_model(self, config: ScanModelConfiguration) -> ScanModel:
-        return ScanModel(config)
+        return ScanModel(config, self.get_compensation_model())

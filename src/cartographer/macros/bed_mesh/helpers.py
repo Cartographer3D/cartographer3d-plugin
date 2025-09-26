@@ -8,12 +8,9 @@ from typing import TYPE_CHECKING, Callable, Sequence, final, overload
 
 import numpy as np
 
-try:
-    from scipy.interpolate import RBFInterpolator
-except ImportError:
-    RBFInterpolator = None
-
 from cartographer.interfaces.printer import Position, Sample
+from cartographer.lib import scipy_helpers
+from cartographer.lib.scipy_helpers import rbf_interpolator
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -281,7 +278,7 @@ class CoordinateTransformer:
 
         # Interpolate missing values if scipy is available
         if np.any(mask):
-            if RBFInterpolator is None:
+            if not scipy_helpers.is_available():
                 msg = "scipy is required for interpolation of faulty regions"
                 raise RuntimeError(msg)
             logger.info("Interpolating %d faulty points", np.sum(mask))
@@ -293,7 +290,7 @@ class CoordinateTransformer:
             valid_points = points_grid[~mask.ravel()]
             valid_values = z_grid_masked[~mask]
 
-            rbf = RBFInterpolator(valid_points, valid_values, neighbors=64, smoothing=0.0)
+            rbf = rbf_interpolator(valid_points, valid_values, neighbors=64, smoothing=0.0)
 
             missing_points = points_grid[mask.ravel()]
             interpolated = rbf(missing_points)

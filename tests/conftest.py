@@ -95,7 +95,7 @@ def config() -> Configuration:
 
 @pytest.fixture
 def scan(mcu: Mcu, toolhead: Toolhead, config: Configuration):
-    return ScanMode(mcu, toolhead, ScanModeConfiguration.from_config(config))
+    return ScanMode(mcu, toolhead, ScanModeConfiguration.from_config(config), None)
 
 
 @pytest.fixture

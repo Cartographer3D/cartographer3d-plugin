@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import astuple
 from functools import partial
 from math import inf
 from typing import TYPE_CHECKING, final
@@ -9,6 +10,7 @@ from typing_extensions import override
 from cartographer.config.parser import (
     ParseConfigWrapper,
     parse_bed_mesh_config,
+    parse_coil_config,
     parse_general_config,
     parse_scan_config,
     parse_scan_model_config,
@@ -16,6 +18,7 @@ from cartographer.config.parser import (
     parse_touch_model_config,
 )
 from cartographer.interfaces.configuration import (
+    CoilCalibrationConfiguration,
     Configuration,
     ScanModelConfiguration,
     TouchModelConfiguration,
@@ -83,7 +86,7 @@ class KlipperConfiguration(Configuration):
         self.name = config.get_name()
 
         self.general = parse_general_config(KlipperConfigWrapper(config))
-        self.coil_sensor = config.getsection("cartographer coil")
+        self.coil = parse_coil_config(KlipperConfigWrapper(config.getsection("cartographer coil")))
 
         self.bed_mesh = parse_bed_mesh_config(KlipperConfigWrapper(config.getsection("bed_mesh")))
 
@@ -109,6 +112,7 @@ class KlipperConfiguration(Configuration):
         save("coefficients", ",".join(map(str, config.coefficients)))
         save("domain", ",".join(map(str, config.domain)))
         save("z_offset", round(config.z_offset, 3))
+        save("reference_temperature", config.reference_temperature)
         self.scan.models[config.name] = config
 
     @override
@@ -132,3 +136,8 @@ class KlipperConfiguration(Configuration):
     @override
     def save_z_backlash(self, backlash: float) -> None:
         self._config.set(self.name, "z_backlash", round(backlash, 5))
+
+    @override
+    def save_coil_model(self, config: CoilCalibrationConfiguration) -> None:
+        value = ",".join(map(str, astuple(config)))
+        self._config.set(f"{self.name} coil", "calibration", value)
