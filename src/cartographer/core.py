@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from itertools import chain
 from typing import TYPE_CHECKING, final
 
+from cartographer.coil.temperature_compensation import CoilTemperatureCompensationModel
 from cartographer.macros.axis_twist_compensation import AxisTwistCompensationMacro
 from cartographer.macros.backlash import EstimateBacklashMacro
 from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateConfiguration, BedMeshCalibrateMacro
@@ -14,6 +15,7 @@ from cartographer.macros.probe import ProbeAccuracyMacro, ProbeMacro, QueryProbe
 from cartographer.macros.scan import ScanAccuracyMacro
 from cartographer.macros.scan_calibrate import DEFAULT_SCAN_MODEL_NAME, ScanCalibrateMacro
 from cartographer.macros.stream import StreamMacro
+from cartographer.macros.temperature_calibrate import TemperatureCalibrateMacro
 from cartographer.macros.touch import TouchAccuracyMacro, TouchHomeMacro, TouchProbeMacro
 from cartographer.macros.touch_calibrate import DEFAULT_TOUCH_MODEL_NAME, TouchCalibrateMacro
 from cartographer.probe.probe import Probe
@@ -49,6 +51,9 @@ class PrinterCartographer:
             self.mcu,
             toolhead,
             ScanModeConfiguration.from_config(config),
+            CoilTemperatureCompensationModel(config.coil.calibration, adapters.mcu)
+            if config.coil.calibration
+            else None,
         )
         if DEFAULT_SCAN_MODEL_NAME in adapters.config.scan.models:
             self.scan_mode.load_model(DEFAULT_SCAN_MODEL_NAME)
@@ -93,6 +98,10 @@ class PrinterCartographer:
                         use_prefix=False,
                     ),
                     reg("STREAM", StreamMacro(self.mcu)),
+                    reg(
+                        "TEMPERATURE_CALIBRATE",
+                        TemperatureCalibrateMacro(self.mcu, toolhead, config, adapters.gcode),
+                    ),
                     reg("SCAN_CALIBRATE", ScanCalibrateMacro(probe, toolhead, config)),
                     reg("SCAN_ACCURACY", ScanAccuracyMacro(self.scan_mode, toolhead, self.mcu)),
                     reg("SCAN_MODEL", ScanModelManager(self.scan_mode, config)),

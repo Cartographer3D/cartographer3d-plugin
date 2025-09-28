@@ -7,6 +7,8 @@ from typing_extensions import override
 
 from cartographer.interfaces.configuration import (
     BedMeshConfig,
+    CoilCalibrationConfiguration,
+    CoilConfiguration,
     Configuration,
     GeneralConfig,
     ScanConfig,
@@ -49,6 +51,12 @@ default_bed_mesh_config = BedMeshConfig(
     zero_reference_position=(100, 100),
     faulty_regions=[],
 )
+default_coil_configuration = CoilConfiguration(
+    name="cartographer_coil",
+    min_temp=5,
+    max_temp=105,
+    calibration=None,
+)
 
 
 @final
@@ -56,15 +64,17 @@ class MockConfiguration(Configuration):
     def __init__(
         self,
         *,
-        general: GeneralConfig | None = None,
-        scan: ScanConfig | None = None,
-        touch: TouchConfig | None = None,
-        bed_mesh: BedMeshConfig | None = None,
+        general: GeneralConfig = default_general_config,
+        scan: ScanConfig = default_scan_config,
+        touch: TouchConfig = default_touch_config,
+        bed_mesh: BedMeshConfig = default_bed_mesh_config,
+        coil: CoilConfiguration = default_coil_configuration,
     ):
-        self.general = general or default_general_config
-        self.scan = scan or default_scan_config
-        self.touch = touch or default_touch_config
-        self.bed_mesh = bed_mesh or default_bed_mesh_config
+        self.general = general
+        self.scan = scan
+        self.touch = touch
+        self.bed_mesh = bed_mesh
+        self.coil = coil
 
     @override
     def save_scan_model(self, config: ScanModelConfiguration) -> None:
@@ -85,3 +95,7 @@ class MockConfiguration(Configuration):
     @override
     def save_z_backlash(self, backlash: float) -> None:
         self.general = replace(self.general, z_backlash=backlash)
+
+    @override
+    def save_coil_model(self, config: CoilCalibrationConfiguration) -> None:
+        self.coil = replace(self.coil, calibration=config)

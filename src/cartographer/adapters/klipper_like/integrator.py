@@ -80,7 +80,7 @@ class KlipperLikeIntegrator(Integrator, ABC):
     @override
     def register_coil_temperature_sensor(self) -> None:
         pheaters = self._printer.load_object(self._config.wrapper, "heaters")
-        sensor = PrinterTemperatureCoil(self._config.coil_sensor, self._mcu)
+        sensor = PrinterTemperatureCoil(self._mcu, self._config.coil)
 
         object_name = f"temperature_sensor {sensor.name}"
         self._printer.add_object(object_name, sensor)

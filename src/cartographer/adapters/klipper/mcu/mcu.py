@@ -22,7 +22,7 @@ from cartographer.adapters.klipper.mcu.constants import (
     KlipperCartographerConstants,
 )
 from cartographer.adapters.klipper.mcu.stream import KlipperStream, KlipperStreamMcu
-from cartographer.interfaces.printer import Mcu, Position, Sample
+from cartographer.interfaces.printer import CoilCalibrationReference, Mcu, Position, Sample
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
@@ -50,6 +50,13 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
             msg = "Mcu not initialized"
             raise RuntimeError(msg)
         return self._constants
+
+    @override
+    def get_coil_reference(self) -> CoilCalibrationReference:
+        return CoilCalibrationReference(
+            min_frequency=self.constants.count_to_frequency(self.constants.minimum_count),
+            min_frequency_temperature=self.constants.calculate_temperature(self.constants.minimum_adc_count),
+        )
 
     @property
     def commands(self) -> KlipperCartographerCommands:
@@ -135,6 +142,10 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     @override
     def register_callback(self, callback: Callable[[Sample], None]) -> None:
         return self._stream.register_callback(callback)
+
+    @override
+    def unregister_callback(self, callback: Callable[[Sample], None]) -> None:
+        return self._stream.unregister_callback(callback)
 
     @override
     def start_streaming(self) -> None:
