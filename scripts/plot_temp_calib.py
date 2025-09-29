@@ -103,6 +103,7 @@ if __name__ == "__main__":
         plot_samples(ax, samples, f"Height {height:.0f}mm", model)
 
     plot_all_samples(axes[-1], data_per_height, model)
+    print(config)
 
     plt.tight_layout()
     plt.show()
