@@ -56,6 +56,38 @@ def fit_coil_temperature_model(
     )
 
 
+def _downsample_by_temperature(samples: list[Sample], target_count: int) -> list[Sample]:
+    """Downsample samples to ensure even distribution across temperature ranges."""
+    if len(samples) <= target_count:
+        return samples
+
+    temperatures = [s.temperature for s in samples]
+    temp_min, temp_max = min(temperatures), max(temperatures)
+
+    # Create temperature bins
+    n_bins = 10  # Adjust based on your needs
+    bin_width = (temp_max - temp_min) / n_bins
+    samples_per_bin = target_count // n_bins
+
+    binned_samples: list[list[Sample]] = [[] for _ in range(n_bins)]
+
+    # Sort samples into temperature bins
+    for sample in samples:
+        bin_idx = min(int((sample.temperature - temp_min) / bin_width), n_bins - 1)
+        binned_samples[bin_idx].append(sample)
+
+    # Sample evenly from each bin
+    downsampled: list[Sample] = []
+    for bin_samples in binned_samples:
+        if not bin_samples:
+            continue
+        # Take evenly spaced samples from this bin
+        step = max(1, len(bin_samples) // samples_per_bin)
+        downsampled.extend(bin_samples[::step][:samples_per_bin])
+
+    return downsampled
+
+
 def _process_samples(samples: list[Sample]) -> tuple[float, float, float]:
     """
     Processes temperature-frequency samples to extract quadratic relationship coefficients.
@@ -74,16 +106,15 @@ def _process_samples(samples: list[Sample]) -> tuple[float, float, float]:
         Tuple containing (a_coefficient, b_coefficient, frequency_at_vertex)
 
     Raises:
-        RuntimeError: If fewer than 1000 samples provided (insufficient for calibration)
+        RuntimeError: If fewer than 500 samples provided (insufficient for calibration)
     """
-    if len(samples) < 1000:
-        msg = f"Insufficient samples for calibration: {len(samples)} (need at least 1000)"
+    if len(samples) < 500:
+        msg = f"Insufficient samples for calibration: {len(samples)} (need at least 500)"
         raise RuntimeError(msg)
 
     # Downsample if we have too many samples to improve processing speed
-    downsample_factor = int(len(samples) / 1000)
-    if downsample_factor > 1:
-        samples = samples[::downsample_factor]
+    if len(samples) > 1000:
+        samples = _downsample_by_temperature(samples, target_count=800)
 
     frequencies: list[float] = [s.frequency for s in samples]
     temperatures: list[float] = [s.temperature for s in samples]
