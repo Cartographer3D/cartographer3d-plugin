@@ -88,7 +88,7 @@ def load_data_from_directory(directory: str) -> dict[float, list[Sample]]:
         msg = "No CSV files with recognizable height pattern found. Expected pattern: 'cartographer_temp_calib_h{d}mm'"
         raise ValueError(msg)
 
-    print(f"Successfully loaded data for {len(data_per_height)} height(s): {sorted(data_per_height.keys())}mm")
+    print(f"Successfully loaded data for {len(data_per_height)} heights")
     return data_per_height
 
 
@@ -133,6 +133,98 @@ def plot_samples(ax: Axes, samples: list[Sample], label: str, model: CoilTempera
     ax.legend()
 
 
+def analyze_model(model: CoilTemperatureCompensationModel, data_per_height: dict[float, list[Sample]]) -> None:
+    """
+    Analyze how well the temperature compensation model performs.
+
+    This function evaluates the statistical effectiveness of temperature compensation
+    by analyzing each height separately, then providing overall metrics about the
+    compensation quality across all heights.
+    """
+    print("\n" + "=" * 60)
+    print("TEMPERATURE COMPENSATION MODEL ANALYSIS")
+    print("=" * 60)
+
+    reference_temp = 50.0  # Reference temperature for compensation
+
+    # Analyze each height separately and collect improvement metrics
+    improvements: list[float] = []
+    correlations_before: list[float] = []
+    correlations_after: list[float] = []
+    correlation_reductions: list[float] = []
+    total_samples = 0
+
+    for _, samples in data_per_height.items():
+        if len(samples) < 10:
+            continue
+
+        # Extract data for this height
+        temperatures = np.array([sample.temperature for sample in samples])
+        raw_frequencies = np.array([sample.frequency for sample in samples])
+        compensated_frequencies = np.array(
+            [model.compensate(sample.frequency, sample.temperature, reference_temp) for sample in samples]
+        )
+
+        # Calculate statistics for this height
+        raw_std = np.std(raw_frequencies)
+        comp_std = np.std(compensated_frequencies)
+        std_improvement = float((raw_std - comp_std) / raw_std * 100)
+
+        # Temperature correlation analysis
+        raw_temp_corr = np.corrcoef(raw_frequencies, temperatures)[0, 1]
+        comp_temp_corr = np.corrcoef(compensated_frequencies, temperatures)[0, 1]
+        correlation_reduction = abs(raw_temp_corr) - abs(comp_temp_corr)
+
+        improvements.append(std_improvement)
+        correlations_before.append(abs(raw_temp_corr))
+        correlations_after.append(abs(comp_temp_corr))
+        correlation_reductions.append(correlation_reduction)
+        total_samples += len(samples)
+
+    # Overall metrics
+    avg_improvement = np.mean(improvements)
+    avg_corr_reduction = np.mean(correlation_reductions)
+
+    # Overall assessment
+    if avg_improvement > 70:
+        quality = "Excellent"
+    elif avg_improvement > 50:
+        quality = "Very Good"
+    elif avg_improvement > 30:
+        quality = "Good"
+    elif avg_improvement > 10:
+        quality = "Fair"
+    else:
+        quality = "Poor"
+
+    print(f"  Total samples analyzed: {total_samples}")
+    print(f"  Compensation Quality: {quality}")
+    print(f"  The model reduces frequency variation by {avg_improvement:.1f}% on average")
+
+    # Temperature dependency assessment based on correlation reduction
+    if avg_corr_reduction > 0.3:
+        print(f"  ✓ Excellent temperature dependency removal ({avg_corr_reduction:.3f} correlation reduction)")
+    elif avg_corr_reduction > 0.1:
+        print(f"  ✓ Good temperature dependency removal ({avg_corr_reduction:.3f} correlation reduction)")
+    elif avg_corr_reduction > 0.05:
+        print(f"  ⚠ Moderate temperature dependency removal ({avg_corr_reduction:.3f} correlation reduction)")
+    elif avg_corr_reduction > 0:
+        print(f"  ⚠ Limited temperature dependency removal ({avg_corr_reduction:.3f} correlation reduction)")
+    else:
+        print(f"  ✗ No improvement in temperature dependency ({avg_corr_reduction:.3f} correlation reduction)")
+
+    # Consistency assessment
+    if np.std(improvements) < 10:
+        print("  ✓ Consistent performance across heights")
+    else:
+        print("  ⚠ Variable performance across heights")
+
+    # Check if any heights actually got worse
+    poor_reductions = [h for h, r in zip(data_per_height.keys(), correlation_reductions) if r < 0]
+    if poor_reductions:
+        print(f"  ⚠ Heights with increased temperature dependency: {poor_reductions}")
+
+
 if __name__ == "__main__":
     # Check if directory argument is provided
     if len(sys.argv) != 2:
@@ -162,6 +254,8 @@ if __name__ == "__main__":
             plot_samples(axes[i], samples, f"Height {height:.1f}mm", model)
 
         plot_all_samples(axes[-1], data_per_height, model)
+        analyze_model(model, data_per_height)
+
         print(config)
 
         plt.tight_layout()
