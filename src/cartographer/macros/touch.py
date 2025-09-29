@@ -45,8 +45,8 @@ class TouchAccuracyMacro(Macro):
     @override
     def run(self, params: MacroParams) -> None:
         lift_speed = params.get_float("LIFT_SPEED", 5.0, above=0)
-        retract = params.get_float("SAMPLE_RETRACT_DIST", 1.0, minval=0)
-        sample_count = params.get_int("SAMPLES", 5, minval=1)
+        retract = params.get_float("SAMPLE_RETRACT_DIST", 1.0, minval=1)
+        sample_count = params.get_int("SAMPLES", 5, minval=3)
         position = self._toolhead.get_position()
 
         logger.info(
