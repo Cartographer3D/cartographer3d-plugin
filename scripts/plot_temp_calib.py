@@ -107,9 +107,10 @@ def plot_all_samples(
         ax.scatter(temperatures, frequencies, alpha=0.6, color="tab:blue")
     for samples in data_per_height.values():
         temperatures = [sample.temperature for sample in samples]
-        compensated_frequencies = normalize_frequencies(
-            [model.compensate(sample.frequency, sample.temperature, 50) for sample in samples]
-        )
+        mean_freq = np.mean([sample.frequency for sample in samples])
+        compensated_frequencies = [
+            model.compensate(sample.frequency, sample.temperature, 50) - mean_freq for sample in samples
+        ]
         ax.scatter(temperatures, compensated_frequencies, alpha=0.6, color="tab:orange")
 
     ax.set_xlabel("Temperature")
