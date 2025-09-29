@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 import csv
+import os
+import re
+import sys
 from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
@@ -46,6 +49,49 @@ def read_samples_from_csv(file_path: str) -> list[Sample]:
     return samples
 
 
+def load_data_from_directory(directory: str) -> dict[float, list[Sample]]:
+    data_per_height: dict[float, list[Sample]] = {}
+
+    if not os.path.isdir(directory):
+        msg = f"Directory does not exist: {directory}"
+        raise ValueError(msg)
+
+    # Pattern to match files with height information
+    # Matches patterns like: cartographer_temp_calib_h1mm_20250929_085410.csv
+    height_pattern = re.compile(r"cartographer_temp_calib_h(\d)mm", re.IGNORECASE)
+
+    csv_files = [f for f in os.listdir(directory) if f.endswith(".csv")]
+
+    if not csv_files:
+        msg = f"No CSV files found in directory: {directory}"
+        raise ValueError(msg)
+
+    found_files = 0
+    for filename in csv_files:
+        match = height_pattern.search(filename)
+        if match:
+            height = float(match.group(1))
+            file_path = os.path.join(directory, filename)
+
+            try:
+                samples = read_samples_from_csv(file_path)
+                data_per_height[height] = samples
+                print(f"Loaded {len(samples)} samples from {filename} (height: {height}mm)")
+                found_files += 1
+            except Exception as e:
+                print(f"Warning: Failed to load {filename}: {e}")
+
+    if found_files == 0:
+        print("Available CSV files:")
+        for f in csv_files:
+            print(f"  - {f}")
+        msg = "No CSV files with recognizable height pattern found. Expected pattern: 'cartographer_temp_calib_h{d}mm'"
+        raise ValueError(msg)
+
+    print(f"Successfully loaded data for {len(data_per_height)} height(s): {sorted(data_per_height.keys())}mm")
+    return data_per_height
+
+
 def normalize_frequencies(frequencies: list[float]) -> list[float]:
     """Normalize frequencies by removing the mean (height-dependent baseline)"""
     mean_freq = np.mean(frequencies)
@@ -88,22 +134,39 @@ def plot_samples(ax: Axes, samples: list[Sample], label: str, model: CoilTempera
 
 
 if __name__ == "__main__":
-    data_per_height: dict[float, list[Sample]] = {}
-    heights = [1, 2, 3]
-    for height in heights:
-        data_per_height[float(height)] = read_samples_from_csv(
-            f"./scripts/cartographer_tempcalib_height{height:d}mm.csv"
-        )
+    # Check if directory argument is provided
+    if len(sys.argv) != 2:
+        print("Usage: python plot_temp_calib.py <directory_path>")
+        print("Example: python plot_temp_calib.py ./scripts/")
+        sys.exit(1)
 
-    config = fit_coil_temperature_model(data_per_height, mcu.get_coil_reference())
-    model = CoilTemperatureCompensationModel(config, mcu)
+    directory = sys.argv[1]
+    try:
+        # Load data from directory automatically
+        data_per_height = load_data_from_directory(directory)
 
-    fig, axes = plt.subplots(1, len(heights) + 1, figsize=(15, 10))
-    for (height, samples), ax in zip(data_per_height.items(), axes):
-        plot_samples(ax, samples, f"Height {height:.0f}mm", model)
+        # Sort heights for consistent plotting order
+        heights = sorted(data_per_height.keys())
 
-    plot_all_samples(axes[-1], data_per_height, model)
-    print(config)
+        config = fit_coil_temperature_model(data_per_height, mcu.get_coil_reference())
+        model = CoilTemperatureCompensationModel(config, mcu)
 
-    plt.tight_layout()
-    plt.show()
+        fig, axes = plt.subplots(1, len(heights) + 1, figsize=(15, 10))
+
+        # Handle case where there's only one height (axes won't be an array)
+        if len(heights) == 1:
+            axes = [axes[0], axes[1]]
+
+        for i, height in enumerate(heights):
+            samples = data_per_height[height]
+            plot_samples(axes[i], samples, f"Height {height:.1f}mm", model)
+
+        plot_all_samples(axes[-1], data_per_height, model)
+        print(config)
+
+        plt.tight_layout()
+        plt.show()
+
+    except Exception as e:
+        print(f"Error: {e}")
+        sys.exit(1)
