@@ -1,10 +1,6 @@
 from __future__ import annotations
 
-import contextlib
 import logging
-import os
-import tempfile
-import time
 from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
@@ -12,6 +8,7 @@ from typing_extensions import override
 from cartographer.coil.calibration import fit_coil_temperature_model
 from cartographer.interfaces.printer import GCodeDispatch, Macro, MacroParams, Mcu, Sample, Toolhead
 from cartographer.lib import scipy_helpers
+from cartographer.lib.csv import generate_filepath, write_samples_to_csv
 from cartographer.lib.log import log_duration
 
 if TYPE_CHECKING:
@@ -50,13 +47,16 @@ class TemperatureCalibrateMacro(Macro):
             msg = "Must home axes before temperature calibration"
             raise RuntimeError(msg)
 
+        _, max_z = self.toolhead.get_axis_limits("z")
+        cooling_height = max_z * 2 / 3
         logger.info(
-            "Starting temperature calibration sequence... (bed=%d°C range=%d-%d°C)",
+            "Starting temperature calibration sequence... (bed=%d°C range=%d-%d°C, cooling height=%.1fmm)",
             bed_temp,
             min_temp,
             max_temp,
+            cooling_height,
         )
-        self.toolhead.move(z=10, speed=z_speed)
+        self.toolhead.move(z=cooling_height, speed=z_speed)
         self.toolhead.move(
             x=self.config.bed_mesh.zero_reference_position[0],
             y=self.config.bed_mesh.zero_reference_position[1],
@@ -66,19 +66,25 @@ class TemperatureCalibrateMacro(Macro):
         # Collect data at 3 different heights
         data_per_height: dict[float, list[Sample]] = {}
         heights = [1, 2, 3]
+        csv_files: list[str] = []
 
         for phase, height in enumerate(heights, 1):
             logger.info("Starting Phase %d of %d (height=%.1fmm)", phase, len(heights), height)
-            self._cool_down_phase(min_temp, z_speed)
+            self._cool_down_phase(cooling_height, min_temp, z_speed)
             samples = self._heat_up_phase(height, bed_temp, min_temp, max_temp, z_speed)
             data_per_height[height] = samples
 
             logger.info("Phase %d complete: collected %d samples", phase, len(samples))
-            with contextlib.suppress(Exception):
-                self._write_samples_to_csv(samples, height)
+            path = generate_filepath(f"temp_calib_h{height}mm")
+            try:
+                write_samples_to_csv(samples, path)
+                logger.info("Wrote raw data to: %s", path)
+                csv_files.append(path)
+            except Exception as e:
+                logger.warning("Failed to write samples to CSV: %s", e)
 
         self.gcode.run_gcode("M140 S0")
-        self.toolhead.move(z=50, speed=z_speed)
+        self.toolhead.move(z=cooling_height, speed=z_speed)
 
         model = fit_coil_temperature_model(data_per_height, self.mcu.get_coil_reference())
 
@@ -86,17 +92,18 @@ class TemperatureCalibrateMacro(Macro):
 
         logger.info(
             "Temperature calibration complete!\n"
-            "The SAVE_CONFIG command will update the printer config file and restart the printer.",
+            "The SAVE_CONFIG command will update the printer config file and restart the printer.\n"
+            "Raw calibration data can be found in the following files:\n%s",
+            "\n".join(csv_files),
         )
 
     @log_duration("Cooldown phase")
-    def _cool_down_phase(self, min_temp: int, z_speed: int) -> None:
+    def _cool_down_phase(self, height: float, min_temp: int, z_speed: int) -> None:
         """Cool down the probe to minimum temperature."""
-        logger.info("Cooling probe to %d°C...", min_temp)
+        logger.info("Cooling probe to %d°C, moving to z %.1f", min_temp, height)
 
         # Move to safe height and turn on cooling
-        _, max_z = self.toolhead.get_axis_limits("z")
-        self.toolhead.move(z=max_z * 2 / 3, speed=z_speed)
+        self.toolhead.move(z=height, speed=z_speed)
         self.toolhead.wait_moves()
         self.gcode.run_gcode("M140 S0\nM106 S255")
 
@@ -106,7 +113,7 @@ class TemperatureCalibrateMacro(Macro):
     @log_duration("Heat up phase")
     def _heat_up_phase(self, height: float, bed_temp: int, min_temp: int, max_temp: int, z_speed: int) -> list[Sample]:
         """Heat up and collect samples during temperature rise."""
-        logger.info("Starting heaters: bed=%d°C", bed_temp)
+        logger.info("Starting heaters: bed=%d°C, moving to z %.1f", bed_temp, height)
         self.gcode.run_gcode(f"M140 S{bed_temp}\nM106 S0")
 
         self.toolhead.move(z=height, speed=z_speed)
@@ -123,30 +130,10 @@ class TemperatureCalibrateMacro(Macro):
             samples.append(sample)
             count = len(samples)
             if count > 0 and count % 100 == 0:
-                logger.debug("Collected %d samples", count)
+                logger.info("Collected %d samples", count)
 
         self.mcu.register_callback(callback)
         self.gcode.run_gcode(f"TEMPERATURE_WAIT SENSOR='temperature_sensor {self.config.coil.name}' MINIMUM={max_temp}")
         self.mcu.unregister_callback(callback)
 
         return samples
-
-    def _write_samples_to_csv(self, samples: list[Sample], height: float) -> None:
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = f"cartographer_tempcalib_{timestamp}_{height:0.f}.csv"
-
-        temp_dir = tempfile.gettempdir()
-        output_file = os.path.join(temp_dir, filename)
-
-        with open(output_file, "w", newline="") as f:
-            # Write CSV header
-            _ = f.write("time,frequency,temperature,position_x,position_y,position_z\n")
-
-            # Write all sample rows
-            for sample in samples:
-                pos_x = sample.position.x if sample.position else ""
-                pos_y = sample.position.y if sample.position else ""
-                pos_z = sample.position.z if sample.position else ""
-
-                row = f"{sample.time},{sample.frequency},{sample.temperature},{pos_x},{pos_y},{pos_z}\n"
-                _ = f.write(row)
