@@ -112,7 +112,7 @@ class KlipperConfiguration(Configuration):
         save("coefficients", ",".join(map(str, config.coefficients)))
         save("domain", ",".join(map(str, config.domain)))
         save("z_offset", round(config.z_offset, 3))
-        save("reference_temperature", config.reference_temperature)
+        save("reference_temperature", round(config.reference_temperature, 2))
         self.scan.models[config.name] = config
 
     @override
