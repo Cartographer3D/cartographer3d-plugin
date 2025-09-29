@@ -2,14 +2,13 @@ from __future__ import annotations
 
 import logging
 import os
-import tempfile
-import time
 from enum import Enum
 from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams, Mcu, Sample
+from cartographer.lib.csv import generate_filepath, write_samples_to_csv
 from cartographer.macros.utils import get_enum_choice
 
 if TYPE_CHECKING:
@@ -55,7 +54,7 @@ class StreamMacro(Macro):
         # Generate and validate output file path
         output_file = params.get("FILE", None)
         if output_file is None:
-            output_file = self._generate_default_filename()
+            output_file = generate_filepath("stream")
 
         self._validate_output_path(output_file)
         self._output_file = output_file
@@ -83,7 +82,7 @@ class StreamMacro(Macro):
         samples = self._active_session.get_items()
         sample_count = len(samples)
 
-        self._write_samples_to_csv(samples, output_file)
+        write_samples_to_csv(samples, output_file)
 
         logger.info("Stopped data streaming. Collected %d samples. File saved: %s", sample_count, output_file)
         self._cleanup()
@@ -124,29 +123,6 @@ class StreamMacro(Macro):
         except OSError as e:
             msg = f"Cannot write to output file {output_file}: {e}"
             raise RuntimeError(msg) from e
-
-    def _write_samples_to_csv(self, samples: list[Sample], output_file: str) -> None:
-        """Write all samples to CSV file."""
-        with open(output_file, "w", newline="") as f:
-            # Write CSV header
-            _ = f.write("time,frequency,temperature,position_x,position_y,position_z\n")
-
-            # Write all sample rows
-            for sample in samples:
-                pos_x = sample.position.x if sample.position else ""
-                pos_y = sample.position.y if sample.position else ""
-                pos_z = sample.position.z if sample.position else ""
-
-                row = f"{sample.time},{sample.frequency},{sample.temperature},{pos_x},{pos_y},{pos_z}\n"
-                _ = f.write(row)
-
-    def _generate_default_filename(self) -> str:
-        """Generate a default filename in a safe location."""
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = f"cartographer_stream_{timestamp}.csv"
-
-        temp_dir = tempfile.gettempdir()
-        return os.path.join(temp_dir, filename)
 
     def _cleanup(self) -> None:
         """Clean up session state."""
