@@ -106,10 +106,10 @@ def _process_samples(samples: list[Sample]) -> tuple[float, float, float]:
         Tuple containing (a_coefficient, b_coefficient, frequency_at_vertex)
 
     Raises:
-        RuntimeError: If fewer than 500 samples provided (insufficient for calibration)
+        RuntimeError: If fewer than 300 samples provided (insufficient for calibration)
     """
-    if len(samples) < 500:
-        msg = f"Insufficient samples for calibration: {len(samples)} (need at least 500)"
+    if len(samples) < 300:
+        msg = f"Insufficient samples for calibration: {len(samples)} (need at least 300)"
         raise RuntimeError(msg)
 
     # Downsample if we have too many samples to improve processing speed
