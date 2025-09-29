@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import asdict
 from functools import cached_property
 from typing import TYPE_CHECKING, Callable, TypedDict, final
 
@@ -222,3 +223,10 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         }
         position = kinematics.calc_position(stepper_pos)
         return Position(x=position[0], y=position[1], z=position[2])
+
+    @override
+    def get_status(self, eventtime: float) -> dict[str, object]:
+        return {
+            "last_sample": asdict(self._stream.last_item) if self._stream.last_item else None,
+            "constants": self._constants.get_status() if self._constants else None,
+        }
