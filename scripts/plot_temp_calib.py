@@ -119,6 +119,33 @@ def plot_all_samples(
     ax.grid(True, alpha=0.3)
 
 
+def plot_compensation_magnitude(
+    ax: Axes, data_per_height: dict[float, list[Sample]], model: CoilTemperatureCompensationModel
+) -> None:
+    """Plot the magnitude of compensation applied at different temperatures"""
+    reference_temp = 50.0
+
+    for height, samples in sorted(data_per_height.items()):
+        temperatures = [sample.temperature for sample in samples]
+        compensation_deltas = [
+            sample.frequency - model.compensate(sample.frequency, sample.temperature, reference_temp)
+            for sample in samples
+        ]
+
+        # Sort by temperature for smooth line
+        temp_comp_pairs = sorted(zip(temperatures, compensation_deltas))
+        sorted_temps, sorted_comps = zip(*temp_comp_pairs)
+
+        ax.plot(sorted_temps, sorted_comps, "o-", label=f"{height}mm", alpha=0.7)
+
+    ax.set_xlabel("Temperature (°C)")
+    ax.set_ylabel("Compensation Applied (Hz)")
+    ax.set_title("Temperature Compensation Magnitude")
+    ax.grid(True, alpha=0.3)
+    ax.legend()
+    ax.axhline(y=0, color="black", linestyle="--", alpha=0.5)
+
+
 def plot_samples(ax: Axes, samples: list[Sample], label: str, model: CoilTemperatureCompensationModel) -> None:
     temperatures = [sample.temperature for sample in samples]
     frequencies = [sample.frequency for sample in samples]
@@ -244,23 +271,20 @@ if __name__ == "__main__":
         config = fit_coil_temperature_model(data_per_height, mcu.get_coil_reference())
         model = CoilTemperatureCompensationModel(config, mcu)
 
-        fig, axes = plt.subplots(1, len(heights) + 1, figsize=(15, 10))
-
-        # Handle case where there's only one height (axes won't be an array)
-        if len(heights) == 1:
-            axes = [axes[0], axes[1]]
+        fig, axes = plt.subplots(2, len(heights), figsize=(25, 15))
 
         for i, height in enumerate(heights):
             samples = data_per_height[height]
-            plot_samples(axes[i], samples, f"Height {height:.1f}mm", model)
+            plot_samples(axes[0, i], samples, f"Height {height:.1f}mm", model)
 
-        plot_all_samples(axes[-1], data_per_height, model)
+        plot_all_samples(axes[1, 0], data_per_height, model)
+        plot_compensation_magnitude(axes[1, 1], data_per_height, model)
         analyze_model(model, data_per_height)
 
         print(config)
 
         plt.tight_layout()
-        plt.show()
+        plt.savefig(os.path.join(directory, "temperature_compensation_analysis.png"))
 
     except Exception as e:
         print(f"Error: {e}")
