@@ -12,6 +12,7 @@ from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateConfiguration
 from cartographer.macros.migration_message import MigrationMessageMacro
 from cartographer.macros.model_manager import ScanModelManager, TouchModelManager
 from cartographer.macros.probe import ProbeAccuracyMacro, ProbeMacro, QueryProbeMacro, ZOffsetApplyProbeMacro
+from cartographer.macros.query import QueryMacro
 from cartographer.macros.scan import ScanAccuracyMacro
 from cartographer.macros.scan_calibrate import DEFAULT_SCAN_MODEL_NAME, ScanCalibrateMacro
 from cartographer.macros.stream import StreamMacro
@@ -86,6 +87,7 @@ class PrinterCartographer:
                     reg("PROBE_ACCURACY", ProbeAccuracyMacro(probe, toolhead), use_prefix=False),
                     reg("QUERY_PROBE", self.query_probe_macro, use_prefix=False),
                     reg("Z_OFFSET_APPLY_PROBE", ZOffsetApplyProbeMacro(probe, toolhead, config), use_prefix=False),
+                    reg("QUERY", QueryMacro(self.mcu, self.scan_mode, self.touch_mode)),
                     reg(
                         "BED_MESH_CALIBRATE",
                         BedMeshCalibrateMacro(
@@ -151,4 +153,5 @@ class PrinterCartographer:
         return {
             "scan": self.scan_mode.get_status(eventtime),
             "touch": self.touch_mode.get_status(eventtime),
+            "mcu": self.mcu.get_status(eventtime),
         }

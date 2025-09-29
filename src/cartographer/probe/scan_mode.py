@@ -97,7 +97,7 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         return self._temperature_compensation
 
     @override
-    def get_status(self, eventtime: float) -> object:
+    def get_status(self, eventtime: float) -> dict[str, object]:
         return {
             "current_model": self.get_model().name if self.has_model() else "none",
             "models": ", ".join(self._config.models.keys()),

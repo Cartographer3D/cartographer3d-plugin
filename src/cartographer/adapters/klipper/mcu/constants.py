@@ -88,3 +88,12 @@ class KlipperCartographerConstants:
     def calculate_temperature(self, raw_temp: int) -> float:
         temp_adc = raw_temp / self._adc_smooth_count * self._inverse_adc_max
         return self.thermistor.calc_temp(temp_adc)
+
+    def get_status(self) -> dict[str, object]:
+        return {
+            "sensor_frequency": self._sensor_frequency,
+            "inverse_adc_max": self._inverse_adc_max,
+            "adc_smooth_count": self._adc_smooth_count,
+            "minimum_adc_count": self.minimum_adc_count,
+            "minimum_count": self.minimum_count,
+        }

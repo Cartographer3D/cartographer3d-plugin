@@ -64,6 +64,12 @@ class Stream(ABC, Generic[T]):
         self.sessions: set[Session[T]] = set()
         self.callbacks: set[Callable[[T], None]] = set()
 
+    _last_item: T | None = None
+
+    @property
+    def last_item(self) -> T | None:
+        return self._last_item
+
     @abstractmethod
     def condition(self) -> Condition: ...
 
@@ -90,6 +96,7 @@ class Stream(ABC, Generic[T]):
 
     def add_item(self, item: T):
         """Pushes the item to all active sessions."""
+        self._last_item = item
 
         for session in self.sessions:
             session.add_item(item)
