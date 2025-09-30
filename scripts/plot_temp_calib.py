@@ -125,7 +125,8 @@ def plot_compensation_magnitude(
     """Plot the magnitude of compensation applied at different temperatures"""
     reference_temp = 50.0
 
-    for height, samples in sorted(data_per_height.items()):
+    colors = plt.colormaps["viridis"](np.linspace(0, 1, len(data_per_height)))
+    for i, (height, samples) in enumerate(sorted(data_per_height.items())):
         temperatures = [sample.temperature for sample in samples]
         compensation_deltas = [
             sample.frequency - model.compensate(sample.frequency, sample.temperature, reference_temp)
@@ -136,7 +137,7 @@ def plot_compensation_magnitude(
         temp_comp_pairs = sorted(zip(temperatures, compensation_deltas))
         sorted_temps, sorted_comps = zip(*temp_comp_pairs)
 
-        ax.plot(sorted_temps, sorted_comps, "o-", label=f"{height}mm", alpha=0.7)
+        ax.plot(sorted_temps, sorted_comps, "o-", label=f"{height}mm", alpha=0.7, color=colors[i])
 
     ax.set_xlabel("Temperature (°C)")
     ax.set_ylabel("Compensation Applied (Hz)")
