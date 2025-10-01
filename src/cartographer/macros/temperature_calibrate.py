@@ -39,8 +39,8 @@ class TemperatureCalibrateMacro(Macro):
             msg = "scipy is required for temperature calibration, but is not installed"
             raise RuntimeError(msg)
         min_temp = params.get_int("MIN_TEMP", default=40, minval=40, maxval=50)
-        max_temp = params.get_int("MAX_TEMP", default=70, minval=min_temp + 20, maxval=90)
-        bed_temp = params.get_int("BED_TEMP", default=90, minval=max_temp, maxval=120)
+        max_temp = params.get_int("MAX_TEMP", default=60, minval=min_temp + 20, maxval=90)
+        bed_temp = params.get_int("BED_TEMP", default=90, minval=max_temp + 30, maxval=120)
         z_speed = params.get_int("Z_SPEED", default=5, minval=1)
 
         if not self.toolhead.is_homed("x") or not self.toolhead.is_homed("y") or not self.toolhead.is_homed("z"):
