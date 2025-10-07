@@ -13,6 +13,7 @@ from cartographer.lib.log import log_duration
 
 if TYPE_CHECKING:
     from cartographer.interfaces.configuration import Configuration
+    from cartographer.interfaces.multiprocessing import TaskExecutor
 
 logger = logging.getLogger(__name__)
 
@@ -27,11 +28,13 @@ class TemperatureCalibrateMacro(Macro):
         toolhead: Toolhead,
         config: Configuration,
         gcode: GCodeDispatch,
+        task_executor: TaskExecutor,
     ) -> None:
         self.mcu = mcu
         self.toolhead = toolhead
         self.config = config
         self.gcode = gcode
+        self.task_executor = task_executor
 
     @override
     def run(self, params: MacroParams) -> None:
@@ -86,7 +89,7 @@ class TemperatureCalibrateMacro(Macro):
         self.gcode.run_gcode("M140 S0")
         self.toolhead.move(z=cooling_height, speed=z_speed)
 
-        model = fit_coil_temperature_model(data_per_height, self.mcu.get_coil_reference())
+        model = self.task_executor.run(fit_coil_temperature_model, data_per_height, self.mcu.get_coil_reference())
 
         self.config.save_coil_model(model)
 

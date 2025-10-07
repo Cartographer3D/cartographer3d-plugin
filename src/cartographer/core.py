@@ -102,7 +102,7 @@ class PrinterCartographer:
                     reg("STREAM", StreamMacro(self.mcu)),
                     reg(
                         "TEMPERATURE_CALIBRATE",
-                        TemperatureCalibrateMacro(self.mcu, toolhead, config, adapters.gcode),
+                        TemperatureCalibrateMacro(self.mcu, toolhead, config, adapters.gcode, adapters.task_executor),
                     ),
                     reg("SCAN_CALIBRATE", ScanCalibrateMacro(probe, toolhead, config)),
                     reg("SCAN_ACCURACY", ScanAccuracyMacro(self.scan_mode, toolhead, self.mcu)),
