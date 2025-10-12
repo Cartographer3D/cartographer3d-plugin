@@ -63,7 +63,28 @@ function check_virtualenv_exists() {
   fi
 }
 
+function ensure_numpy() {
+  echo "Checking numpy installation in '$klippy_env'..."
+
+  "$klippy_env/bin/python" -c "
+import sys
+try:
+    import numpy
+    version = tuple(map(int, numpy.__version__.split('.')[:2]))
+    if version >= (1, 16):
+        print(f'✓ numpy {numpy.__version__} already installed and >= 1.16')
+        sys.exit(0)
+    else:
+        print(f'numpy {numpy.__version__} found but < 1.16, upgrading...')
+        sys.exit(1)
+except ImportError:
+    print('numpy not found, installing numpy~=1.16...')
+    sys.exit(1)
+" || "$klippy_env/bin/pip" install "numpy~=1.16"
+}
+
 function install_dependencies() {
+  ensure_numpy
   echo "Installing or upgrading '$PACKAGE_NAME' into '$klippy_env'..."
   "$klippy_env/bin/pip" install --upgrade "$PACKAGE_NAME"
   echo "'$PACKAGE_NAME' has been successfully installed or upgraded into '$klippy_env'."
