@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
     from cartographer.interfaces.printer import Position
 
-Point: TypeAlias = "tuple[float|np.float64, float|np.float64]"
+Point: TypeAlias = "tuple[float|np.float_, float|np.float_]"
 Polygon: TypeAlias = "list[tuple[float, float]]"
 
 

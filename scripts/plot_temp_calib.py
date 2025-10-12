@@ -188,9 +188,9 @@ def analyze_model(model: CoilTemperatureCompensationModel, data_per_height: dict
             continue
 
         # Extract data for this height
-        temperatures = np.array([sample.temperature for sample in samples])
-        raw_frequencies = np.array([sample.frequency for sample in samples])
-        compensated_frequencies = np.array(
+        temperatures = np.asarray([sample.temperature for sample in samples])
+        raw_frequencies = np.asarray([sample.frequency for sample in samples])
+        compensated_frequencies = np.asarray(
             [model.compensate(sample.frequency, sample.temperature, reference_temp) for sample in samples]
         )
 

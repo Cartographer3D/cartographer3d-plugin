@@ -70,8 +70,8 @@ class SnakePathGenerator(PathGenerator):
 
 def u_turn(start: Point, end: Point, entry_dir: Vec, radius: float) -> Iterator[Point]:
     """Create two 90° arcs at each point for a smooth U-turn."""
-    p1: Vec = np.array(start, dtype=float)
-    p2: Vec = np.array(end, dtype=float)
+    p1: Vec = np.asarray(start, dtype=float)
+    p2: Vec = np.asarray(end, dtype=float)
     delta = p2 - p1
 
     if np.linalg.norm(delta) == 0:

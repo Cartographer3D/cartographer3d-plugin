@@ -10,8 +10,8 @@ if TYPE_CHECKING:
     from numpy.typing import NDArray
 
 
-def compute_mad(samples: NDArray[np.float64] | Sequence[float]) -> float:
-    samples = np.asarray(samples)
+def compute_mad(samples: NDArray[np.float_] | Sequence[float]) -> float:
+    samples = np.asarray(samples, dtype=float)
     if len(samples) < 1:
         return float("inf")
     median = np.median(samples)

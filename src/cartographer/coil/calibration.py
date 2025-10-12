@@ -9,6 +9,8 @@ from cartographer.interfaces.configuration import CoilCalibrationConfiguration
 from cartographer.lib.scipy_helpers import curve_fit
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
+
     from cartographer.interfaces.printer import CoilCalibrationReference, Sample
 
 
@@ -42,7 +44,7 @@ def fit_coil_temperature_model(
         frequencies.append(freq_at_vertex)  # frequency at quadratic vertex
 
     # Fit linear relationship: coefficient_a = linear_a * (freq - min_freq) + linear_b
-    freq_array = np.array(frequencies) - ref.min_frequency
+    freq_array: NDArray[np.float_] = np.asarray(frequencies) - ref.min_frequency
     linear_params_a, _ = curve_fit(param_linear, freq_array, coefficients_a, maxfev=100000, ftol=1e-10, xtol=1e-10)
 
     # Fit linear relationship: coefficient_b = linear_a * (freq - min_freq) + linear_b
