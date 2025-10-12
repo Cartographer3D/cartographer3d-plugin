@@ -37,8 +37,8 @@ class RandomPathGenerator(PathGenerator):
         remaining.remove(current)
 
         while remaining:
-            current_arr = np.array(current)
-            dists = np.array([np.linalg.norm(np.array(p) - current_arr) for p in remaining])
+            current_arr = np.asarray(current)
+            dists = np.asarray([np.linalg.norm(np.asarray(p) - current_arr) for p in remaining])
 
             if np.all(dists == 0):
                 next_point = random.choice(remaining)

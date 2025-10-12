@@ -81,10 +81,10 @@ def visualize_faulty_interpolation(
     max_y: float,
 ) -> None:
     """Visualize the mesh and interpolation of faulty regions."""
-    Z = np.array([p.z for p in positions]).reshape(size_y, size_x)  # noqa: N806
+    Z = np.asarray([p.z for p in positions], dtype=float).reshape(size_y, size_x)  # noqa: N806  # pyright: ignore[reportUnknownVariableType]
 
     output = transformer.apply_faulty_regions(positions, faulty_regions=faulty_regions)
-    Z_interp = np.array([p.z for p in output]).reshape(size_y, size_x)  # noqa: N806
+    Z_interp = np.asarray([p.z for p in output], dtype=float).reshape(size_y, size_x)  # noqa: N806  # pyright: ignore[reportUnknownVariableType]
 
     fig, axes = plt.subplots(1, 2, figsize=(12, 6))
     fig.suptitle("Bed Mesh Faulty Region Interpolation")

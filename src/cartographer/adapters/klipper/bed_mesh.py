@@ -46,7 +46,7 @@ class KlipperBedMesh(BedMeshAdapter):
 
     @override
     def apply_mesh(self, mesh_points: list[Position], profile_name: str | None = None) -> None:
-        coords = np.array([p.as_tuple() for p in mesh_points])
+        coords = np.asarray([p.as_tuple() for p in mesh_points])
 
         xs_rounded = np.round(coords[:, 0], ROUND_DECIMALS)
         ys_rounded = np.round(coords[:, 1], ROUND_DECIMALS)

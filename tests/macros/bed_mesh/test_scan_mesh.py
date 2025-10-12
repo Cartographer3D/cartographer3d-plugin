@@ -62,7 +62,7 @@ class MockBedMeshAdapter(BedMeshAdapter):
         self.mesh_positions = mesh_points.copy()
         self.mesh_profile = profile_name or ""
 
-        coords = np.array([p.as_tuple() for p in mesh_points])
+        coords = np.asarray([p.as_tuple() for p in mesh_points])
 
         xs_rounded = np.round(coords[:, 0], 2)
         ys_rounded = np.round(coords[:, 1], 2)

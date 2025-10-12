@@ -52,12 +52,12 @@ class MeshGrid(Region):
             raise ValueError(msg)
 
     @property
-    def x_coords(self) -> NDArray[np.float64]:
+    def x_coords(self) -> NDArray[np.float_]:
         """Get array of x coordinates."""
         return np.round(np.linspace(self.min_point[0], self.max_point[0], self.x_resolution), 2)
 
     @property
-    def y_coords(self) -> NDArray[np.float64]:
+    def y_coords(self) -> NDArray[np.float_]:
         """Get array of y coordinates."""
         return np.round(np.linspace(self.min_point[1], self.max_point[1], self.y_resolution), 2)
 
@@ -182,7 +182,7 @@ class CoordinateTransformer:
         if not positions:
             return []
         # Convert to NumPy array (shape: (N, 3))
-        arr: NDArray[np.float64] = np.array([(p.x, p.y, p.z) for p in positions], dtype=float)
+        arr: NDArray[np.float_] = np.asarray([(p.x, p.y, p.z) for p in positions])
 
         # Extract sorted unique coords
         xs = np.unique(arr[:, 0])
@@ -214,9 +214,9 @@ class CoordinateTransformer:
 
     def _bilinear_interpolate(
         self,
-        xs: NDArray[np.float64],
-        ys: NDArray[np.float64],
-        z_grid: NDArray[np.float64],
+        xs: NDArray[np.float_],
+        ys: NDArray[np.float_],
+        z_grid: NDArray[np.float_],
         point: Point,
     ) -> float:
         """Perform bilinear interpolation to find height at a point."""
@@ -257,7 +257,7 @@ class CoordinateTransformer:
             return []
 
         # Convert to array (N,3)
-        arr: NDArray[np.float_] = np.array([(p.x, p.y, p.z) for p in positions], dtype=float)
+        arr: NDArray[np.float_] = np.asarray([(p.x, p.y, p.z) for p in positions])
 
         xs = np.unique(arr[:, 0])
         ys = np.unique(arr[:, 1])

@@ -121,8 +121,8 @@ class EstimateBacklashMacro(Macro):
 
 
 def welchs_ttest(a_in: list[float], b_in: list[float]) -> tuple[float, float]:
-    a: NDArray[np.float64] = np.array(a_in, dtype=float)
-    b: NDArray[np.float64] = np.array(b_in, dtype=float)
+    a: NDArray[np.float_] = np.asarray(a_in, dtype=float)
+    b: NDArray[np.float_] = np.asarray(b_in, dtype=float)
 
     mean_a = np.mean(a)
     mean_b = np.mean(b)

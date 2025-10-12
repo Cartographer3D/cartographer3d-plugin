@@ -89,8 +89,8 @@ class SpiralPathGenerator(PathGenerator):
 
 
 def corner(point: Point, entry_dir: tuple[float, float], radius: float) -> Iterator[Point]:
-    p1: Vec = np.array(point, dtype=float)
-    direction: Vec = np.array(entry_dir, dtype=float)
+    p1: Vec = np.asarray(point, dtype=float)
+    direction: Vec = np.asarray(entry_dir, dtype=float)
     turn_ccw = True
     turn_angle = 90
 

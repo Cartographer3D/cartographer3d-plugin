@@ -56,10 +56,10 @@ def test_path_generator_covers_all_points(generator: GeneratorFixture, grid_poin
     max_dist = 0.2  # maximum allowed miss distance per input point
 
     path = list(gen.generate_path(points, (0, 100), (0, 100)))
-    path_array = np.array(path)
+    path_array = np.asarray(path)
 
     for _, pt in enumerate(points):
-        pt = np.array(pt)
+        pt = np.asarray(pt)
         dists = np.linalg.norm(path_array - pt, axis=1)
         min_dist = np.min(dists)
         assert min_dist <= max_dist, (
@@ -69,5 +69,5 @@ def test_path_generator_covers_all_points(generator: GeneratorFixture, grid_poin
     # Optional: continuity check
     max_step = 10.0
     for p0, p1 in zip(path, path[1:]):
-        dist = np.linalg.norm(np.array(p1) - np.array(p0))
+        dist = np.linalg.norm(np.asarray(p1) - np.asarray(p0))
         assert dist <= max_step, f"{gen_name} discontinuity {dist:.2f} on {grid_name}"

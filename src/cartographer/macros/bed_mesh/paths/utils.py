@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Iterator, Literal, cast
+from typing import TYPE_CHECKING, Iterator, Literal, cast
 
 import numpy as np
 from typing_extensions import TypeAlias
@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 
     from cartographer.macros.bed_mesh.interfaces import Point
 
-Vec: TypeAlias = "NDArray[np.float64]"
+Vec: TypeAlias = "NDArray[np.float_]"
 
 
 def cluster_points(points: list[Point], axis: Literal["x", "y"], tol: float = 1e-3) -> list[list[Point]]:
@@ -52,7 +52,7 @@ def arc_points(
 
     d_theta = np.arccos(1 - max_dev / radius)
     n_points = max(1, int(np.ceil(abs(span_rad) / d_theta)))
-    thetas = cast("np.ndarray[Any, np.dtype[np.float64]]", start_rad + np.linspace(0, span_rad, n_points + 1))  # pyright: ignore[reportExplicitAny]
+    thetas = cast("NDArray[np.float_]", start_rad + np.linspace(0, span_rad, n_points + 1))
 
     xs = cx + radius * np.cos(thetas)
     ys = cy + radius * np.sin(thetas)
@@ -61,7 +61,7 @@ def arc_points(
 
 
 def perpendicular(v: Vec, ccw: bool = True) -> Vec:
-    return np.array([-v[1], v[0]]) if ccw else np.array([v[1], -v[0]])
+    return np.asarray([-v[1], v[0]]) if ccw else np.asarray([v[1], -v[0]])
 
 
 def angle_deg(v: Vec) -> float:
@@ -77,7 +77,7 @@ def row_direction(row: list[Point]) -> Vec:
     if len(row) < 2:
         msg = "Need at least two points to determine direction"
         raise ValueError(msg)
-    p0: Vec = np.array(row[0], dtype=float)
-    p1: Vec = np.array(row[1], dtype=float)
+    p0: Vec = np.asarray(row[0], dtype=float)
+    p1: Vec = np.asarray(row[1], dtype=float)
     dir_vec = p1 - p0
     return dir_vec / np.linalg.norm(dir_vec)  # normalized
