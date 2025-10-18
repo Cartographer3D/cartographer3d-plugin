@@ -206,10 +206,18 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
     def _generate_path(self, grid: MeshGrid, params: MeshScanParams) -> list[Point]:
         """Generate scanning path from grid points."""
         mesh_points = grid.generate_points()
-        x_axis_limits = self.toolhead.get_axis_limits("x")
-        y_axis_limits = self.toolhead.get_axis_limits("y")
 
-        return list(params.path_generator.generate_path(mesh_points, x_axis_limits, y_axis_limits))
+        x_min, x_max = self.toolhead.get_axis_limits("x")
+        y_min, y_max = self.toolhead.get_axis_limits("y")
+        ox, oy = self.probe.scan.offset.x, self.probe.scan.offset.y
+
+        return list(
+            params.path_generator.generate_path(
+                mesh_points,
+                (x_min + max(0, ox), x_max + min(0, ox)),
+                (y_min + max(0, oy), y_max + min(0, oy)),
+            )
+        )
 
     @log_duration("Collecting samples along the scanning path")
     def _collect_samples(self, path: list[Point], params: MeshScanParams) -> list[Sample]:
