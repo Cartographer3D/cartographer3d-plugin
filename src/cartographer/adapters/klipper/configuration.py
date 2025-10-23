@@ -65,8 +65,8 @@ class KlipperConfigWrapper(ParseConfigWrapper):
         return self._config.getfloatlist(option, count=count, default=None)
 
     @override
-    def get_int(self, option: str, default: int) -> int:
-        return self._config.getint(option, default=default)
+    def get_int(self, option: str, default: int, minimum: int | None = None) -> int:
+        return self._config.getint(option, default=default, minval=minimum)
 
     @override
     def get_required_int_list(self, option: str, count: int | None = None) -> list[int]:

@@ -225,7 +225,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         return self.offset.z
 
     def _log_sample_stats(self, message: str, samples: Sequence[float]) -> None:
-        max_v, min_v = max(samples), min(samples)
+        max_v, min_v = max(samples, default=float("inf")), min(samples, default=float("-inf"))
         mean = np.mean(samples)
         median = np.median(samples)
         range_v = max_v - min_v
