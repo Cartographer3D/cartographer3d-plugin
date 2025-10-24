@@ -21,6 +21,11 @@ def setup_console_logger(console: Console) -> logging.Handler:
     """
     Configure console logging for the cartographer module.
     """
+    # Remove any existing handlers of these types
+    for handler in root_logger.handlers[:]:
+        if isinstance(handler, (PrefixingHandler, GCodeConsoleHandler)):
+            root_logger.removeHandler(handler)
+
     # Add a prefixing handler to root logger
     prefix_handler = PrefixingHandler()
     root_logger.addHandler(prefix_handler)
