@@ -98,6 +98,7 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         self._constants = KlipperCartographerConstants(self.klipper_mcu)
         self._commands = KlipperCartographerCommands(self.klipper_mcu)
         self.klipper_mcu.register_response(self._handle_data, "cartographer_data")
+        logger.info("Initialized %s MCU", self.klipper_mcu.get_status()["mcu_version"])
 
     @override
     def start_homing_scan(self, print_time: float, frequency: float) -> ReactorCompletion:
