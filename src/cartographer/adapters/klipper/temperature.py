@@ -4,7 +4,7 @@ import logging
 from typing import TYPE_CHECKING, final
 
 if TYPE_CHECKING:
-    from cartographer.adapters.klipper.mcu import KlipperCartographerMcu
+    from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
     from cartographer.interfaces.configuration import CoilConfiguration
     from cartographer.interfaces.printer import Sample
 
