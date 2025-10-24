@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from stepper import MCU_stepper
 
     from cartographer.adapters.klipper.configuration import KlipperConfiguration
-    from cartographer.adapters.klipper.mcu import KlipperCartographerMcu
+    from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
     from cartographer.adapters.klipper.toolhead import KlipperToolhead
     from cartographer.core import MacroRegistration
     from cartographer.interfaces.printer import Endstop

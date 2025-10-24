@@ -10,6 +10,7 @@ from mcu import MCU_trsync
 from mcu import TriggerDispatch as KlipperTriggerDispatch
 from typing_extensions import override
 
+from cartographer.adapters.klipper.mcu.async_processor import AsyncProcessor
 from cartographer.adapters.klipper.mcu.commands import (
     HomeCommand,
     KlipperCartographerCommands,
@@ -27,7 +28,7 @@ from cartographer.interfaces.printer import CoilCalibrationReference, Mcu, Posit
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
-    from reactor import ReactorCompletion
+    from reactor import Reactor, ReactorCompletion
 
     from cartographer.stream import Session
 
@@ -76,10 +77,17 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     ):
         self.printer = config.get_printer()
         self.klipper_mcu = mcu.get_printer_mcu(self.printer, config.get("mcu"))
-        self._stream = KlipperStream[Sample](self, self.klipper_mcu.get_printer().get_reactor())
+        self._reactor: Reactor = self.klipper_mcu.get_printer().get_reactor()
+        self._stream = KlipperStream[Sample](self, self._reactor)
         self.dispatch = KlipperTriggerDispatch(self.klipper_mcu)
 
         self.motion_report = self.printer.load_object(config, "motion_report")
+
+        # Async processor for handling raw data on main thread
+        self._async_processor = AsyncProcessor[_RawData](
+            self._reactor,
+            self._process_raw_data,
+        )
 
         self.printer.register_event_handler("klippy:mcu_identify", self._handle_mcu_identify)
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
@@ -178,7 +186,33 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         self.stop_streaming()
 
     def _handle_data(self, data: _RawData) -> None:
+        """
+        Handle raw data from MCU response handler (runs on MCU thread).
+
+        This method is called from the MCU response thread and should not
+        access any state that requires thread synchronization. Instead, we
+        validate and queue the data for processing on the main reactor thread.
+
+        Parameters:
+        -----------
+        data : _RawData
+            Raw data from the MCU.
+        """
         self._validate_data(data)
+        self._async_processor.queue_item(data)
+
+    def _process_raw_data(self, data: _RawData) -> None:
+        """
+        Process raw MCU data on the main reactor thread.
+
+        This method runs on the main thread where it's safe to access
+        stepper positions and other shared state.
+
+        Parameters:
+        -----------
+        data : _RawData
+            Raw data from the MCU to process.
+        """
         clock = self.klipper_mcu.clock32_to_clock64(data["clock"])
         time = self.klipper_mcu.clock_to_print_time(clock)
 
@@ -197,6 +231,17 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     _data_error: str | None = None
 
     def _validate_data(self, data: _RawData) -> None:
+        """
+        Validate raw data from MCU (thread-safe operation).
+
+        This validation only checks the frequency count and doesn't access
+        any shared state, so it's safe to call from the MCU response thread.
+
+        Parameters:
+        -----------
+        data : _RawData
+            Raw data from the MCU to validate.
+        """
         count = data["data"]
         error: str | None = None
         if count == SHORTED_FREQUENCY_VALUE:
@@ -216,6 +261,22 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
             self.klipper_mcu.get_printer().invoke_shutdown(error % {"count": count})
 
     def get_requested_position(self, time: float) -> Position | None:
+        """
+        Get the requested position at a given time.
+
+        This method MUST be called from the main reactor thread as it
+        accesses stepper positions which are not thread-safe.
+
+        Parameters:
+        -----------
+        time : float
+            The time to query the position at.
+
+        Returns:
+        --------
+        Position | None
+            The position at the given time, or None if unavailable.
+        """
         kinematics = self.kinematics
         stepper_pos = {
             stepper.get_name(): stepper.mcu_to_commanded_position(stepper.get_past_mcu_position(time))

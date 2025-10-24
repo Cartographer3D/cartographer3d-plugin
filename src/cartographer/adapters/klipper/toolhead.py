@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from stepper import MCU_stepper
     from toolhead import ToolHead as KlippyToolhead
 
-    from cartographer.adapters.klipper.mcu import KlipperCartographerMcu
+    from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
 
 logger = logging.getLogger(__name__)
 

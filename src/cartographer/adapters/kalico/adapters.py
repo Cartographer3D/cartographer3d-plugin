@@ -7,7 +7,7 @@ from cartographer.adapters.klipper.axis_twist_compensation import KlipperAxisTwi
 from cartographer.adapters.klipper.bed_mesh import KlipperBedMesh
 from cartographer.adapters.klipper.configuration import KlipperConfiguration
 from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
-from cartographer.adapters.klipper.mcu import KlipperCartographerMcu
+from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
 from cartographer.adapters.klipper.task_executor import KlipperMultiprocessingExecutor
 from cartographer.adapters.klipper.toolhead import KlipperToolhead
 from cartographer.runtime.adapters import Adapters

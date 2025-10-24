@@ -16,7 +16,7 @@ if TYPE_CHECKING:
     from reactor import ReactorCompletion
     from stepper import MCU_stepper
 
-    from cartographer.adapters.klipper.mcu import KlipperCartographerMcu
+    from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
     from cartographer.interfaces.printer import Endstop
 
 logger = logging.getLogger(__name__)
