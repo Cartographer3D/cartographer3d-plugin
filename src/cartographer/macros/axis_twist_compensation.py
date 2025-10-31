@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Literal, Protocol, final
 import numpy as np
 from typing_extensions import override
 
-from cartographer.interfaces.printer import Macro, MacroParams, Toolhead
+from cartographer.interfaces.printer import AxisTwistCompensation, Macro, MacroParams, Toolhead
 
 if TYPE_CHECKING:
     from cartographer.interfaces.configuration import Configuration
@@ -32,7 +32,7 @@ class CompensationResult:
     values: list[float]
 
 
-class AxisTwistCompensationAdapter(Protocol):
+class AxisTwistCompensationAdapter(AxisTwistCompensation, Protocol):
     move_height: float
     speed: float
 

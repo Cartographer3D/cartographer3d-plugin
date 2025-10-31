@@ -55,6 +55,7 @@ class PrinterCartographer:
             CoilTemperatureCompensationModel(config.coil.calibration, adapters.mcu)
             if config.coil.calibration
             else None,
+            adapters.axis_twist_compensation,
         )
         if DEFAULT_SCAN_MODEL_NAME in adapters.config.scan.models:
             self.scan_mode.load_model(DEFAULT_SCAN_MODEL_NAME)
@@ -94,6 +95,7 @@ class PrinterCartographer:
                             probe,
                             toolhead,
                             adapters.bed_mesh,
+                            adapters.axis_twist_compensation,
                             adapters.task_executor,
                             BedMeshCalibrateConfiguration.from_config(config),
                         ),

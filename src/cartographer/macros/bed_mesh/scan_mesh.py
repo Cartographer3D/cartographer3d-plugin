@@ -8,7 +8,15 @@ from typing import TYPE_CHECKING, Literal, final
 
 from typing_extensions import override
 
-from cartographer.interfaces.printer import Macro, MacroParams, Position, Sample, SupportsFallbackMacro, Toolhead
+from cartographer.interfaces.printer import (
+    AxisTwistCompensation,
+    Macro,
+    MacroParams,
+    Position,
+    Sample,
+    SupportsFallbackMacro,
+    Toolhead,
+)
 from cartographer.lib.log import log_duration
 from cartographer.macros.bed_mesh.helpers import (
     AdaptiveMeshCalculator,
@@ -141,6 +149,7 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         probe: Probe,
         toolhead: Toolhead,
         adapter: BedMeshAdapter,
+        axis_twist_compensation: AxisTwistCompensation | None,
         task_executor: TaskExecutor,
         config: BedMeshCalibrateConfiguration,
     ):
@@ -150,6 +159,7 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         self.task_executor = task_executor
         self.config = config
         self.coordinate_transformer = CoordinateTransformer(probe.scan.offset)
+        self.axis_twist_compensation = axis_twist_compensation
         self._fallback: Macro | None = None
 
     @override
@@ -199,9 +209,10 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         self._move_probe_to_point(zrp, params.speed)
         zero_measure = params.height - self.probe.scan.measure_distance()
         nx, ny = self.coordinate_transformer.probe_to_nozzle(zrp)
-        compensated = self.toolhead.apply_axis_twist_compensation(Position(x=float(nx), y=float(ny), z=zero_measure))
+        if self.axis_twist_compensation:
+            zero_measure += self.axis_twist_compensation.get_z_compensation_value(x=float(nx), y=float(ny))
 
-        return self.coordinate_transformer.normalize_to_zero_reference_point(positions, zero_height=compensated.z)
+        return self.coordinate_transformer.normalize_to_zero_reference_point(positions, zero_height=zero_measure)
 
     def _generate_path(self, grid: MeshGrid, params: MeshScanParams) -> list[Point]:
         """Generate scanning path from grid points."""
@@ -289,9 +300,10 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
             # Calculate compensated height
             z = height - result.z
             nx, ny = self.coordinate_transformer.probe_to_nozzle(result.point)
-            compensated = self.toolhead.apply_axis_twist_compensation(Position(x=float(nx), y=float(ny), z=z))
+            if self.axis_twist_compensation:
+                z += self.axis_twist_compensation.get_z_compensation_value(x=float(nx), y=float(ny))
 
             # Convert back to probe coordinates
-            positions.append(Position(x=float(rx), y=float(ry), z=compensated.z))
+            positions.append(Position(x=float(rx), y=float(ry), z=z))
 
         return positions

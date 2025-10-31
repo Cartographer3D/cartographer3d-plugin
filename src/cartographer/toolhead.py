@@ -74,7 +74,3 @@ class BacklashCompensatingToolhead(Toolhead):
     @override
     def get_extruder_temperature(self) -> TemperatureStatus:
         return self.toolhead.get_extruder_temperature()
-
-    @override
-    def apply_axis_twist_compensation(self, position: Position) -> Position:
-        return self.toolhead.apply_axis_twist_compensation(position)

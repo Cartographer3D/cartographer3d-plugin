@@ -15,6 +15,7 @@ from cartographer.interfaces.printer import (
     TemperatureStatus,
     Toolhead,
 )
+from cartographer.macros.axis_twist_compensation import AxisTwistCompensationAdapter
 from cartographer.probe.probe import Probe
 from cartographer.probe.scan_mode import ScanMode, ScanModeConfiguration
 from cartographer.probe.touch_mode import TouchMode, TouchModeConfiguration
@@ -42,9 +43,6 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
     def get_position() -> Position:
         return Position(x=10, y=10, z=5)
 
-    def apply_axis_twist_compensation(position: Position) -> Position:
-        return position
-
     def get_extruder_temperature() -> TemperatureStatus:
         return TemperatureStatus(30, 30)
 
@@ -54,7 +52,6 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
         endstop.on_home_end(homing_state)
 
     mock.get_position = get_position
-    mock.apply_axis_twist_compensation = apply_axis_twist_compensation
     mock.get_extruder_temperature = get_extruder_temperature
     mock.z_home_end = z_home_end
     last_move_time = 0
@@ -68,6 +65,18 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
 
     mock.z_probing_move = mocker.Mock(return_value=0)
 
+    return mock
+
+
+@pytest.fixture
+def axis_twist_compensation_adapter(mocker: MockerFixture) -> AxisTwistCompensationAdapter:
+    mock = mocker.MagicMock(spec=AxisTwistCompensationAdapter)
+
+    def get_z_compensation_value(x: float, y: float) -> float:
+        del x, y
+        return 0
+
+    mock.get_z_compensation_value = get_z_compensation_value
     return mock
 
 
@@ -94,8 +103,10 @@ def config() -> Configuration:
 
 
 @pytest.fixture
-def scan(mcu: Mcu, toolhead: Toolhead, config: Configuration):
-    return ScanMode(mcu, toolhead, ScanModeConfiguration.from_config(config), None)
+def scan(
+    mcu: Mcu, toolhead: Toolhead, axis_twist_compensation_adapter: AxisTwistCompensationAdapter, config: Configuration
+):
+    return ScanMode(mcu, toolhead, ScanModeConfiguration.from_config(config), None, axis_twist_compensation_adapter)
 
 
 @pytest.fixture

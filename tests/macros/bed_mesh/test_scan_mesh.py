@@ -171,7 +171,7 @@ class TestBedMeshIntegration:
     ):
         """Create a bed mesh macro with mocked dependencies."""
         task_executor = InlineTaskExecutor()
-        macro = BedMeshCalibrateMacro(probe, toolhead, adapter, task_executor, mesh_config)
+        macro = BedMeshCalibrateMacro(probe, toolhead, adapter, None, task_executor, mesh_config)
 
         return macro
 
