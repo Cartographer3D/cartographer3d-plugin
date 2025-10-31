@@ -17,3 +17,6 @@ class AxisTwistCompensation:
     compensation_end_y: float | None
 
     def clear_compensations(self, axis: str) -> None: ...
+    def get_z_compensation_value(self, pos: list[float]) -> float:
+        """Only available in Kalico"""
+        ...

@@ -36,7 +36,3 @@ class MockToolhead:
         """Mock axis limits - return arbitrary limits."""
         del axis
         return (0.0, 100.0)
-
-    def apply_axis_twist_compensation(self, position: Position) -> Position:
-        """Mock compensation - just return the same position."""
-        return position

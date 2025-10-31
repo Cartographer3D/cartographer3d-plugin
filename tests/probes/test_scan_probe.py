@@ -11,6 +11,7 @@ from cartographer.interfaces.printer import HomingState, Position, Sample, Toolh
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
+    from cartographer.macros.axis_twist_compensation import AxisTwistCompensationAdapter
     from cartographer.probe.probe import Probe
     from cartographer.stream import Session
 
@@ -73,17 +74,22 @@ def test_probe_returns_trigger_position(probe: Probe, toolhead: Toolhead, sessio
     assert trigger_pos == pytest.approx(probe.scan.probe_height + z_pos - dist)  # pyright:ignore[reportUnknownMemberType]
 
 
-def test_probe_applies_axis_twist_compensation(probe: Probe, toolhead: Toolhead, session: Session[Sample]):
-    dist = 1
+def test_probe_applies_axis_twist_compensation(
+    probe: Probe,
+    toolhead: Toolhead,
+    session: Session[Sample],
+    axis_twist_compensation_adapter: AxisTwistCompensationAdapter,
+):
+    dist = 2
     z_pos = 2
     z_comp = 0.5
     session.get_items = lambda: [sample(frequency=dist) for _ in range(11)]
     toolhead.get_position = lambda: Position(0, 0, z_pos)
-    toolhead.apply_axis_twist_compensation = lambda position: Position(position.x, position.y, z_comp)
+    axis_twist_compensation_adapter.get_z_compensation_value = lambda x, y: z_comp
 
     trigger_pos = probe.scan.perform_probe()
 
-    assert trigger_pos == z_comp
+    assert trigger_pos == dist + z_comp
 
 
 def test_probe_errors_outside_range(probe: Probe, session: Session[Sample]):

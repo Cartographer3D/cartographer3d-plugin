@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, Protocol
 import numpy as np
 from typing_extensions import override
 
-from cartographer.interfaces.printer import Endstop, HomingState, Position, ProbeMode, Sample
+from cartographer.interfaces.printer import AxisTwistCompensation, Endstop, HomingState, Position, ProbeMode, Sample
 from cartographer.probe.scan_model import ScanModelSelectorMixin, TemperatureCompensationModel
 
 if TYPE_CHECKING:
@@ -81,6 +81,7 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         toolhead: Toolhead,
         config: ScanModeConfiguration,
         temperature_compensation: TemperatureCompensationModel | None,
+        axis_twist_compensation: AxisTwistCompensation | None,
     ) -> None:
         super().__init__(config.models)
         self._last_homing_time: float = 0.0
@@ -89,6 +90,7 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         self.probe_height: float = TRIGGER_DISTANCE
         self._mcu: Mcu = mcu
         self._temperature_compensation: TemperatureCompensationModel | None = temperature_compensation
+        self._axis_twist_compensation: AxisTwistCompensation | None = axis_twist_compensation
 
         self.last_z_result: float | None = None
 
@@ -127,9 +129,12 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
             msg = "Toolhead stopped outside model range"
             raise RuntimeError(msg)
 
-        pos = self._toolhead.apply_axis_twist_compensation(Position(toolhead_pos.x, toolhead_pos.y, dist))
-        logger.info("probe at %.3f,%.3f is z=%.6f", pos.x, pos.y, pos.z)
-        self.last_z_result = pos.z
+        z_result = dist
+        if self._axis_twist_compensation:
+            z_result += self._axis_twist_compensation.get_z_compensation_value(x=toolhead_pos.x, y=toolhead_pos.y)
+
+        logger.info("probe at %.3f,%.3f is z=%.6f", toolhead_pos.x, toolhead_pos.y, z_result)
+        self.last_z_result = z_result
         return self.last_z_result
 
     def measure_distance(

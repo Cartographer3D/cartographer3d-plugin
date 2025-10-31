@@ -137,6 +137,10 @@ class GCodeDispatch(Protocol):
         ...
 
 
+class AxisTwistCompensation(Protocol):
+    def get_z_compensation_value(self, *, x: float, y: float) -> float: ...
+
+
 class Toolhead(Protocol):
     def get_last_move_time(self) -> float:
         """Returns the last time the toolhead moved."""
@@ -192,8 +196,4 @@ class Toolhead(Protocol):
 
     def get_extruder_temperature(self) -> TemperatureStatus:
         """Get the current and target temperature of the extruder."""
-        ...
-
-    def apply_axis_twist_compensation(self, position: Position) -> Position:
-        """Apply axis twist compensation to the given position."""
         ...
