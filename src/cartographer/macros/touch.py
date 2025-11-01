@@ -10,6 +10,7 @@ from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams
 from cartographer.lib.statistics import compute_mad
+from cartographer.macros.utils import forced_z
 
 if TYPE_CHECKING:
     from cartographer.interfaces.printer import Toolhead
@@ -117,31 +118,22 @@ class TouchHomeMacro(Macro):
             msg = "Must home x and y before touch homing"
             raise RuntimeError(msg)
 
-        forced_z = False
-        if not self._toolhead.is_homed("z"):
-            forced_z = True
-            _, z_max = self._toolhead.get_axis_limits("z")
-            self._toolhead.set_z_position(z=z_max - 10)
+        with forced_z(self._toolhead):
+            pos = self._toolhead.get_position()
+            # TODO: Get rid of magic constants
+            self._toolhead.move(
+                z=pos.z + 2,
+                speed=5,
+            )
+            home_x, home_y = self._get_homing_position(random_radius)
+            self._toolhead.move(
+                x=home_x,
+                y=home_y,
+                speed=self._travel_speed,
+            )
+            self._toolhead.wait_moves()
 
-        pos = self._toolhead.get_position()
-        # TODO: Get rid of magic constants
-        self._toolhead.move(
-            z=pos.z + 2,
-            speed=5,
-        )
-        home_x, home_y = self._get_homing_position(random_radius)
-        self._toolhead.move(
-            x=home_x,
-            y=home_y,
-            speed=self._travel_speed,
-        )
-        self._toolhead.wait_moves()
-
-        try:
             trigger_pos = self._probe.perform_probe()
-        finally:
-            if forced_z:
-                self._toolhead.clear_z_homing_state()
 
         self._toolhead.z_home_end(self._probe)
         pos = self._toolhead.get_position()

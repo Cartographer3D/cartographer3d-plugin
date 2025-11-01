@@ -10,7 +10,7 @@ from typing_extensions import override
 from cartographer.interfaces.configuration import Configuration, TouchModelConfiguration
 from cartographer.interfaces.printer import Macro, MacroParams, Mcu
 from cartographer.lib.statistics import compute_mad
-from cartographer.macros.utils import get_choice
+from cartographer.macros.utils import forced_z, get_choice
 from cartographer.probe.touch_mode import MAD_TOLERANCE, TouchMode, TouchModeConfiguration
 
 if TYPE_CHECKING:
@@ -182,17 +182,8 @@ class TouchCalibrateMacro(Macro):
             strategy=strategy,
         )
 
-        forced_z = False
-        try:
-            if not self._toolhead.is_homed("z"):
-                forced_z = True
-                _, z_max = self._toolhead.get_axis_limits("z")
-                self._toolhead.set_z_position(z=z_max - 10)
-
+        with forced_z(self._toolhead):
             threshold = self._find_acceptable_threshold(calibration_mode, threshold_start, threshold_max)
-        finally:
-            if forced_z:
-                self._toolhead.clear_z_homing_state()
 
         if threshold is None:
             logger.info(

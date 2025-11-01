@@ -151,7 +151,7 @@ def test_touch_home_macro(
 
     macro.run(params)
 
-    assert set_z_position_spy.mock_calls == [mocker.call(expected)]
+    assert set_z_position_spy.mock_calls == [mocker.call(z=mocker.ANY), mocker.call(expected)]
 
 
 @pytest.mark.parametrize(

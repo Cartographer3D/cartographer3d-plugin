@@ -51,6 +51,7 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
         homing_state.is_homing_z = mocker.Mock(return_value=True)
         endstop.on_home_end(homing_state)
 
+    mock.get_axis_limits = mocker.Mock(return_value=(0, 100))
     mock.get_position = get_position
     mock.get_extruder_temperature = get_extruder_temperature
     mock.z_home_end = z_home_end
