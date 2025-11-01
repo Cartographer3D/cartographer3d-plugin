@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
 from enum import Enum
-from typing import TYPE_CHECKING, Iterable, TypeVar
+from typing import TYPE_CHECKING, Iterable, Iterator, TypeVar
 
 if TYPE_CHECKING:
-    from cartographer.interfaces.printer import MacroParams
+    from cartographer.interfaces.printer import MacroParams, Toolhead
 
 T = TypeVar("T", bound=Enum)
 
@@ -61,3 +62,22 @@ def get_float_tuple(params: MacroParams, option: str, default: tuple[float, floa
         raise ValueError(msg)
 
     return (float(parts[0]), float(parts[1]))
+
+
+@contextmanager
+def forced_z(toolhead: Toolhead) -> Iterator[None]:
+    """
+    Context manager that temporarily sets a forced Z position for homing operations.
+
+    Parameters
+    ----------
+    toolhead : Toolhead
+        The toolhead instance to manage Z positioning for.
+    """
+    _, z_max = toolhead.get_axis_limits("z")
+    toolhead.set_z_position(z=z_max - 10)
+
+    try:
+        yield
+    finally:
+        toolhead.clear_z_homing_state()
