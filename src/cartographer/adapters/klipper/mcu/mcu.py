@@ -217,12 +217,14 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         clock = self.klipper_mcu.clock32_to_clock64(data["clock"])
         time = self.klipper_mcu.clock_to_print_time(clock)
 
-        frequency = self.constants.count_to_frequency(data["data"])
+        count = data["data"]
+        frequency = self.constants.count_to_frequency(count)
         temperature = self.constants.calculate_temperature(data["temp"])
         position = self.get_requested_position(time)
 
         sample = Sample(
             time=time,
+            count=count,
             frequency=frequency,
             temperature=temperature,
             position=position,

@@ -59,6 +59,7 @@ class Endstop(Protocol):
 @dataclass(frozen=True)
 class Sample:
     frequency: float
+    count: int
     time: float
     position: Position | None
     temperature: float
