@@ -136,6 +136,7 @@ class TestBedMeshIntegration:
             sample = Sample(
                 time=float(i * 0.1),
                 frequency=1000.0,
+                count=1,
                 temperature=25.0,
                 position=Position(x=nozzle_x, y=nozzle_y, z=height),
             )
