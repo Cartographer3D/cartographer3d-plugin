@@ -23,7 +23,6 @@ if TYPE_CHECKING:
 def sample(frequency: float):
     return Sample(
         frequency=1 / frequency,
-        count=1,
         time=0,
         position=Position(0, 0, frequency),
         temperature=0,
