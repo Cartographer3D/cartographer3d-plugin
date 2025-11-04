@@ -34,7 +34,6 @@ def sample(
 ):
     return Sample(
         frequency=1 / frequency,
-        count=1,
         time=time,
         position=position,
         temperature=temperature,

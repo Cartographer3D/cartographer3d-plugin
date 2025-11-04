@@ -40,7 +40,6 @@ def read_samples_from_csv(file_path: str) -> list[Sample]:
             z = float(row["position_z"])
             sample = Sample(
                 time=float(row["time"]),
-                count=0,
                 frequency=float(row["frequency"]),
                 temperature=float(row["temperature"]),
                 position=Position(x, y, z),

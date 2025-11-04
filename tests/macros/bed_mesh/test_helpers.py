@@ -107,7 +107,7 @@ class TestMeshGrid:
 
 
 def mock_sample(position: Position | None):
-    return Sample(0, 0, 0, position, 0)
+    return Sample(0, 0, position, 0)
 
 
 grid = MeshGrid((0.0, 0.0), (10.0, 10.0), 3, 3)

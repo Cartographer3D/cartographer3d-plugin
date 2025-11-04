@@ -8,12 +8,13 @@ from typing import TYPE_CHECKING, final
 from typing_extensions import override
 
 from cartographer.interfaces.configuration import Configuration, TouchModelConfiguration
+from cartographer.interfaces.printer import Macro, MacroParams, Mcu
 from cartographer.lib.statistics import compute_mad
 from cartographer.macros.utils import forced_z, get_choice
 from cartographer.probe.touch_mode import MAD_TOLERANCE, TouchMode, TouchModeConfiguration
 
 if TYPE_CHECKING:
-    from cartographer.interfaces.printer import MacroParams, Mcu, Toolhead
+    from cartographer.interfaces.printer import Toolhead
     from cartographer.probe.probe import Probe
 
 
@@ -22,6 +23,8 @@ logger = logging.getLogger(__name__)
 
 MIN_ALLOWED_STEP = 75
 MAX_ALLOWED_STEP = 500
+DEFAULT_TOUCH_MODEL_NAME = "default"
+DEFAULT_Z_OFFSET = -0.05
 
 
 class CalibrationStrategy(ABC):
@@ -133,20 +136,18 @@ STRATEGY_MAP = {
 
 
 @final
-class IterativeTouchCalibrateMethod:
-    def __init__(
-        self,
-        probe: Probe,
-        mcu: Mcu,
-        toolhead: Toolhead,
-        config: Configuration,
-    ) -> None:
+class TouchCalibrateMacro(Macro):
+    description = "Run the touch calibration"
+
+    def __init__(self, probe: Probe, mcu: Mcu, toolhead: Toolhead, config: Configuration) -> None:
         self._probe = probe
         self._mcu = mcu
         self._toolhead = toolhead
         self._config = config
 
-    def run(self, params: MacroParams) -> tuple[int, float] | None:
+    @override
+    def run(self, params: MacroParams) -> None:
+        name = params.get("MODEL", DEFAULT_TOUCH_MODEL_NAME).lower()
         speed = params.get_int("SPEED", default=2, minval=1, maxval=5)
         threshold_start = params.get_int("START", default=500, minval=100)
         threshold_max = params.get_int("MAX", default=3000, minval=threshold_start)
@@ -195,12 +196,19 @@ class IterativeTouchCalibrateMethod:
                 threshold_max,
                 threshold_max + 2000,
             )
-            return None
+            return
 
         logger.info(
             "Successfully calibrated with %s strategy (threshold %d, speed %.1f)", strategy_type, threshold, speed
         )
-        return threshold, speed
+        model = TouchModelConfiguration(name, threshold, speed, DEFAULT_Z_OFFSET)
+        self._config.save_touch_model(model)
+        self._probe.touch.load_model(name)
+        logger.info(
+            "Touch model %s has been saved for the current session.\n"
+            "The SAVE_CONFIG command will update the printer config file and restart the printer.",
+            name,
+        )
 
     def _find_acceptable_threshold(
         self, calibration_mode: CalibrationTouchMode, threshold_start: int, threshold_max: int
