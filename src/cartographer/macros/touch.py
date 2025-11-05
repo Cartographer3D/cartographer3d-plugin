@@ -118,6 +118,9 @@ class TouchHomeMacro(Macro):
             msg = "Must home x and y before touch homing"
             raise RuntimeError(msg)
 
+        # Capture the starting Z position before forced_z modifies it
+        initial_z = self._toolhead.get_position().z if self._toolhead.is_homed("z") else None
+
         with forced_z(self._toolhead):
             pos = self._toolhead.get_position()
             # TODO: Get rid of magic constants
@@ -139,12 +142,24 @@ class TouchHomeMacro(Macro):
         pos = self._toolhead.get_position()
         self._toolhead.set_z_position(pos.z - trigger_pos)
 
-        logger.info(
-            "Touch home at (%.3f,%.3f) adjusted z by %.3f",
-            pos.x,
-            pos.y,
-            trigger_pos,
-        )
+        # Calculate the actual adjustment relative to where we started
+        # If Z was already homed, show adjustment from that position
+        # If Z was not homed, show the raw trigger position
+        if initial_z is not None:
+            actual_adjustment = initial_z - (pos.z - trigger_pos)
+            logger.info(
+                "Touch home at (%.3f,%.3f) adjusted z by %.3f",
+                pos.x,
+                pos.y,
+                actual_adjustment,
+            )
+        else:
+            logger.info(
+                "Touch home at (%.3f,%.3f) set z to %.3f",
+                pos.x,
+                pos.y,
+                pos.z - trigger_pos,
+            )
 
     def _get_homing_position(self, random_radius: float) -> tuple[float, float]:
         center_x, center_y = self._home_position
