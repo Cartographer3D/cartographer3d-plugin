@@ -179,7 +179,7 @@ def test_random_radius_uniform_distribution(
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 2))
     move_spy = mocker.spy(toolhead, "move")
 
-    _ = mocker.patch("cartographer.macros.touch.random", side_effect=[u1, u2])
+    _ = mocker.patch("cartographer.macros.touch.home.random", side_effect=[u1, u2])
     macro.run(params)
 
     assert move_spy.mock_calls == [
