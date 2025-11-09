@@ -20,6 +20,7 @@ from cartographer.interfaces.configuration import (
 default_general_config = GeneralConfig(
     x_offset=0.0,
     y_offset=0.0,
+    lift_speed=5,
     travel_speed=300.0,
     z_backlash=0,
     macro_prefix="cartographer",

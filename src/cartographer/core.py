@@ -46,26 +46,26 @@ class MacroRegistration:
 class PrinterCartographer:
     def __init__(self, adapters: Adapters) -> None:
         self.mcu = adapters.mcu
-        config = adapters.config
+        self.config = adapters.config
         toolhead = (
-            BacklashCompensatingToolhead(adapters.toolhead, config.general.z_backlash)
-            if config.general.z_backlash > 0
+            BacklashCompensatingToolhead(adapters.toolhead, self.config.general.z_backlash)
+            if self.config.general.z_backlash > 0
             else adapters.toolhead
         )
 
         self.scan_mode = ScanMode(
             self.mcu,
             toolhead,
-            ScanModeConfiguration.from_config(config),
-            CoilTemperatureCompensationModel(config.coil.calibration, adapters.mcu)
-            if config.coil.calibration
+            ScanModeConfiguration.from_config(self.config),
+            CoilTemperatureCompensationModel(self.config.coil.calibration, adapters.mcu)
+            if self.config.coil.calibration
             else None,
             adapters.axis_twist_compensation,
         )
         if DEFAULT_SCAN_MODEL_NAME in adapters.config.scan.models:
             self.scan_mode.load_model(DEFAULT_SCAN_MODEL_NAME)
 
-        self.touch_mode = TouchMode(self.mcu, toolhead, TouchModeConfiguration.from_config(config))
+        self.touch_mode = TouchMode(self.mcu, toolhead, TouchModeConfiguration.from_config(self.config))
         if DEFAULT_TOUCH_MODEL_NAME in adapters.config.touch.models:
             self.touch_mode.load_model(DEFAULT_TOUCH_MODEL_NAME)
 
@@ -77,7 +77,7 @@ class PrinterCartographer:
 
             registrations = [MacroRegistration(f"CARTOGRAPHER_{name}", macro)]
 
-            prefix = config.general.macro_prefix
+            prefix = self.config.general.macro_prefix
             if prefix is not None:
                 formatted_prefix = prefix.rstrip("_").upper() + "_" if prefix else ""
                 registrations.append(MacroRegistration(f"{formatted_prefix}{name}", macro))
@@ -92,7 +92,7 @@ class PrinterCartographer:
                     reg("PROBE", self.probe_macro, use_prefix=False),
                     reg("PROBE_ACCURACY", ProbeAccuracyMacro(probe, toolhead), use_prefix=False),
                     reg("QUERY_PROBE", self.query_probe_macro, use_prefix=False),
-                    reg("Z_OFFSET_APPLY_PROBE", ZOffsetApplyProbeMacro(probe, toolhead, config), use_prefix=False),
+                    reg("Z_OFFSET_APPLY_PROBE", ZOffsetApplyProbeMacro(probe, toolhead, self.config), use_prefix=False),
                     reg("QUERY", QueryMacro(self.mcu, self.scan_mode, self.touch_mode)),
                     reg(
                         "BED_MESH_CALIBRATE",
@@ -102,31 +102,37 @@ class PrinterCartographer:
                             adapters.bed_mesh,
                             adapters.axis_twist_compensation,
                             adapters.task_executor,
-                            BedMeshCalibrateConfiguration.from_config(config),
+                            BedMeshCalibrateConfiguration.from_config(self.config),
                         ),
                         use_prefix=False,
                     ),
                     reg("STREAM", StreamMacro(self.mcu)),
                     reg(
                         "TEMPERATURE_CALIBRATE",
-                        TemperatureCalibrateMacro(self.mcu, toolhead, config, adapters.gcode, adapters.task_executor),
+                        TemperatureCalibrateMacro(
+                            self.mcu, toolhead, self.config, adapters.gcode, adapters.task_executor
+                        ),
                     ),
-                    reg("SCAN_CALIBRATE", ScanCalibrateMacro(probe, toolhead, config)),
+                    reg("SCAN_CALIBRATE", ScanCalibrateMacro(probe, toolhead, self.config)),
                     reg("SCAN_ACCURACY", ScanAccuracyMacro(self.scan_mode, toolhead, self.mcu)),
-                    reg("SCAN_MODEL", ScanModelManager(self.scan_mode, config)),
-                    reg("ESTIMATE_BACKLASH", EstimateBacklashMacro(toolhead, self.scan_mode, config)),
-                    reg("TOUCH_CALIBRATE", TouchCalibrateMacro(probe, self.mcu, toolhead, config)),
-                    reg("TOUCH_MODEL", TouchModelManager(self.touch_mode, config)),
+                    reg("SCAN_MODEL", ScanModelManager(self.scan_mode, self.config)),
+                    reg("ESTIMATE_BACKLASH", EstimateBacklashMacro(toolhead, self.scan_mode, self.config)),
+                    reg("TOUCH_CALIBRATE", TouchCalibrateMacro(probe, self.mcu, toolhead, self.config)),
+                    reg("TOUCH_MODEL", TouchModelManager(self.touch_mode, self.config)),
                     reg("TOUCH_PROBE", TouchProbeMacro(self.touch_mode)),
-                    reg("TOUCH_ACCURACY", TouchAccuracyMacro(self.touch_mode, toolhead)),
+                    reg(
+                        "TOUCH_ACCURACY",
+                        TouchAccuracyMacro(self.touch_mode, toolhead, lift_speed=self.config.general.lift_speed),
+                    ),
                     reg(
                         "TOUCH_HOME",
                         TouchHomeMacro(
                             self.touch_mode,
                             toolhead,
-                            home_position=config.bed_mesh.zero_reference_position,
-                            travel_speed=config.general.travel_speed,
-                            random_radius=config.touch.home_random_radius,
+                            lift_speed=self.config.general.lift_speed,
+                            home_position=self.config.bed_mesh.zero_reference_position,
+                            travel_speed=self.config.general.travel_speed,
+                            random_radius=self.config.touch.home_random_radius,
                         ),
                     ),
                 ]
@@ -137,7 +143,7 @@ class PrinterCartographer:
             self.macros.extend(
                 reg(
                     "CARTOGRAPHER_AXIS_TWIST_COMPENSATION",
-                    AxisTwistCompensationMacro(probe, toolhead, adapters.axis_twist_compensation, config),
+                    AxisTwistCompensationMacro(probe, toolhead, adapters.axis_twist_compensation, self.config),
                     use_prefix=False,
                 )
             )

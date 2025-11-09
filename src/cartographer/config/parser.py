@@ -62,6 +62,7 @@ def parse_general_config(wrapper: ParseConfigWrapper) -> GeneralConfig:
         y_offset=wrapper.get_required_float("y_offset"),
         z_backlash=wrapper.get_float("z_backlash", default=0.05, minimum=0),
         travel_speed=wrapper.get_float("travel_speed", default=50, minimum=1),
+        lift_speed=wrapper.get_float("lift_speed", default=5, minimum=1),
         macro_prefix=wrapper.get_optional_str("macro_prefix"),
         verbose=wrapper.get_bool("verbose", default=False),
     )

@@ -33,5 +33,6 @@ class KalicoIntegrator(KlipperLikeIntegrator):
                 cartographer.scan_mode,
                 cartographer.probe_macro,
                 cartographer.query_probe_macro,
+                cartographer.config.general,
             ),
         )

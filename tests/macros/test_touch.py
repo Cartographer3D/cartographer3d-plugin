@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from pytest import LogCaptureFixture
     from pytest_mock import MockerFixture
 
+
 Probe: TypeAlias = TouchMode
 
 
@@ -53,7 +54,7 @@ def test_touch_accuracy_macro_output(
     toolhead: Toolhead,
     params: MacroParams,
 ):
-    macro = TouchAccuracyMacro(probe, toolhead)
+    macro = TouchAccuracyMacro(probe, toolhead, lift_speed=5)
     params.get_int = mocker.Mock(return_value=10)
     toolhead.get_position = lambda: Position(0, 0, 0)
     params.get_float = mocker.Mock(return_value=1)
@@ -86,7 +87,7 @@ def test_touch_accuracy_macro_sample_count(
     toolhead: Toolhead,
     params: MacroParams,
 ):
-    macro = TouchAccuracyMacro(probe, toolhead)
+    macro = TouchAccuracyMacro(probe, toolhead, lift_speed=5)
     params.get_int = mocker.Mock(return_value=3)
     toolhead.get_position = lambda: Position(0, 0, 0)
     params.get_float = mocker.Mock(return_value=1)
@@ -118,7 +119,7 @@ def test_touch_home_macro_moves(
     toolhead: Toolhead,
     params: MacroParams,
 ):
-    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), travel_speed=50, random_radius=0)
+    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), lift_speed=5, travel_speed=50, random_radius=0)
     probe.perform_probe = mocker.Mock(return_value=0.1)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 2))
     move_spy = mocker.spy(toolhead, "move")
@@ -144,7 +145,7 @@ def test_touch_home_macro(
     # so we need to move the z axis "down".
     expected = height - trigger
 
-    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), travel_speed=50, random_radius=0)
+    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), lift_speed=5, travel_speed=50, random_radius=0)
     probe.perform_probe = mocker.Mock(return_value=trigger)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, height))
     set_z_position_spy = mocker.spy(toolhead, "set_z_position")
@@ -174,7 +175,7 @@ def test_random_radius_uniform_distribution(
     expected_y: float,
 ):
     """Test that random positions are generated correctly with square root method."""
-    macro = TouchHomeMacro(probe, toolhead, home_position=(50, 50), travel_speed=50, random_radius=10.0)
+    macro = TouchHomeMacro(probe, toolhead, home_position=(50, 50), lift_speed=5, travel_speed=50, random_radius=10.0)
     probe.perform_probe = mocker.Mock(return_value=0.1)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 2))
     move_spy = mocker.spy(toolhead, "move")
