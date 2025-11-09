@@ -152,7 +152,31 @@ def test_touch_home_macro(
 
     macro.run(params)
 
-    assert set_z_position_spy.mock_calls == [mocker.call(z=mocker.ANY), mocker.call(expected)]
+    assert set_z_position_spy.mock_calls == [mocker.call(expected)]
+
+
+def test_unhomed_touch_home_macro(
+    mocker: MockerFixture,
+    probe: Probe,
+    toolhead: Toolhead,
+    params: MacroParams,
+):
+    toolhead.is_homed = lambda axis: axis != "z"
+    max_offset = 10
+    height = toolhead.get_axis_limits("z")[1] - max_offset
+    trigger = 0.1
+    # That means that the bed was further away than we thought,
+    # so we need to move the z axis "down".
+    expected = height - trigger
+
+    macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), lift_speed=5, travel_speed=50, random_radius=0)
+    probe.perform_probe = mocker.Mock(return_value=trigger)
+    toolhead.get_position = mocker.Mock(return_value=Position(0, 0, height))
+    set_z_position_spy = mocker.spy(toolhead, "set_z_position")
+
+    macro.run(params)
+
+    assert set_z_position_spy.mock_calls == [mocker.call(z=height), mocker.call(expected)]
 
 
 @pytest.mark.parametrize(

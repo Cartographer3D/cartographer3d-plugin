@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, final
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams
-from cartographer.macros.utils import forced_z
+from cartographer.macros.utils import force_home_z
 
 if TYPE_CHECKING:
     from cartographer.interfaces.printer import Toolhead
@@ -48,10 +48,10 @@ class TouchHomeMacro(Macro):
             msg = "Must home x and y before touch homing"
             raise RuntimeError(msg)
 
-        # Capture the starting Z position before forced_z modifies it
-        initial_z = self._toolhead.get_position().z if self._toolhead.is_homed("z") else None
+        # Check if Z is already homed before we start
+        z_was_homed = self._toolhead.is_homed("z")
 
-        with forced_z(self._toolhead):
+        with force_home_z(self._toolhead):
             pos = self._toolhead.get_position()
             self._toolhead.move(
                 z=pos.z + Z_HOP,
@@ -71,20 +71,16 @@ class TouchHomeMacro(Macro):
         pos = self._toolhead.get_position()
         self._toolhead.set_z_position(pos.z - trigger_pos)
 
-        # Calculate the actual adjustment relative to where we started
-        # If Z was already homed, show adjustment from that position
-        # If Z was not homed, show the raw trigger position
-        if initial_z is not None:
-            actual_adjustment = initial_z - (pos.z - trigger_pos)
+        if z_was_homed:
             logger.info(
-                "Touch home at (%.3f,%.3f) adjusted z by %.3f",
+                "Touch home at (%.3f, %.3f) adjusted z by %.3f mm",
                 pos.x,
                 pos.y,
-                actual_adjustment,
+                -trigger_pos,
             )
         else:
             logger.info(
-                "Touch home at (%.3f,%.3f) set z to %.3f",
+                "Touch home at (%.3f, %.3f) set z to %.3f mm",
                 pos.x,
                 pos.y,
                 pos.z - trigger_pos,

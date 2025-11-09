@@ -10,7 +10,7 @@ from typing_extensions import override
 from cartographer.interfaces.configuration import Configuration, TouchModelConfiguration
 from cartographer.interfaces.printer import Macro, MacroParams, Mcu
 from cartographer.lib.statistics import compute_mad
-from cartographer.macros.utils import forced_z, get_choice
+from cartographer.macros.utils import force_home_z, get_choice
 from cartographer.probe.touch_mode import MAD_TOLERANCE, TouchMode, TouchModeConfiguration
 
 if TYPE_CHECKING:
@@ -182,7 +182,7 @@ class TouchCalibrateMacro(Macro):
             strategy=strategy,
         )
 
-        with forced_z(self._toolhead):
+        with force_home_z(self._toolhead):
             threshold = self._find_acceptable_threshold(calibration_mode, threshold_start, threshold_max)
 
         if threshold is None:
