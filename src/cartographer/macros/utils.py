@@ -65,17 +65,27 @@ def get_float_tuple(params: MacroParams, option: str, default: tuple[float, floa
 
 
 @contextmanager
-def forced_z(toolhead: Toolhead) -> Iterator[None]:
+def force_home_z(toolhead: Toolhead, offset: float = 10) -> Iterator[None]:
     """
     Context manager that temporarily sets a forced Z position for homing operations.
+
+    If the Z axis is already homed, this context manager does nothing.
+    If the Z axis is not homed, it temporarily sets a forced Z position
+    at `z_max - offset` and clears the homing state on exit.
 
     Parameters
     ----------
     toolhead : Toolhead
         The toolhead instance to manage Z positioning for.
+    offset : float, optional
+        Distance below Z maximum to set as temporary position, by default 10.
     """
+    if toolhead.is_homed("z"):
+        yield
+        return
+
     _, z_max = toolhead.get_axis_limits("z")
-    toolhead.set_z_position(z=z_max - 10)
+    toolhead.set_z_position(z=z_max - offset)
 
     try:
         yield
