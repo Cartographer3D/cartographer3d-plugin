@@ -17,6 +17,8 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+Z_HOP = 2
+
 
 @final
 class TouchHomeMacro(Macro):
@@ -28,12 +30,14 @@ class TouchHomeMacro(Macro):
         toolhead: Toolhead,
         *,
         home_position: tuple[float, float],
+        lift_speed: float,
         travel_speed: float,
         random_radius: float,
     ) -> None:
         self._probe = probe
         self._toolhead = toolhead
         self._home_position = home_position
+        self._lift_speed = lift_speed
         self._travel_speed = travel_speed
         self._random_radius = random_radius
 
@@ -49,10 +53,9 @@ class TouchHomeMacro(Macro):
 
         with forced_z(self._toolhead):
             pos = self._toolhead.get_position()
-            # TODO: Get rid of magic constants
             self._toolhead.move(
-                z=pos.z + 2,
-                speed=5,
+                z=pos.z + Z_HOP,
+                speed=self._lift_speed,
             )
             home_x, home_y = self._get_homing_position(random_radius)
             self._toolhead.move(

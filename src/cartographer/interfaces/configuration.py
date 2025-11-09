@@ -10,6 +10,7 @@ class GeneralConfig:
     y_offset: float
     z_backlash: float
     travel_speed: float
+    lift_speed: float
     verbose: bool
     macro_prefix: str | None
 
