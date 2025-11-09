@@ -17,8 +17,13 @@ from cartographer.macros.scan import ScanAccuracyMacro
 from cartographer.macros.scan_calibrate import DEFAULT_SCAN_MODEL_NAME, ScanCalibrateMacro
 from cartographer.macros.stream import StreamMacro
 from cartographer.macros.temperature_calibrate import TemperatureCalibrateMacro
-from cartographer.macros.touch import TouchAccuracyMacro, TouchHomeMacro, TouchProbeMacro
-from cartographer.macros.touch_calibrate import DEFAULT_TOUCH_MODEL_NAME, TouchCalibrateMacro
+from cartographer.macros.touch import (
+    DEFAULT_TOUCH_MODEL_NAME,
+    TouchAccuracyMacro,
+    TouchCalibrateMacro,
+    TouchHomeMacro,
+    TouchProbeMacro,
+)
 from cartographer.probe.probe import Probe
 from cartographer.probe.scan_mode import ScanMode, ScanModeConfiguration
 from cartographer.probe.touch_mode import TouchMode, TouchModeConfiguration
