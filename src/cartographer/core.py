@@ -9,7 +9,7 @@ from cartographer.coil.temperature_compensation import CoilTemperatureCompensati
 from cartographer.macros.axis_twist_compensation import AxisTwistCompensationMacro
 from cartographer.macros.backlash import EstimateBacklashMacro
 from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateConfiguration, BedMeshCalibrateMacro
-from cartographer.macros.migration_message import MigrationMessageMacro
+from cartographer.macros.message import MessageMacro
 from cartographer.macros.model_manager import ScanModelManager, TouchModelManager
 from cartographer.macros.probe import ProbeAccuracyMacro, ProbeMacro, QueryProbeMacro, ZOffsetApplyProbeMacro
 from cartographer.macros.query import QueryMacro
@@ -147,20 +147,33 @@ class PrinterCartographer:
                     use_prefix=False,
                 )
             )
-
-        old_macros = list(
-            chain.from_iterable(
-                [
-                    reg("TOUCH", MigrationMessageMacro("CARTOGRAPHER_TOUCH", "CARTOGRAPHER_TOUCH_HOME")),
-                    reg("CALIBRATE", MigrationMessageMacro("CARTOGRAPHER_CALIBRATE", "CARTOGRAPHER_SCAN_CALIBRATE")),
-                    reg(
-                        "THRESHOLD_SCAN",
-                        MigrationMessageMacro("CARTOGRAPHER_THRESHOLD_SCAN", "CARTOGRAPHER_TOUCH_CALIBRATE"),
+        else:
+            self.macros.extend(
+                reg(
+                    "CARTOGRAPHER_AXIS_TWIST_COMPENSATION",
+                    MessageMacro(
+                        "Add [axis_twist_compensation] to your config to use CARTOGRAPHER_AXIS_TWIST_COMPENSATION."
                     ),
-                ]
+                    use_prefix=False,
+                )
+            )
+
+        old_macros_to_new = [
+            ("TOUCH", "TOUCH_HOME"),
+            ("CALIBRATE", "SCAN_CALIBRATE"),
+            ("THRESHOLD_SCAN", "TOUCH_CALIBRATE"),
+        ]
+        self.macros.extend(
+            chain.from_iterable(
+                map(
+                    lambda names: reg(
+                        names[0],
+                        MessageMacro(f"Macro CARTOGRAPHER_{names[0]} has been replaced by CARTOGRAPHER_{names[1]}."),
+                    ),
+                    old_macros_to_new,
+                )
             )
         )
-        self.macros.extend(old_macros)
 
     def get_status(self, eventtime: float) -> object:
         return {
