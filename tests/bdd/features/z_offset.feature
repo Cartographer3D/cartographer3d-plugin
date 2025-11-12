@@ -30,11 +30,11 @@ Feature: Adjust z-offset
 
     Example: Touch - Nozzle lowered 0.4mm
       Given the probe has touch calibrated
-      And the probe has touch z-offset 0.0
+      And the probe has touch z-offset -0.2
       And I ran TOUCH_HOME
       And I have baby stepped the nozzle 0.4mm down
       When I run the Z_OFFSET_APPLY_PROBE macro
-      Then it should throw an error
+      Then it should set touch z-offset to 0
 
   Rule: Apply offset to latest homing mode
 
