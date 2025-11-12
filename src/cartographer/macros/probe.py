@@ -123,8 +123,10 @@ class ZOffsetApplyProbeMacro(Macro):
         new_offset = model.z_offset - additional_offset
 
         if new_offset > 0:
-            msg = f"Cannot set a positive z-offset ({new_offset:.3f}) for {model.name} in touch mode."
-            raise ValueError(msg)
+            logger.warning(
+                "Cannot set a positive z-offset (%.3f) for %s in touch mode, offset set to 0.", new_offset, model.name
+            )
+            new_offset = 0
 
         self._config.save_touch_model(replace(model.config, z_offset=new_offset))
         self._log_offset_update("touch", model.name, new_offset)
