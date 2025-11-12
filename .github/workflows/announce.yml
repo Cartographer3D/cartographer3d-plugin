@@ -10,7 +10,7 @@ jobs:
       AVATAR_URL: "https://cdn.discordapp.com/icons/1165274913624572014/05a538c8bbb0d5da3b3755f5ba1ca32a.png"
     steps:
       - name: Release to Discord
-        if: ${{ !github.event.release.prerelease && secrets.WEBHOOK_URL != '' }}
+        if: ${{ !github.event.release.prerelease }}
         uses: SethCohen/github-releases-to-discord@b96a33520f8ad5e6dcdecee6f1212bdf88b16550
         with:
           webhook_url: ${{ secrets.WEBHOOK_URL }}
@@ -20,7 +20,7 @@ jobs:
           reduce_headings: true
 
       - name: Prerelease to Discord
-        if: ${{ github.event.release.prerelease && secrets.PRERELEASE_WEBHOOK_URL != '' }}
+        if: ${{ github.event.release.prerelease }}
         uses: SethCohen/github-releases-to-discord@b96a33520f8ad5e6dcdecee6f1212bdf88b16550
         with:
           webhook_url: ${{ secrets.PRERELEASE_WEBHOOK_URL }}
