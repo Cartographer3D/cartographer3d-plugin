@@ -23,7 +23,7 @@ default_general_config = GeneralConfig(
     lift_speed=5,
     travel_speed=300.0,
     z_backlash=0,
-    macro_prefix="cartographer",
+    macro_prefix="carto",
     verbose=False,
 )
 default_scan_config = ScanConfig(
