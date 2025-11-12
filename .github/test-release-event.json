@@ -1,0 +1,13 @@
+{
+  "action": "published",
+  "release": {
+    "prerelease": true,
+    "html_url": "https://github.com/Cartographer3D/cartographer3d-plugin/releases/tag/v1.1.0b3",
+    "name": "v1.1.0b3",
+    "body": "## What's Changed\n### 🐛 Squashed Bugs\n* fix(mesh): correct multiprocessing piping  by @Jomik in https://github.com/Cartographer3D/cartographer3d-plugin/pull/374\n* fix(touch): clamp offset to 0 by @Jomik in https://github.com/Cartographer3D/cartographer3d-plugin/pull/376\n\n\n**Full Changelog**: https://github.com/Cartographer3D/cartographer3d-plugin/compare/v1.1.0b2...v1.1.0b3"
+  },
+  "repository": {
+    "full_name": "Cartographer3D/cartographer3d-plugin",
+    "html_url": "https://github.com/Cartographer3D/cartographer3d-plugin"
+  }
+}
