@@ -15,6 +15,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Number of initial samples to check for infinite values
+EARLY_CHECK_SAMPLE_COUNT = 3
+
 
 @final
 class ScanAccuracyMacro(Macro):
@@ -29,6 +32,7 @@ class ScanAccuracyMacro(Macro):
     def run(self, params: MacroParams) -> None:
         readings = params.get_int("READINGS", 20, minval=1)
         sample_count = params.get_int("SAMPLES", 100, minval=10)
+        early_check_count = min(EARLY_CHECK_SAMPLE_COUNT, sample_count)
         position = self._toolhead.get_position()
 
         logger.info(
@@ -44,6 +48,16 @@ class ScanAccuracyMacro(Macro):
         while len(measurements) < sample_count:
             dist = self._scan.measure_distance(min_sample_count=readings)
             measurements.append(dist)
+
+            # Early abort if first N samples are all infinite
+            if len(measurements) == early_check_count and all(not isfinite(m) for m in measurements):
+                msg = (
+                    f"All {early_check_count} initial measurements "
+                    "are infinite. The probe is likely too far "
+                    "from the bed. Ensure the probe is within model range."
+                )
+                raise RuntimeError(msg)
+
         logger.debug("Measurements gathered: %s", measurements)
 
         finite_measurements = [x for x in measurements if isfinite(x)]
