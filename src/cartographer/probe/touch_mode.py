@@ -20,6 +20,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+TOUCH_ACCEL = 100
 MAD_TOLERANCE = 0.0054  # Statistically equivalent to 0.008mm stddev
 RETRACT_DISTANCE = 2.0
 MAX_TOUCH_TEMPERATURE_EPSILON = 2  # Allow some temperature overshoot
@@ -178,7 +179,14 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         if self._toolhead.get_position().z < RETRACT_DISTANCE:
             self._toolhead.move(z=RETRACT_DISTANCE, speed=5)
         self._toolhead.wait_moves()
-        trigger_pos = self._toolhead.z_probing_move(self, speed=model.speed)
+
+        max_accel = self._toolhead.get_max_accel()
+        self._toolhead.set_max_accel(TOUCH_ACCEL)
+        try:
+            trigger_pos = self._toolhead.z_probing_move(self, speed=model.speed)
+        finally:
+            self._toolhead.set_max_accel(max_accel)
+
         pos = self._toolhead.get_position()
         self._toolhead.move(z=max(pos.z + RETRACT_DISTANCE, RETRACT_DISTANCE), speed=5)
         return trigger_pos - model.z_offset

@@ -197,3 +197,11 @@ class Toolhead(Protocol):
     def get_extruder_temperature(self) -> TemperatureStatus:
         """Get the current and target temperature of the extruder."""
         ...
+
+    def get_max_accel(self) -> float:
+        """Get the current maximum accel"""
+        ...
+
+    def set_max_accel(self, accel: float) -> None:
+        """Set the current maximum accel"""
+        ...

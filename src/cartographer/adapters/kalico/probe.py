@@ -7,9 +7,8 @@ from gcode import CommandError, GCodeCommand
 from cartographer.adapters.utils import reraise_as
 
 if TYPE_CHECKING:
-    from cartographer.adapters.klipper.toolhead import KlipperToolhead
     from cartographer.interfaces.configuration import GeneralConfig
-    from cartographer.interfaces.printer import ProbeMode
+    from cartographer.interfaces.printer import ProbeMode, Toolhead
     from cartographer.macros.probe import ProbeMacro, QueryProbeMacro
 
 
@@ -17,7 +16,7 @@ if TYPE_CHECKING:
 class KalicoCartographerProbe:
     def __init__(
         self,
-        toolhead: KlipperToolhead,
+        toolhead: Toolhead,
         probe: ProbeMode,
         probe_macro: ProbeMacro,
         query_probe_macro: QueryProbeMacro,

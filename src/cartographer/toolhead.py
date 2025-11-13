@@ -74,3 +74,11 @@ class BacklashCompensatingToolhead(Toolhead):
     @override
     def get_extruder_temperature(self) -> TemperatureStatus:
         return self.toolhead.get_extruder_temperature()
+
+    @override
+    def get_max_accel(self) -> float:
+        return self.toolhead.get_max_accel()
+
+    @override
+    def set_max_accel(self, accel: float) -> None:
+        self.toolhead.set_max_accel(accel)
