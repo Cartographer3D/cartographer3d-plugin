@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from math import isfinite
 from typing import TYPE_CHECKING, final
 
@@ -17,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 # Number of initial samples to check for infinite values
 EARLY_CHECK_SAMPLE_COUNT = 3
+# Progress reporting interval in seconds
+PROGRESS_REPORT_INTERVAL = 15.0
 
 
 @final
@@ -44,6 +47,7 @@ class ScanAccuracyMacro(Macro):
             sample_count,
         )
 
+        last_report_time = time.time() - (PROGRESS_REPORT_INTERVAL * 0.5)
         measurements: list[float] = []
         while len(measurements) < sample_count:
             dist = self._scan.measure_distance(min_sample_count=readings)
@@ -57,6 +61,16 @@ class ScanAccuracyMacro(Macro):
                     "from the bed. Ensure the probe is within model range."
                 )
                 raise RuntimeError(msg)
+
+            # Progress reporting based on real time elapsed
+            current_time = time.time()
+            if current_time - last_report_time >= PROGRESS_REPORT_INTERVAL:
+                logger.info(
+                    "Progress: %d/%d samples collected",
+                    len(measurements),
+                    sample_count,
+                )
+                last_report_time = current_time
 
         logger.debug("Measurements gathered: %s", measurements)
 
