@@ -1,5 +1,6 @@
 # https://github.com/Klipper3d/klipper/blob/master/klippy/extras/heaters.py
-from typing import Callable, Protocol, TypedDict
+from collections.abc import Callable
+from typing import Protocol, TypedDict
 
 from configfile import ConfigWrapper
 

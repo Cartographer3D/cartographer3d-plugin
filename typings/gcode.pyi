@@ -1,5 +1,6 @@
 # https://github.com/Klipper3d/klipper/blob/master/klippy/gcode.py
-from typing import Callable, NamedTuple, overload
+from collections.abc import Callable
+from typing import NamedTuple, overload
 
 class CommandError(Exception): ...
 
