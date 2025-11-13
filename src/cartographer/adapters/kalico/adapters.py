@@ -4,12 +4,12 @@ import logging
 from typing import TYPE_CHECKING, final
 
 from cartographer.adapters.kalico.axis_twist_compensation import KalicoAxisTwistCompensationAdapter
+from cartographer.adapters.kalico.toolhead import KalicoToolhead
 from cartographer.adapters.klipper.bed_mesh import KlipperBedMesh
 from cartographer.adapters.klipper.configuration import KlipperConfiguration
 from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
 from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
 from cartographer.adapters.klipper.task_executor import KlipperMultiprocessingExecutor
-from cartographer.adapters.klipper.toolhead import KlipperToolhead
 from cartographer.runtime.adapters import Adapters
 
 if TYPE_CHECKING:
@@ -28,7 +28,7 @@ class KalicoAdapters(Adapters):
         self.mcu = KlipperCartographerMcu(config)
         self.task_executor = KlipperMultiprocessingExecutor(self.printer.get_reactor())
 
-        self.toolhead = KlipperToolhead(config, self.mcu)
+        self.toolhead = KalicoToolhead(config, self.mcu)
         self.bed_mesh = KlipperBedMesh(config)
         self.gcode = KlipperGCodeDispatch(self.printer)
 

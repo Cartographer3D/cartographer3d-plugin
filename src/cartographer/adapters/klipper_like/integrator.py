@@ -25,7 +25,6 @@ if TYPE_CHECKING:
 
     from cartographer.adapters.klipper.configuration import KlipperConfiguration
     from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
-    from cartographer.adapters.klipper.toolhead import KlipperToolhead
     from cartographer.core import MacroRegistration
     from cartographer.interfaces.printer import Endstop
 
@@ -34,7 +33,6 @@ logger = logging.getLogger(__name__)
 
 class KlipperLikeAdapters(Protocol):
     mcu: KlipperCartographerMcu
-    toolhead: KlipperToolhead
     printer: Printer
     config: KlipperConfiguration
 
@@ -49,7 +47,6 @@ class KlipperLikeIntegrator(Integrator, ABC):
         self._config: KlipperConfiguration = adapters.config
         self._printer: Printer = adapters.printer
         self._mcu: KlipperCartographerMcu = adapters.mcu
-        self._toolhead: KlipperToolhead = adapters.toolhead
 
         self._gcode: GCodeDispatch = self._printer.lookup_object("gcode")
 

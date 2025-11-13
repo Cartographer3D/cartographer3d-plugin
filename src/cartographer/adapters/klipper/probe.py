@@ -9,17 +9,16 @@ from cartographer.adapters.utils import reraise_as
 if TYPE_CHECKING:
     from gcode import GCodeCommand
 
-    from cartographer.adapters.klipper.toolhead import KlipperToolhead
     from cartographer.interfaces.configuration import GeneralConfig
-    from cartographer.interfaces.printer import ProbeMode
+    from cartographer.interfaces.printer import ProbeMode, Toolhead
     from cartographer.macros.probe import ProbeMacro, QueryProbeMacro
 
 
 class KlipperProbeSession:
-    def __init__(self, probe: ProbeMode, toolhead: KlipperToolhead) -> None:
+    def __init__(self, probe: ProbeMode, toolhead: Toolhead) -> None:
         self._probe: ProbeMode = probe
         self._results: list[list[float]] = []
-        self.toolhead: KlipperToolhead = toolhead
+        self.toolhead: Toolhead = toolhead
 
     @reraise_as(CommandError)
     def run_probe(self, gcmd: GCodeCommand) -> None:
@@ -41,7 +40,7 @@ class KlipperProbeSession:
 class KlipperCartographerProbe:
     def __init__(
         self,
-        toolhead: KlipperToolhead,
+        toolhead: Toolhead,
         probe: ProbeMode,
         probe_macro: ProbeMacro,
         query_probe_macro: QueryProbeMacro,
