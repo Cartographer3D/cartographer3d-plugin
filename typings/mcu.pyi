@@ -1,8 +1,10 @@
 # https://github.com/Klipper3d/klipper/blob/master/klippy/mcu.py
 
-from typing import Any, Callable, Protocol, TypedDict, TypeVar, overload
+from collections.abc import Callable
+from typing import Any, Protocol, TypedDict, TypeVar, overload
 
 from cffi import FFI
+
 from klippy import Printer
 from reactor import ReactorCompletion
 from stepper import MCU_stepper

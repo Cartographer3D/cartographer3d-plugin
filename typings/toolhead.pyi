@@ -2,7 +2,6 @@
 from typing import TypedDict
 
 import gcode
-
 from kinematics import Kinematics
 from kinematics import Status as KinematicsStatus
 from kinematics.extruder import Extruder

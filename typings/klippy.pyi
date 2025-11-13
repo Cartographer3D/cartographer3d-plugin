@@ -1,22 +1,22 @@
 # https://github.com/Klipper3d/klipper/blob/master/klippy/klippy.py
-from typing import Callable, Literal, overload
+from collections.abc import Callable
+from typing import Literal, overload
 
 import configfile
-from configfile import ConfigWrapper, PrinterConfig
-from gcode import CommandError, GCodeDispatch
-from gcode_move import GCodeMove
-from pins import PrinterPins
-from reactor import Reactor
-from stepper import GenericPrinterRail
-from toolhead import ToolHead
-
 from cartographer.core import PrinterCartographer
+from configfile import ConfigWrapper, PrinterConfig
 from extras.axis_twist_compensation import AxisTwistCompensation
 from extras.bed_mesh import BedMesh
 from extras.exclude_object import ExcludeObject
 from extras.heaters import PrinterHeaters
 from extras.homing import Homing, HomingMove, PrinterHoming
 from extras.motion_report import PrinterMotionReport
+from gcode import CommandError, GCodeDispatch
+from gcode_move import GCodeMove
+from pins import PrinterPins
+from reactor import Reactor
+from stepper import GenericPrinterRail
+from toolhead import ToolHead
 
 # TODO: Kalico specific
 APP_NAME: str

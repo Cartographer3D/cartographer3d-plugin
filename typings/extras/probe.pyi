@@ -1,9 +1,11 @@
-from typing import Callable, Literal, Protocol, TypedDict
+from collections.abc import Callable
+from typing import Literal, Protocol, TypedDict
+
+from typing_extensions import override
 
 from configfile import ConfigWrapper
 from gcode import GCodeCommand
 from mcu import MCU_endstop
-from typing_extensions import override
 
 HINT_TIMEOUT: str
 
