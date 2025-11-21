@@ -36,7 +36,7 @@ DEFAULT_Z_OFFSET = -0.05
 # acceptable range
 MAX_CONSECUTIVE_UNACCEPTABLE = 2
 # Don't continue more than this percentage past first acceptable
-MAX_SEARCH_RANGE_MULTIPLIER = 1.3
+MAX_SEARCH_RANGE_MULTIPLIER = 1.20
 
 
 @dataclass(frozen=True)
@@ -263,7 +263,7 @@ class TouchCalibrateMacro(Macro):
             return
 
         state.first_acceptable = result.threshold
-        # Limit search to 30% past first acceptable
+        # Limit search to 20% past first acceptable
         state.threshold_max = min(
             int(state.first_acceptable * MAX_SEARCH_RANGE_MULTIPLIER),
             state.threshold_max,
