@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import heapq
 import logging
 from dataclasses import dataclass, replace
+from itertools import combinations
 from typing import TYPE_CHECKING, final
 
+import numpy as np
 from typing_extensions import override
 
 from cartographer.interfaces.configuration import (
@@ -11,15 +14,17 @@ from cartographer.interfaces.configuration import (
     TouchModelConfiguration,
 )
 from cartographer.interfaces.printer import Macro, MacroParams, Mcu
-from cartographer.lib.statistics import compute_mad
 from cartographer.macros.utils import force_home_z
 from cartographer.probe.touch_mode import (
-    MAD_TOLERANCE,
+    MAX_SAMPLE_RANGE,
     TouchMode,
     TouchModeConfiguration,
+    compute_range,
 )
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from cartographer.interfaces.printer import Toolhead
     from cartographer.probe.probe import Probe
 
@@ -27,99 +32,63 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-MIN_ALLOWED_STEP = 75
-MAX_ALLOWED_STEP = 500
+MIN_STEP = 50
 DEFAULT_TOUCH_MODEL_NAME = "default"
 DEFAULT_Z_OFFSET = -0.05
 
-# Stop after this many consecutive unacceptable results past the
-# acceptable range
-MAX_CONSECUTIVE_UNACCEPTABLE = 2
-# Don't continue more than this percentage past first acceptable
-MAX_SEARCH_RANGE_MULTIPLIER = 1.20
+# How many top subsets to consider for median calculation
+TOP_SUBSET_COUNT = 10
 
 
 @dataclass(frozen=True)
-class CalibrationResult:
-    """Result from testing a single threshold value."""
+class ThresholdResult:
+    """Result from testing a single threshold."""
 
     threshold: int
-    score: float
     samples: tuple[float, ...]
+    best_subset: tuple[float, ...] | None
+    best_range: float
+    median_range: float
 
     @property
-    def is_acceptable(self) -> bool:
-        """Check if score is within tolerance."""
-        return self.score <= MAD_TOLERANCE
+    def is_consistent(self) -> bool:
+        """
+        Check if the threshold produces consistent results.
+
+        Uses the median range of the top subsets rather than just
+        the best, to ensure we can reliably find a good subset.
+        """
+        return self.median_range <= MAX_SAMPLE_RANGE
 
 
-@dataclass
-class CalibrationState:
-    """Tracks state during threshold calibration."""
-
-    first_acceptable: int | None = None
-    last_acceptable: int | None = None
-    consecutive_unacceptable: int = 0
-    threshold_max: int = 0
-
-
-def compute_step_increase(current_threshold: int, score: float) -> int:
+def analyze_subsets(
+    samples: Sequence[float],
+    subset_size: int,
+    top_n: int = TOP_SUBSET_COUNT,
+) -> tuple[tuple[float, ...] | None, float, float]:
     """
-    Calculate the next step size based on current threshold and score.
+    Analyze subsets to find the best and compute statistics.
 
-    Uses an adaptive algorithm that takes larger steps when far from
-    the target and smaller steps when close.
+    Returns (best_subset, best_range, median_range, total_count).
     """
-    allowed_step = (current_threshold * 0.06) ** 1.15
-    allowed_max_step = max(MIN_ALLOWED_STEP, min(MAX_ALLOWED_STEP, allowed_step))
+    top_subsets = heapq.nsmallest(
+        top_n,
+        combinations(samples, subset_size),  # Generator, not list
+        key=compute_range,
+    )
 
-    ratio = max(1.0, score / MAD_TOLERANCE)
-    raw_step = allowed_max_step * (1 - (1 / ratio))
+    if not top_subsets:
+        return None, float("inf"), float("inf")
 
-    return int(round(min(allowed_max_step, max(MIN_ALLOWED_STEP, raw_step))))
+    best = top_subsets[0]
+    best_range = compute_range(best)
 
+    # Compute median range of top N subsets
+    top_count = min(top_n, len(top_subsets))
+    top_ranges = [compute_range(s) for s in top_subsets[:top_count]]
+    median_range = float(np.median(top_ranges))
 
-def format_score_message(score: float) -> str:
-    """
-    Format score as user-friendly message with visual indicator.
-
-    Parameters
-    ----------
-    score : float
-        The MAD score to format
-
-    Returns
-    -------
-    str
-        Formatted message with quality indicator
-    """
-    ratio = score / MAD_TOLERANCE
-
-    if ratio <= 1.0:
-        percent_of_target = int(ratio * 100)
-        indicator = "✓"
-        quality = "good"
-        if ratio <= 0.5:
-            indicator = "✓✓"
-            quality = "excellent"
-        if ratio <= 0.1:
-            indicator = "✓✓✓"
-            quality = "perfect"
-        return f"{indicator} {quality} (score={score:.6f}, {percent_of_target}% of limit)"
-
-    # Above tolerance - determine quality level
-    if ratio <= 1.5:
-        indicator = "✗"
-        quality = "marginal"
-    elif ratio <= 3.0:
-        indicator = "✗✗"
-        quality = "poor"
-    else:
-        indicator = "✗✗✗"
-        quality = "very poor"
-
-    times_over = ratio
-    return f"{indicator} {quality} (score={score:.6f}, {times_over:.1f}x over limit)"
+    return best, best_range, median_range
 
 
 @final
@@ -141,9 +110,9 @@ class TouchCalibrateMacro(Macro):
     @override
     def run(self, params: MacroParams) -> None:
         name = params.get("MODEL", DEFAULT_TOUCH_MODEL_NAME).lower()
-        speed = params.get_int("SPEED", default=2, minval=1, maxval=5)
+        speed = params.get_int("SPEED", default=3, minval=1, maxval=5)
         threshold_start = params.get_int("START", default=500, minval=100)
-        threshold_max = params.get_int("MAX", default=3000, minval=threshold_start)
+        threshold_max = params.get_int("MAX", default=5000, minval=threshold_start)
 
         if not self._toolhead.is_homed("x") or not self._toolhead.is_homed("y"):
             msg = "Must home x and y before calibration"
@@ -156,13 +125,21 @@ class TouchCalibrateMacro(Macro):
         )
         self._toolhead.wait_moves()
 
+        required_samples = self._config.touch.samples
+        max_samples = self._config.touch.max_samples
+
         logger.info(
-            "Starting touch calibration at speed %d, threshold %d-%d",
+            "Starting touch calibration (speed=%d, range=%d-%d)",
             speed,
             threshold_start,
             threshold_max,
         )
-        logger.info("Target score: ≤%.6f (lower is better)", MAD_TOLERANCE)
+        logger.info(
+            "Looking for %d samples within %.3fmm range (max %d attempts)",
+            required_samples,
+            MAX_SAMPLE_RANGE,
+            max_samples,
+        )
 
         calibration_mode = CalibrationTouchMode(
             self._mcu,
@@ -173,16 +150,18 @@ class TouchCalibrateMacro(Macro):
         )
 
         with force_home_z(self._toolhead):
-            threshold = self._find_optimal_threshold(
+            threshold = self._find_minimum_threshold(
                 calibration_mode,
                 threshold_start,
                 threshold_max,
+                required_samples,
+                max_samples,
             )
 
         if threshold is None:
             logger.info(
-                "Failed to calibrate (thresholds %d-%d).\n"
-                "Try increasing MAX.\n"
+                "Failed to find reliable threshold in range %d-%d.\n"
+                "Try increasing MAX:\n"
                 "CARTOGRAPHER_TOUCH_CALIBRATE START=%d MAX=%d",
                 threshold_start,
                 threshold_max,
@@ -192,7 +171,7 @@ class TouchCalibrateMacro(Macro):
             return
 
         logger.info(
-            "Successfully calibrated (threshold %d, speed %.1f)",
+            "Calibration complete: threshold=%d, speed=%d",
             threshold,
             speed,
         )
@@ -206,174 +185,150 @@ class TouchCalibrateMacro(Macro):
             name,
         )
 
-    def _find_optimal_threshold(
+    def _find_minimum_threshold(
         self,
         calibration_mode: CalibrationTouchMode,
         threshold_start: int,
         threshold_max: int,
+        required_samples: int,
+        max_samples: int,
     ) -> int | None:
         """
-        Find optimal threshold by testing until we find a stable range.
+        Find the minimum threshold that produces consistent results.
 
         Strategy:
-        1. Test thresholds with adaptive steps until acceptable
-        2. Continue testing to find the full acceptable range
-        3. Stop when we've gone too far or hit limits
-        4. Choose the midpoint of the acceptable range
+        1. Linear search to find first consistent threshold
+        2. Verify with more samples
+        3. If verification fails, step up and retry
         """
-        state = CalibrationState(threshold_max=threshold_max)
-        current_threshold = threshold_start
+        threshold = threshold_start
 
-        while current_threshold <= state.threshold_max:
-            result = self._test_threshold(calibration_mode, current_threshold)
+        while threshold <= threshold_max:
+            # Quick test with required sample count
+            result = self._test_threshold(
+                calibration_mode,
+                threshold,
+                required_samples,
+            )
+
+            self._log_result(result)
+            self._log_result_debug(result)
+
+            if not result.is_consistent:
+                threshold += self._calculate_step(threshold, result.median_range)
+                continue
+
+            # Verify with more samples
             logger.info(
-                "Threshold %d: %s",
-                result.threshold,
-                format_score_message(result.score),
+                "Threshold %d looks promising, verifying...",
+                threshold,
+            )
+            verification = self._test_threshold(
+                calibration_mode,
+                threshold,
+                max_samples,
             )
 
-            self._update_state(state, result)
+            self._log_result(verification, prefix="Verification")
+            self._log_result_debug(verification, prefix="Verification")
 
-            if self._should_stop_calibration(state):
-                break
+            if verification.is_consistent:
+                logger.info(
+                    "Threshold %d verified: best=%.4fmm, median=%.4fmm",
+                    threshold,
+                    verification.best_range,
+                    verification.median_range,
+                )
+                return threshold
 
-            current_threshold = self._get_next_threshold(
-                current_threshold,
-                result.score,
-                state,
-            )
-
-        return self._calculate_optimal(state)
-
-    def _update_state(
-        self,
-        state: CalibrationState,
-        result: CalibrationResult,
-    ) -> None:
-        """Update calibration state based on current result."""
-        if not result.is_acceptable:
-            if state.first_acceptable is not None:
-                state.consecutive_unacceptable += 1
-            return
-
-        # Result is acceptable
-        state.last_acceptable = result.threshold
-        state.consecutive_unacceptable = 0
-        if state.first_acceptable is not None:
-            return
-
-        state.first_acceptable = result.threshold
-        # Limit search to 20% past first acceptable
-        state.threshold_max = min(
-            int(state.first_acceptable * MAX_SEARCH_RANGE_MULTIPLIER),
-            state.threshold_max,
-        )
-        logger.debug(
-            "Found first acceptable threshold: %d (will search up to %d)",
-            state.first_acceptable,
-            state.threshold_max,
-        )
-
-    def _should_stop_calibration(self, state: CalibrationState) -> bool:
-        """Determine if calibration should stop early."""
-        if state.first_acceptable is None:
-            return False
-        return state.consecutive_unacceptable >= MAX_CONSECUTIVE_UNACCEPTABLE
-
-    def _get_next_threshold(
-        self,
-        current_threshold: int,
-        score: float,
-        state: CalibrationState,
-    ) -> int:
-        """Calculate the next threshold to test."""
-        if state.first_acceptable is None:
-            # Not yet acceptable - use adaptive large steps
-            step = compute_step_increase(current_threshold, score)
-        else:
-            # Found acceptable - use small percentage-based steps
-            step = max(MIN_ALLOWED_STEP, int(current_threshold * 0.05))
-
-        next_threshold = min(current_threshold + step, state.threshold_max)
-        actual_step = next_threshold - current_threshold
-
-        if actual_step < MIN_ALLOWED_STEP:
+            # Verification failed - step up
             logger.debug(
-                "Stopping: remaining step size (%d) below minimum (%d)",
-                actual_step,
-                MIN_ALLOWED_STEP,
+                "Verification failed (median=%.4f > %.4f), stepping up",
+                verification.median_range,
+                MAX_SAMPLE_RANGE,
             )
-            # Force loop exit by returning value past max
-            return state.threshold_max + 1
+            threshold += MIN_STEP
 
-        logger.debug("Next threshold: %d (+%d)", next_threshold, actual_step)
-        return next_threshold
-
-    def _calculate_optimal(self, state: CalibrationState) -> int | None:
-        """Calculate optimal threshold from calibration state."""
-        if state.first_acceptable is None:
-            return None
-
-        # Found complete range
-        if state.last_acceptable is not None and state.last_acceptable > state.first_acceptable:
-            optimal = (state.first_acceptable + state.last_acceptable) // 2
-            logger.info(
-                "Found acceptable range: %d-%d, using midpoint: %d",
-                state.first_acceptable,
-                state.last_acceptable,
-                optimal,
-            )
-            return optimal
-
-        # Only found first acceptable - use midpoint to limit
-        optimal = (state.first_acceptable + state.threshold_max) // 2
-        logger.warning(
-            "Hit search limit at threshold %d. Using midpoint between first acceptable (%d) and search limit: %d",
-            state.threshold_max,
-            state.first_acceptable,
-            optimal,
-        )
-        logger.info(
-            "Consider refining calibration with:\nCARTOGRAPHER_TOUCH_CALIBRATE START=%d MAX=%d",
-            state.first_acceptable,
-            min(
-                int(state.first_acceptable * 1.5),
-                state.threshold_max + 1000,
-            ),
-        )
-        return optimal
+        return None
 
     def _test_threshold(
         self,
         calibration_mode: CalibrationTouchMode,
         threshold: int,
-    ) -> CalibrationResult:
-        """
-        Test a single threshold value and return the result.
+        sample_count: int,
+    ) -> ThresholdResult:
+        """Test a threshold by collecting samples and analyzing subsets."""
+        samples = calibration_mode.collect_samples(threshold, sample_count)
+        required = self._config.touch.samples
 
-        Collects samples and computes MAD score to determine
-        acceptability.
-        """
-        samples = calibration_mode.collect_samples(threshold)
-        score = compute_mad(samples)
+        # Analyze subsets
+        best, best_range, median_range = analyze_subsets(samples, required)
 
-        logger.debug(
-            "Threshold %d: samples=%s, score=%.6f",
-            threshold,
-            ", ".join(f"{s:.6f}" for s in samples[:5]) + (", ..." if len(samples) > 5 else ""),
-            score,
+        return ThresholdResult(
+            threshold=threshold,
+            samples=samples,
+            best_subset=best,
+            best_range=best_range,
+            median_range=median_range,
         )
 
-        return CalibrationResult(
-            threshold=threshold,
-            score=score,
-            samples=samples,
+    def _calculate_step(self, threshold: int, range_value: float) -> int:
+        """
+        Calculate step size based on how far from target we are.
+
+        Larger steps when range is very bad, smaller steps when close.
+        """
+        if range_value > MAX_SAMPLE_RANGE * 10:
+            return max(MIN_STEP, int(threshold * 0.10))
+        if range_value > MAX_SAMPLE_RANGE * 3:
+            return max(MIN_STEP, int(threshold * 0.05))
+        return MIN_STEP
+
+    def _log_result(
+        self,
+        result: ThresholdResult,
+        prefix: str = "Threshold",
+    ) -> None:
+        """Log a threshold test result at INFO level."""
+        status = "✓" if result.is_consistent else "✗"
+        logger.info(
+            "%s %d: %s best=%.4fmm, median=%.4fmm (%d samples)",
+            prefix,
+            result.threshold,
+            status,
+            result.best_range,
+            result.median_range,
+            len(result.samples),
+        )
+
+    def _log_result_debug(
+        self,
+        result: ThresholdResult,
+        prefix: str = "Threshold",
+    ) -> None:
+        """Log detailed threshold test info at DEBUG level."""
+        samples_str = ", ".join(f"{s:.4f}" for s in result.samples)
+        best_str = ", ".join(f"{s:.4f}" for s in result.best_subset) if result.best_subset else "none"
+
+        logger.debug(
+            "%s %d details:\n"
+            "  samples: [%s]\n"
+            "  best subset: [%s]\n"
+            "  best range: %.4f mm\n"
+            "  median range (top %d): %.4f mm\n",
+            prefix,
+            result.threshold,
+            samples_str,
+            best_str,
+            result.best_range,
+            TOP_SUBSET_COUNT,
+            result.median_range,
         )
 
 
 @final
 class CalibrationTouchMode(TouchMode):
-    """Touch mode configured specifically for calibration."""
+    """Touch mode configured for calibration."""
 
     def __init__(
         self,
@@ -393,50 +348,24 @@ class CalibrationTouchMode(TouchMode):
         self.load_model("calibration")
 
     def set_threshold(self, threshold: int) -> None:
-        """Update the threshold for the calibration model."""
+        """Update the calibration threshold."""
         self._models["calibration"] = replace(
             self._models["calibration"],
             threshold=threshold,
         )
         self.load_model("calibration")
 
-    def collect_samples(self, threshold: int) -> tuple[float, ...]:
-        """
-        Collect samples at the given threshold.
-
-        Performs multiple touches and returns sorted results.
-        Includes early stopping if results are clearly too poor.
-        """
-        samples: list[float] = []
+    def collect_samples(
+        self,
+        threshold: int,
+        sample_count: int,
+    ) -> tuple[float, ...]:
+        """Collect samples at the given threshold."""
         self.set_threshold(threshold)
+        samples: list[float] = []
 
-        max_samples = self._config.samples * 3
-
-        for _ in range(max_samples):
+        for _ in range(sample_count):
             pos = self._perform_single_probe()
             samples.append(pos)
 
-            if self._should_stop_early(samples):
-                break
-
         return tuple(sorted(samples))
-
-    def _should_stop_early(self, samples: list[float]) -> bool:
-        """
-        Determine if we should stop collecting samples early.
-
-        Returns True if we have enough samples and the score is
-        significantly worse than tolerance (5x).
-        """
-        if len(samples) < self._config.samples:
-            return False
-        score = compute_mad(samples)
-        if score > MAD_TOLERANCE * 5:
-            logger.debug(
-                "Early stop at sample %d (score %.6f >> %.6f)",
-                len(samples),
-                score,
-                MAD_TOLERANCE,
-            )
-            return True
-        return False

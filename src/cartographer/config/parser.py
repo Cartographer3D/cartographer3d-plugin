@@ -90,10 +90,10 @@ def parse_scan_config(wrapper: ParseConfigWrapper, models: dict[str, ScanModelCo
 
 
 def parse_touch_config(wrapper: ParseConfigWrapper, models: dict[str, TouchModelConfiguration]) -> TouchConfig:
-    samples = wrapper.get_int("samples", default=5, minimum=3)
+    samples = wrapper.get_int("samples", default=3, minimum=3)
     return TouchConfig(
         samples=samples,
-        max_samples=wrapper.get_int("max_samples", default=samples * 2),
+        max_samples=wrapper.get_int("max_samples", default=max(10, samples * 2)),
         max_touch_temperature=wrapper.get_int("UNSAFE_max_touch_temperature", default=150),
         home_random_radius=wrapper.get_float("EXPERIMENTAL_home_random_radius", default=0.0, minimum=0.0),
         models=models,
