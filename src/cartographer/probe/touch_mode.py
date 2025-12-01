@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import heapq
 import logging
 from dataclasses import dataclass
 from itertools import combinations
@@ -8,22 +9,31 @@ from typing import TYPE_CHECKING
 import numpy as np
 from typing_extensions import override
 
-from cartographer.interfaces.printer import Endstop, HomingState, Mcu, Position, ProbeMode, Toolhead
-from cartographer.lib.statistics import compute_mad
+from cartographer.interfaces.printer import (
+    Endstop,
+    HomingState,
+    Mcu,
+    Position,
+    ProbeMode,
+    Toolhead,
+)
 from cartographer.probe.touch_model import TouchModelSelectorMixin
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from cartographer.interfaces.configuration import Configuration, TouchModelConfiguration
+    from cartographer.interfaces.configuration import (
+        Configuration,
+        TouchModelConfiguration,
+    )
 
 logger = logging.getLogger(__name__)
 
 
 TOUCH_ACCEL = 100
-MAD_TOLERANCE = 0.0054  # Statistically equivalent to 0.008mm stddev
+MAX_SAMPLE_RANGE = 0.010  # All samples must be within 10 microns
 RETRACT_DISTANCE = 2.0
-MAX_TOUCH_TEMPERATURE_EPSILON = 2  # Allow some temperature overshoot
+MAX_TOUCH_TEMPERATURE_EPSILON = 2
 
 
 @dataclass(frozen=True)
@@ -77,12 +87,10 @@ class TouchBoundaries:
         x_offset = config.x_offset
         y_offset = config.y_offset
 
-        # For negative offsets: increase min bounds, leave max bounds unchanged
-        min_x = mesh_min_x - min(x_offset, 0)  # Only subtract negative offsets
-        min_y = mesh_min_y - min(y_offset, 0)  # Only subtract negative offsets
-        # For positive offsets: reduce max bounds, leave min bounds unchanged
-        max_x = mesh_max_x - max(x_offset, 0)  # Only subtract positive offsets
-        max_y = mesh_max_y - max(y_offset, 0)  # Only subtract positive offsets
+        min_x = mesh_min_x - min(x_offset, 0)
+        min_y = mesh_min_y - min(y_offset, 0)
+        max_x = mesh_max_x - max(x_offset, 0)
+        max_y = mesh_max_y - max(y_offset, 0)
 
         return TouchBoundaries(
             min_x=min_x,
@@ -90,6 +98,26 @@ class TouchBoundaries:
             min_y=min_y,
             max_y=max_y,
         )
+
+
+def compute_range(samples: Sequence[float]) -> float:
+    """Compute the range (max - min) of samples."""
+    if len(samples) < 2:
+        return float("inf")
+    return max(samples) - min(samples)
+
+
+def find_best_subset(
+    samples: Sequence[float],
+    size: int,
+) -> Sequence[float] | None:
+    """Find the subset of samples with the smallest range."""
+    result = heapq.nsmallest(
+        1,
+        combinations(samples, size),
+        key=compute_range,
+    )
+    return result[0] if result else None
 
 
 class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
@@ -110,7 +138,12 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
     def last_homing_time(self) -> float:
         return self._last_homing_time
 
-    def __init__(self, mcu: Mcu, toolhead: Toolhead, config: TouchModeConfiguration) -> None:
+    def __init__(
+        self,
+        mcu: Mcu,
+        toolhead: Toolhead,
+        config: TouchModeConfiguration,
+    ) -> None:
         super().__init__(config.models)
         self._last_homing_time: float = 0.0
         self._toolhead: Toolhead = toolhead
@@ -118,13 +151,12 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         self._config: TouchModeConfiguration = config
 
         self.boundaries: TouchBoundaries = TouchBoundaries.from_config(config)
-
         self.last_z_result: float | None = None
 
     @override
     def get_status(self, eventtime: float) -> dict[str, object]:
         return {
-            "current_model": self.get_model().name if self.has_model() else "none",
+            "current_model": (self.get_model().name if self.has_model() else "none"),
             "models": ", ".join(self._config.models.keys()),
             "last_z_result": self.last_z_result,
         }
@@ -143,36 +175,52 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         return self.last_z_result
 
     def _run_probe(self) -> float:
-        collected: list[float] = []
-        touch_samples = self._config.samples
-        touch_max_samples = self._config.max_samples
-        logger.debug("Starting touch sequence for %d samples within %d touches...", touch_samples, touch_max_samples)
+        """
+        Collect touch samples and find a consistent subset.
 
-        for i in range(touch_max_samples):
+        Collects samples one at a time, checking after each if there's
+        a subset of the required size where all samples are within
+        the acceptable range.
+        """
+        collected: list[float] = []
+        required_samples = self._config.samples
+        max_samples = self._config.max_samples
+
+        logger.debug(
+            "Starting touch sequence for %d samples within %d touches.. .",
+            required_samples,
+            max_samples,
+        )
+
+        for i in range(max_samples):
             trigger_pos = self._perform_single_probe()
             collected.append(trigger_pos)
-            logger.debug("Touch %d: %.6f", i + 1, trigger_pos)
+            logger.debug("Touch %d: %.4f", i + 1, trigger_pos)
 
-            if len(collected) < touch_samples:
+            if len(collected) < required_samples:
                 continue
 
-            best_combo = self._find_best_combination(collected, touch_samples)
-            if best_combo is None or compute_mad(best_combo) > MAD_TOLERANCE:
+            best = find_best_subset(collected, required_samples)
+            if best is None:
                 continue
 
-            self._log_sample_stats("Acceptable touch combination found", best_combo)
+            sample_range = compute_range(best)
+            if sample_range > MAX_SAMPLE_RANGE:
+                continue
 
-            return float(np.median(best_combo) if len(best_combo) > 3 else np.mean(best_combo))
+            self._log_sample_stats("Acceptable samples found", best)
+            return float(np.median(best))
 
-        self._log_sample_stats("No acceptable touch combination found in samples", collected)
-        self._log_sample_stats(
-            "Best combination found was", self._find_best_combination(collected, touch_samples) or []
+        # Failed - log what we had
+        self._log_sample_stats("No acceptable samples found", collected)
+        best = find_best_subset(collected, required_samples)
+        if best:
+            self._log_sample_stats("Best subset was", best)
+
+        msg = (
+            f"Unable to find {required_samples:d} samples within {MAX_SAMPLE_RANGE:.3f}mm after {max_samples:d} touches"
         )
-        msg = f"Unable to find {touch_samples} samples within tolerance after {touch_max_samples} touches"
         raise TouchError(msg)
-
-    def _find_best_combination(self, samples: list[float], size: int) -> tuple[float, ...] | None:
-        return min(combinations(samples, size), key=compute_mad, default=None)
 
     def _perform_single_probe(self) -> float:
         model = self.get_model()
@@ -188,7 +236,10 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             self._toolhead.set_max_accel(max_accel)
 
         pos = self._toolhead.get_position()
-        self._toolhead.move(z=max(pos.z + RETRACT_DISTANCE, RETRACT_DISTANCE), speed=5)
+        self._toolhead.move(
+            z=max(pos.z + RETRACT_DISTANCE, RETRACT_DISTANCE),
+            speed=5,
+        )
         return trigger_pos - model.z_offset
 
     @override
@@ -204,8 +255,9 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             raise RuntimeError(msg)
 
         nozzle_temperature = max(self._toolhead.get_extruder_temperature())
-        if nozzle_temperature > self._config.max_touch_temperature + MAX_TOUCH_TEMPERATURE_EPSILON:
-            msg = f"Nozzle temperature must be below {self._config.max_touch_temperature:d}C"
+        max_temp = self._config.max_touch_temperature
+        if nozzle_temperature > max_temp + MAX_TOUCH_TEMPERATURE_EPSILON:
+            msg = f"Nozzle temperature must be below {max_temp:d}C"
             raise RuntimeError(msg)
         return self._mcu.start_homing_touch(print_time, model.threshold)
 
@@ -216,7 +268,6 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
     def on_home_end(self, homing_state: HomingState) -> None:
         if not homing_state.is_homing_z():
             return
-
         self._last_homing_time = self._toolhead.get_last_move_time()
 
     @override
@@ -225,32 +276,35 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
 
     @override
     def query_is_triggered(self, print_time: float) -> bool:
-        # Touch endstop is never in a triggered state.
         return False
 
     @override
     def get_endstop_position(self) -> float:
         return self.offset.z
 
-    def _log_sample_stats(self, message: str, samples: Sequence[float]) -> None:
-        max_v, min_v = max(samples, default=float("inf")), min(samples, default=float("-inf"))
-        mean = np.mean(samples)
-        median = np.median(samples)
+    def _log_sample_stats(
+        self,
+        message: str,
+        samples: Sequence[float],
+    ) -> None:
+        if not samples:
+            logger.debug("%s: (no samples)", message)
+            return
+
+        max_v = max(samples)
+        min_v = min(samples)
         range_v = max_v - min_v
-        std_dev = np.std(samples)
-        mad = compute_mad(samples)
+        mean = float(np.mean(samples))
+        median = float(np.median(samples))
+
         logger.debug(
-            "%s: (%s)\n"
-            "maximum %.6f, minimum %.6f, range %.6f,\n"
-            "average %.6f, median %.6f,\n"
-            "standard deviation %.6f, median absolute deviation %.6f",
+            "%s: (%s)\nrange %.4f (limit %.4f), min %.4f, max %.4f,\nmean %.4f, median %.4f",
             message,
-            ", ".join(f"{s:.6f}" for s in samples),
-            max_v,
-            min_v,
+            ", ".join(f"{s:.4f}" for s in samples),
             range_v,
+            MAX_SAMPLE_RANGE,
+            min_v,
+            max_v,
             mean,
             median,
-            std_dev,
-            mad,
         )

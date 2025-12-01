@@ -7,7 +7,6 @@ import numpy as np
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams
-from cartographer.lib.statistics import compute_mad
 
 if TYPE_CHECKING:
     from cartographer.interfaces.printer import Toolhead
@@ -58,18 +57,16 @@ class TouchAccuracyMacro(Macro):
         avg_value = np.mean(measurements)
         median = np.median(measurements)
         std_dev = np.std(measurements)
-        mad = compute_mad(measurements)
 
         logger.info(
             "touch accuracy results:\n"
             "maximum %.6f, minimum %.6f, range %.6f,\n"
             "average %.6f, median %.6f,\n"
-            "standard deviation %.6f, median absolute deviation %.6f",
+            "standard deviation %.6f",
             max_value,
             min_value,
             range_value,
             avg_value,
             median,
             std_dev,
-            mad,
         )
