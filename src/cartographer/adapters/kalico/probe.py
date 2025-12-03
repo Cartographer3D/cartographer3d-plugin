@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, final
 
-from gcode import CommandError, GCodeCommand
-
-from cartographer.adapters.utils import reraise_as
+from cartographer.adapters.klipper_like.utils import reraise_for_klipper
 
 if TYPE_CHECKING:
+    from gcode import GCodeCommand
+
     from cartographer.interfaces.configuration import GeneralConfig
     from cartographer.interfaces.printer import ProbeMode, Toolhead
     from cartographer.macros.probe import ProbeMacro, QueryProbeMacro
@@ -48,7 +48,7 @@ class KalicoCartographerProbe:
             return self.lift_speed
         return gcmd.get_float("LIFT_SPEED", self.lift_speed, above=0.0)
 
-    @reraise_as(CommandError)
+    @reraise_for_klipper
     def run_probe(self, gcmd: GCodeCommand) -> list[float]:
         del gcmd
         pos = self.toolhead.get_position()

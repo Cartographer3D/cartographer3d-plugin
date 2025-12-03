@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, final
 
-from gcode import CommandError
-
-from cartographer.adapters.utils import reraise_as
+from cartographer.adapters.klipper_like.utils import reraise_for_klipper
 
 if TYPE_CHECKING:
     from gcode import GCodeCommand
@@ -20,7 +18,7 @@ class KlipperProbeSession:
         self._results: list[list[float]] = []
         self.toolhead: Toolhead = toolhead
 
-    @reraise_as(CommandError)
+    @reraise_for_klipper
     def run_probe(self, gcmd: GCodeCommand) -> None:
         del gcmd
         pos = self.toolhead.get_position()
