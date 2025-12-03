@@ -13,6 +13,7 @@ from cartographer.interfaces.configuration import (
     Configuration,
     TouchModelConfiguration,
 )
+from cartographer.interfaces.errors import ProbeTriggerError
 from cartographer.interfaces.printer import Macro, MacroParams, Mcu
 from cartographer.macros.utils import force_home_z
 from cartographer.probe.touch_mode import (
@@ -69,11 +70,13 @@ def analyze_subsets(
     """
     Analyze subsets to find the best and compute statistics.
 
-    Returns (best_subset, best_range, median_range, total_count).
+    Returns
+    -------
+        (best_subset, best_range, median_range)
     """
     top_subsets = heapq.nsmallest(
         top_n,
-        combinations(samples, subset_size),  # Generator, not list
+        combinations(samples, subset_size),
         key=compute_range,
     )
 
@@ -83,7 +86,6 @@ def analyze_subsets(
     best = top_subsets[0]
     best_range = compute_range(best)
 
-    # Compute median range of top N subsets
     top_count = min(top_n, len(top_subsets))
     top_ranges = [compute_range(s) for s in top_subsets[:top_count]]
     median_range = float(np.median(top_ranges))
@@ -118,12 +120,7 @@ class TouchCalibrateMacro(Macro):
             msg = "Must home x and y before calibration"
             raise RuntimeError(msg)
 
-        self._toolhead.move(
-            x=self._config.bed_mesh.zero_reference_position[0],
-            y=self._config.bed_mesh.zero_reference_position[1],
-            speed=self._config.general.travel_speed,
-        )
-        self._toolhead.wait_moves()
+        self._move_to_calibration_position()
 
         required_samples = self._config.touch.samples
         max_samples = self._config.touch.max_samples
@@ -150,7 +147,7 @@ class TouchCalibrateMacro(Macro):
         )
 
         with force_home_z(self._toolhead):
-            threshold = self._find_minimum_threshold(
+            threshold = self._find_threshold(
                 calibration_mode,
                 threshold_start,
                 threshold_max,
@@ -159,33 +156,21 @@ class TouchCalibrateMacro(Macro):
             )
 
         if threshold is None:
-            logger.info(
-                "Failed to find reliable threshold in range %d-%d.\n"
-                "Try increasing MAX:\n"
-                "CARTOGRAPHER_TOUCH_CALIBRATE START=%d MAX=%d",
-                threshold_start,
-                threshold_max,
-                threshold_max,
-                threshold_max + 2000,
-            )
+            self._log_calibration_failure(threshold_start, threshold_max)
             return
 
-        logger.info(
-            "Calibration complete: threshold=%d, speed=%d",
-            threshold,
-            speed,
-        )
-        model = TouchModelConfiguration(name, threshold, speed, DEFAULT_Z_OFFSET)
-        self._config.save_touch_model(model)
-        self._probe.touch.load_model(name)
-        logger.info(
-            "Touch model %s has been saved for the current session.\n"
-            "The SAVE_CONFIG command will update the printer config "
-            "file and restart the printer.",
-            name,
-        )
+        self._save_calibration_result(name, threshold, speed)
 
-    def _find_minimum_threshold(
+    def _move_to_calibration_position(self) -> None:
+        """Move to the zero reference position for calibration."""
+        self._toolhead.move(
+            x=self._config.bed_mesh.zero_reference_position[0],
+            y=self._config.bed_mesh.zero_reference_position[1],
+            speed=self._config.general.travel_speed,
+        )
+        self._toolhead.wait_moves()
+
+    def _find_threshold(
         self,
         calibration_mode: CalibrationTouchMode,
         threshold_start: int,
@@ -204,12 +189,11 @@ class TouchCalibrateMacro(Macro):
         threshold = threshold_start
 
         while threshold <= threshold_max:
-            # Quick test with required sample count
-            result = self._test_threshold(
-                calibration_mode,
-                threshold,
-                required_samples,
-            )
+            result = self._test_threshold(calibration_mode, threshold, required_samples)
+
+            if result is None:
+                threshold += self._calculate_step(threshold, None)
+                continue
 
             self._log_result(result)
             self._log_result_debug(result)
@@ -218,40 +202,76 @@ class TouchCalibrateMacro(Macro):
                 threshold += self._calculate_step(threshold, result.median_range)
                 continue
 
-            # Verify with more samples
-            logger.info(
-                "Threshold %d looks promising, verifying...",
-                threshold,
-            )
-            verification = self._test_threshold(
-                calibration_mode,
-                threshold,
-                max_samples,
-            )
+            verified_threshold = self._verify_threshold(calibration_mode, threshold, max_samples)
+            if verified_threshold is not None:
+                return verified_threshold
 
-            self._log_result(verification, prefix="Verification")
-            self._log_result_debug(verification, prefix="Verification")
-
-            if verification.is_consistent:
-                logger.info(
-                    "Threshold %d verified: best=%.4fmm, median=%.4fmm",
-                    threshold,
-                    verification.best_range,
-                    verification.median_range,
-                )
-                return threshold
-
-            # Verification failed - step up
-            logger.debug(
-                "Verification failed (median=%.4f > %.4f), stepping up",
-                verification.median_range,
-                MAX_SAMPLE_RANGE,
-            )
-            threshold += MIN_STEP
+            threshold += self._calculate_step(threshold, None)
 
         return None
 
     def _test_threshold(
+        self,
+        calibration_mode: CalibrationTouchMode,
+        threshold: int,
+        sample_count: int,
+    ) -> ThresholdResult | None:
+        """
+        Test a threshold, returning None if noise was detected.
+
+        Returns
+        -------
+        ThresholdResult or None
+            Result if successful, None if probe triggered due to noise.
+        """
+        try:
+            return self._analyze_threshold(calibration_mode, threshold, sample_count)
+        except ProbeTriggerError:
+            logger.warning("Threshold %d triggered prior to movement.", threshold)
+            return None
+
+    def _verify_threshold(
+        self,
+        calibration_mode: CalibrationTouchMode,
+        threshold: int,
+        max_samples: int,
+    ) -> int | None:
+        """
+        Verify a promising threshold with more samples.
+
+        Returns
+        -------
+        int or None
+            The verified threshold, or None if verification failed.
+        """
+        logger.info("Threshold %d looks promising, verifying...", threshold)
+
+        try:
+            verification = self._analyze_threshold(calibration_mode, threshold, max_samples)
+        except ProbeTriggerError:
+            logger.warning("Threshold %d triggered prior to movement.", threshold)
+            return None
+
+        self._log_result(verification, prefix="Verification")
+        self._log_result_debug(verification, prefix="Verification")
+
+        if verification.is_consistent:
+            logger.info(
+                "Threshold %d verified: best=%.4fmm, median=%.4fmm",
+                threshold,
+                verification.best_range,
+                verification.median_range,
+            )
+            return threshold
+
+        logger.debug(
+            "Verification failed (median=%.4f > %.4f), stepping up",
+            verification.median_range,
+            MAX_SAMPLE_RANGE,
+        )
+        return None
+
+    def _analyze_threshold(
         self,
         calibration_mode: CalibrationTouchMode,
         threshold: int,
@@ -261,7 +281,6 @@ class TouchCalibrateMacro(Macro):
         samples = calibration_mode.collect_samples(threshold, sample_count)
         required = self._config.touch.samples
 
-        # Analyze subsets
         best, best_range, median_range = analyze_subsets(samples, required)
 
         return ThresholdResult(
@@ -272,17 +291,46 @@ class TouchCalibrateMacro(Macro):
             median_range=median_range,
         )
 
-    def _calculate_step(self, threshold: int, range_value: float) -> int:
+    def _calculate_step(self, threshold: int, range_value: float | None) -> int:
         """
         Calculate step size based on how far from target we are.
 
         Larger steps when range is very bad, smaller steps when close.
         """
+        if range_value is None:
+            return max(MIN_STEP, int(threshold * 0.50))
         if range_value > MAX_SAMPLE_RANGE * 10:
-            return max(MIN_STEP, int(threshold * 0.10))
-        if range_value > MAX_SAMPLE_RANGE * 3:
-            return max(MIN_STEP, int(threshold * 0.05))
-        return MIN_STEP
+            return max(MIN_STEP, int(threshold * 0.25))
+        return max(MIN_STEP, int(threshold * 0.10))
+
+    def _log_calibration_failure(self, threshold_start: int, threshold_max: int) -> None:
+        """Log failure message with suggested next steps."""
+        logger.info(
+            "Failed to find reliable threshold in range %d-%d.\n"
+            "Try increasing MAX:\n"
+            "CARTOGRAPHER_TOUCH_CALIBRATE START=%d MAX=%d",
+            threshold_start,
+            threshold_max,
+            threshold_max,
+            int(threshold_max * 1.5),
+        )
+
+    def _save_calibration_result(self, name: str, threshold: int, speed: int) -> None:
+        """Save the calibration result and log success."""
+        logger.info(
+            "Calibration complete: threshold=%d, speed=%d",
+            threshold,
+            speed,
+        )
+        model = TouchModelConfiguration(name, threshold, speed, DEFAULT_Z_OFFSET)
+        self._config.save_touch_model(model)
+        self._probe.touch.load_model(name)
+        logger.info(
+            "Touch model %s has been saved for the current session.\n"
+            "The SAVE_CONFIG command will update the printer config "
+            "file and restart the printer.",
+            name,
+        )
 
     def _log_result(
         self,
@@ -360,7 +408,9 @@ class CalibrationTouchMode(TouchMode):
         threshold: int,
         sample_count: int,
     ) -> tuple[float, ...]:
-        """Collect samples at the given threshold."""
+        """
+        Collect samples at the given threshold.
+        """
         self.set_threshold(threshold)
         samples: list[float] = []
 

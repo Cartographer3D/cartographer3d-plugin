@@ -9,6 +9,7 @@ from extras.manual_probe import ManualProbeHelper
 from typing_extensions import override
 
 from cartographer.adapters.klipper.endstop import KlipperEndstop
+from cartographer.adapters.klipper_like.utils import reraise_from_klipper
 from cartographer.interfaces.printer import Endstop, HomingAxis, Position, TemperatureStatus, Toolhead
 
 if TYPE_CHECKING:
@@ -94,6 +95,7 @@ class KlipperLikeToolhead(Toolhead, ABC):
         return gcode_move.get_status()["homing_origin"].z
 
     @override
+    @reraise_from_klipper
     def z_probing_move(self, endstop: Endstop, *, speed: float) -> float:
         klipper_endstop = KlipperEndstop(self.mcu, endstop)
         self.wait_moves()

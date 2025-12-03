@@ -6,14 +6,14 @@ from functools import wraps
 from textwrap import dedent
 from typing import TYPE_CHECKING, Callable, Protocol, Sequence, final
 
-from gcode import CommandError, GCodeCommand, GCodeDispatch
+from gcode import GCodeCommand, GCodeDispatch
 from typing_extensions import override
 
 from cartographer.adapters.klipper.endstop import KlipperEndstop, KlipperHomingState
 from cartographer.adapters.klipper.homing import KlipperHomingChip
 from cartographer.adapters.klipper.logging import setup_console_logger
 from cartographer.adapters.klipper.temperature import PrinterTemperatureCoil
-from cartographer.adapters.utils import reraise_as
+from cartographer.adapters.klipper_like.utils import reraise_for_klipper
 from cartographer.interfaces.printer import Macro, MacroParams, SupportsFallbackMacro
 from cartographer.runtime.integrator import Integrator
 
@@ -83,7 +83,7 @@ class KlipperLikeIntegrator(Integrator, ABC):
         self._printer.add_object(object_name, sensor)
         pheaters.available_sensors.append(object_name)
 
-    @reraise_as(CommandError)
+    @reraise_for_klipper
     def _handle_home_rails_end(self, homing: Homing, rails: Sequence[_Rail]) -> None:
         homing_state = KlipperHomingState(homing)
         klipper_endstops = [
