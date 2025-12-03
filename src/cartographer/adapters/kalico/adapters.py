@@ -9,7 +9,7 @@ from cartographer.adapters.klipper.bed_mesh import KlipperBedMesh
 from cartographer.adapters.klipper.configuration import KlipperConfiguration
 from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
 from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
-from cartographer.adapters.klipper.task_executor import KlipperMultiprocessingExecutor
+from cartographer.adapters.klipper.scheduler import KlipperScheduler
 from cartographer.runtime.adapters import Adapters
 
 if TYPE_CHECKING:
@@ -23,10 +23,10 @@ logger = logging.getLogger(__name__)
 class KalicoAdapters(Adapters):
     def __init__(self, config: KlipperConfigWrapper) -> None:
         self.printer = config.get_printer()
+        self.scheduler = KlipperScheduler(self.printer.get_reactor())
 
         self.config = KlipperConfiguration(config)
-        self.mcu = KlipperCartographerMcu(config)
-        self.task_executor = KlipperMultiprocessingExecutor(self.printer.get_reactor())
+        self.mcu = KlipperCartographerMcu(config, self.scheduler)
 
         self.toolhead = KalicoToolhead(config, self.mcu)
         self.bed_mesh = KlipperBedMesh(config)

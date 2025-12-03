@@ -33,6 +33,7 @@ def sample(
     temperature: float = 0,
 ):
     return Sample(
+        raw_count=0,
         frequency=1 / frequency,
         time=time,
         position=position,

@@ -134,6 +134,7 @@ class TestBedMeshIntegration:
             nozzle_y = probe_pos[1] - probe_offset.y
 
             sample = Sample(
+                raw_count=1000,
                 time=float(i * 0.1),
                 frequency=1000.0,
                 temperature=25.0,

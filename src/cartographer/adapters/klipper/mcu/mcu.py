@@ -19,6 +19,8 @@ from cartographer.adapters.klipper.mcu.commands import (
 )
 from cartographer.adapters.klipper.mcu.constants import (
     FREQUENCY_RANGE_PERCENT,
+    INVALID_FREQUENCY_COUNTS,
+    SENSOR_READY_TIMEOUT,
     SHORTED_FREQUENCY_VALUE,
     TRIGGER_HYSTERESIS,
     KlipperCartographerConstants,
@@ -30,6 +32,7 @@ if TYPE_CHECKING:
     from configfile import ConfigWrapper
     from reactor import Reactor, ReactorCompletion
 
+    from cartographer.interfaces.multiprocessing import Scheduler
     from cartographer.stream import Session
 
 logger = logging.getLogger(__name__)
@@ -74,12 +77,15 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     def __init__(
         self,
         config: ConfigWrapper,
+        scheduler: Scheduler,
     ):
+        self._sensor_ready = False
         self.printer = config.get_printer()
         self.klipper_mcu = mcu.get_printer_mcu(self.printer, config.get("mcu"))
         self._reactor: Reactor = self.klipper_mcu.get_printer().get_reactor()
         self._stream = KlipperStream[Sample](self, self._reactor)
         self.dispatch = KlipperTriggerDispatch(self.klipper_mcu)
+        self._scheduler = scheduler
 
         self.motion_report = self.printer.load_object(config, "motion_report")
 
@@ -94,6 +100,13 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
         self.klipper_mcu.register_config_callback(self._initialize)
 
+    @override
+    def get_status(self, eventtime: float) -> dict[str, object]:
+        return {
+            "last_sample": asdict(self._stream.last_item) if self._stream.last_item else None,
+            "constants": self._constants.get_status() if self._constants else None,
+        }
+
     def _initialize(self) -> None:
         self._constants = KlipperCartographerConstants(self.klipper_mcu)
         self._commands = KlipperCartographerCommands(self.klipper_mcu)
@@ -102,6 +115,8 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
 
     @override
     def start_homing_scan(self, print_time: float, frequency: float) -> ReactorCompletion:
+        self._ensure_sensor_ready()
+
         self._set_threshold(frequency)
         completion = self.dispatch.start(print_time)
 
@@ -118,6 +133,8 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
 
     @override
     def start_homing_touch(self, print_time: float, threshold: int) -> ReactorCompletion:
+        self._ensure_sensor_ready()
+
         completion = self.dispatch.start(print_time)
 
         self.commands.send_home(
@@ -216,12 +233,14 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         """
         clock = self.klipper_mcu.clock32_to_clock64(data["clock"])
         time = self.klipper_mcu.clock_to_print_time(clock)
+        count = data["data"]
 
-        frequency = self.constants.count_to_frequency(data["data"])
+        frequency = self.constants.count_to_frequency(count)
         temperature = self.constants.calculate_temperature(data["temp"])
         position = self.get_requested_position(time)
 
         sample = Sample(
+            raw_count=count,
             time=time,
             frequency=frequency,
             temperature=temperature,
@@ -286,9 +305,42 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         position = kinematics.calc_position(stepper_pos)
         return Position(x=position[0], y=position[1], z=position[2])
 
-    @override
-    def get_status(self, eventtime: float) -> dict[str, object]:
-        return {
-            "last_sample": asdict(self._stream.last_item) if self._stream.last_item else None,
-            "constants": self._constants.get_status() if self._constants else None,
-        }
+    def _ensure_sensor_ready(self, timeout: float = SENSOR_READY_TIMEOUT) -> None:
+        """
+        Wait for the LDC sensor to return valid data.
+
+        On the current firmware, the sensor may return error codes like
+        83887360 (0x05000100) while initializing. This method polls until
+        valid data is received.
+        """
+        if self._sensor_ready:
+            return
+
+        if self._is_sensor_ready():
+            self._sensor_ready = True
+            return
+
+        logger.debug("Cartographer sensor not ready, waiting for %.1f", timeout)
+        if not self._scheduler.wait_until(
+            self._is_sensor_ready,
+            timeout=timeout,
+            poll_interval=0.1,
+        ):
+            last_sample = self._stream.last_item
+            count = int(last_sample.raw_count) if last_sample else 0
+            msg = (
+                f"Cartographer not ready after {timeout:.1f}s. "
+                f"Last count: {count} (0x{count:08X}). "
+                "Check coil connection and power."
+            )
+            raise RuntimeError(msg)
+
+        self._sensor_ready = True
+        logger.debug("Cartographer sensor ready")
+
+    def _is_sensor_ready(self) -> bool:
+        """Check if a frequency reading from the LDC sensor is valid."""
+        sample = self._stream.last_item
+        if sample is None:
+            return False
+        return sample.raw_count not in INVALID_FREQUENCY_COUNTS
