@@ -73,6 +73,7 @@ class ScanModel:
             domain=converted.domain,
             z_offset=z_offset,
             reference_temperature=temperature,
+            version_info=None,
         )
 
     def frequency_to_distance(self, frequency: float, *, temperature: float) -> float:

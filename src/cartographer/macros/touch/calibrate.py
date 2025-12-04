@@ -409,7 +409,7 @@ class TouchCalibrateMacro(Macro):
             threshold,
             speed,
         )
-        model = TouchModelConfiguration(name, threshold, speed, DEFAULT_Z_OFFSET)
+        model = TouchModelConfiguration(name, threshold, speed, DEFAULT_Z_OFFSET, version_info=None)
         self._config.save_touch_model(model)
         self._probe.touch.load_model(name)
         logger.info(
@@ -489,7 +489,7 @@ class CalibrationTouchMode(TouchMode):
         threshold: int,
         speed: float,
     ) -> None:
-        model = TouchModelConfiguration("calibration", threshold, speed, 0)
+        model = TouchModelConfiguration("calibration", threshold, speed, 0, version_info=None)
         super().__init__(
             mcu,
             toolhead,
