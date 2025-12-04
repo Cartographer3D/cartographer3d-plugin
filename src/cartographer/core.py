@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, final
 from cartographer.coil.temperature_compensation import (
     CoilTemperatureCompensationModel,
 )
+from cartographer.config.model_validator import validate_and_remove_incompatible_models
 from cartographer.macros.axis_twist_compensation import (
     AxisTwistCompensationMacro,
 )
@@ -79,6 +80,9 @@ class PrinterCartographer:
 
         # Register all macros
         self.macros = self._create_macro_registrations(probe, toolhead, adapters)
+
+    def ready_callback(self) -> None:
+        validate_and_remove_incompatible_models(self.config, self.mcu.get_mcu_version())
 
     def _register_macro(self, name: str, macro: Macro, use_prefix: bool = True) -> list[MacroRegistration]:
         """Register a macro with optional prefixing."""

@@ -48,12 +48,21 @@ class BedMeshConfig:
 
 
 @dataclass(frozen=True)
+class ModelVersionInfo:
+    """Version information for model compatibility checking."""
+
+    software_version: str | None = None
+    mcu_version: str | None = None
+
+
+@dataclass(frozen=True)
 class ScanModelConfiguration:
     name: str
     coefficients: list[float]
     domain: tuple[float, float]
     z_offset: float
     reference_temperature: float
+    version_info: ModelVersionInfo | None
 
 
 @dataclass(frozen=True)
@@ -62,6 +71,7 @@ class TouchModelConfiguration:
     threshold: int
     speed: float
     z_offset: float
+    version_info: ModelVersionInfo | None
 
 
 @dataclass(frozen=True)

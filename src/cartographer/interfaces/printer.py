@@ -59,6 +59,7 @@ class Endstop(Protocol):
 @dataclass(frozen=True)
 class Sample:
     frequency: float
+    raw_count: int
     time: float
     position: Position | None
     temperature: float
@@ -79,6 +80,7 @@ class Mcu(Protocol):
     def get_current_time(self) -> float: ...
     def get_coil_reference(self) -> CoilCalibrationReference: ...
     def get_status(self, eventtime: float) -> dict[str, object]: ...
+    def get_mcu_version(self) -> str: ...
 
 
 class MacroParams(Protocol):

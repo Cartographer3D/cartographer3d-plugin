@@ -24,8 +24,8 @@ class KalicoAdapters(Adapters):
     def __init__(self, config: KlipperConfigWrapper) -> None:
         self.printer = config.get_printer()
 
-        self.config = KlipperConfiguration(config)
         self.mcu = KlipperCartographerMcu(config)
+        self.config = KlipperConfiguration(config, self.mcu)
         self.task_executor = KlipperMultiprocessingExecutor(self.printer.get_reactor())
 
         self.toolhead = KalicoToolhead(config, self.mcu)

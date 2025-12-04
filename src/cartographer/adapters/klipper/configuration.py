@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
+from cartographer import __version__
 from cartographer.config.parser import (
     ParseConfigWrapper,
     parse_bed_mesh_config,
@@ -26,6 +27,8 @@ from cartographer.interfaces.configuration import (
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
+
+    from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
 
 
 @final
@@ -79,8 +82,9 @@ class KlipperConfigWrapper(ParseConfigWrapper):
 
 @final
 class KlipperConfiguration(Configuration):
-    def __init__(self, config: ConfigWrapper) -> None:
+    def __init__(self, config: ConfigWrapper, mcu: KlipperCartographerMcu) -> None:
         self.wrapper = config
+        self._mcu = mcu
         self._config = config.get_printer().lookup_object("configfile")
 
         self.name = config.get_name()
@@ -113,6 +117,11 @@ class KlipperConfiguration(Configuration):
         save("domain", ",".join(map(str, config.domain)))
         save("z_offset", round(config.z_offset, 3))
         save("reference_temperature", round(config.reference_temperature, 2))
+
+        # Save version information
+        save("software_version", __version__)
+        save("mcu_version", self._mcu.get_mcu_version())
+
         self.scan.models[config.name] = config
 
     @override
@@ -126,6 +135,11 @@ class KlipperConfiguration(Configuration):
         save("threshold", config.threshold)
         save("speed", config.speed)
         save("z_offset", round(config.z_offset, 3))
+
+        # Save version information
+        save("software_version", __version__)
+        save("mcu_version", self._mcu.get_mcu_version())
+
         self.touch.models[config.name] = config
 
     @override
