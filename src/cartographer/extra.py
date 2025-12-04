@@ -25,6 +25,8 @@ def load_config(config: object) -> object:
     integrator.register_coil_temperature_sensor()
     integrator.register_endstop_pin("probe", "z_virtual_endstop", cartographer.scan_mode)
 
+    integrator.register_ready_callback(cartographer.ready_callback)
+
     integrator_name = integrator.__class__.__name__
     logger.info("Loaded Cartographer3D Plugin version %s using %s", __version__, integrator_name)
 

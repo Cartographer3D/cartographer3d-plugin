@@ -9,6 +9,7 @@ from cartographer.interfaces.configuration import (
     CoilCalibrationConfiguration,
     CoilConfiguration,
     GeneralConfig,
+    ModelVersionInfo,
     ScanConfig,
     ScanModelConfiguration,
     TouchConfig,
@@ -149,6 +150,20 @@ def parse_bed_mesh_config(wrapper: ParseConfigWrapper) -> BedMeshConfig:
     )
 
 
+def _parse_version_info(wrapper: ParseConfigWrapper) -> ModelVersionInfo:
+    """Parse version information from model config."""
+    software_version = wrapper.get_optional_str("software_version")
+    mcu_version = wrapper.get_optional_str("mcu_version")
+
+    if software_version is None:
+        return ModelVersionInfo(mcu_version=mcu_version)
+
+    return ModelVersionInfo(
+        software_version=software_version,
+        mcu_version=mcu_version,
+    )
+
+
 def parse_scan_model_config(wrapper: ParseConfigWrapper) -> ScanModelConfiguration:
     return ScanModelConfiguration(
         name=wrapper.get_name(),
@@ -156,6 +171,7 @@ def parse_scan_model_config(wrapper: ParseConfigWrapper) -> ScanModelConfigurati
         domain=list_to_tuple(wrapper.get_required_float_list("domain", count=2)),
         z_offset=wrapper.get_required_float("z_offset"),
         reference_temperature=wrapper.get_required_float("reference_temperature"),
+        version_info=_parse_version_info(wrapper),
     )
 
 
@@ -165,6 +181,7 @@ def parse_touch_model_config(wrapper: ParseConfigWrapper) -> TouchModelConfigura
         threshold=wrapper.get_int("threshold", default=100),
         speed=wrapper.get_required_float("speed", minimum=1),
         z_offset=wrapper.get_required_float("z_offset", maximum=0),
+        version_info=_parse_version_info(wrapper),
     )
 
 

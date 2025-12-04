@@ -30,7 +30,12 @@ class ScanCalibrateMethod(Enum):
 class ScanCalibrateMacro(Macro):
     description = "Run the scan calibration"
 
-    def __init__(self, probe: Probe, toolhead: Toolhead, config: Configuration) -> None:
+    def __init__(
+        self,
+        probe: Probe,
+        toolhead: Toolhead,
+        config: Configuration,
+    ) -> None:
         self._probe = probe
         self._toolhead = toolhead
         self._config = config
@@ -103,12 +108,12 @@ class ScanCalibrateMacro(Macro):
         logger.debug("Collected %d samples", len(samples))
 
         model = ScanModel.fit(name, samples, z_offset=0)
-        logger.debug("Scan calibration fitted model: %s", model)
+        logger.debug("Calibration complete")
 
         self._config.save_scan_model(model)
         self._probe.scan.load_model(model.name)
         logger.info(
-            "Scan model %s has been saved for the current session.\n"
+            "Scan model '%s' has been saved for the current session.\n"
             "The SAVE_CONFIG command will update the printer config file and restart the printer.",
             name,
         )

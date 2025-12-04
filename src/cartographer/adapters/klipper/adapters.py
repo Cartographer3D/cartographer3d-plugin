@@ -25,8 +25,8 @@ class KlipperAdapters(Adapters):
         self.printer = config.get_printer()
         self.scheduler = KlipperScheduler(self.printer.get_reactor())
 
-        self.config = KlipperConfiguration(config)
         self.mcu = KlipperCartographerMcu(config, self.scheduler)
+        self.config = KlipperConfiguration(config, self.mcu)
 
         self.toolhead = KlipperToolhead(config, self.mcu)
         self.bed_mesh = KlipperBedMesh(config)

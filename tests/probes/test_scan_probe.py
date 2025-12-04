@@ -21,7 +21,13 @@ def configure_probe(probe: Probe, config: Configuration) -> None:
     poly = Polynomial([0, 1])
     poly = cast("Polynomial", poly.convert(domain=[0, 20]))
 
-    model = ScanModelConfiguration("test_scan", poly.coef, poly.domain, z_offset=0, reference_temperature=40)
+    model = ScanModelConfiguration(
+        "test_scan",
+        poly.coef,
+        poly.domain,
+        z_offset=0,
+        reference_temperature=40,
+    )
     config.save_scan_model(model)
     probe.scan.load_model(model.name)
 

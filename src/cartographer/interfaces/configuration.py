@@ -48,12 +48,21 @@ class BedMeshConfig:
 
 
 @dataclass(frozen=True)
+class ModelVersionInfo:
+    """Version information for model compatibility checking."""
+
+    mcu_version: str | None = None
+    software_version: str = "1.0.2"
+
+
+@dataclass(frozen=True)
 class ScanModelConfiguration:
     name: str
     coefficients: list[float]
     domain: tuple[float, float]
     z_offset: float
     reference_temperature: float
+    version_info: ModelVersionInfo = ModelVersionInfo()
 
 
 @dataclass(frozen=True)
@@ -62,6 +71,7 @@ class TouchModelConfiguration:
     threshold: int
     speed: float
     z_offset: float
+    version_info: ModelVersionInfo = ModelVersionInfo()
 
 
 @dataclass(frozen=True)
@@ -93,3 +103,4 @@ class Configuration(Protocol):
     def remove_scan_model(self, name: str) -> None: ...
     def remove_touch_model(self, name: str) -> None: ...
     def save_z_backlash(self, backlash: float) -> None: ...
+    def log_runtime_warning(self, message: str) -> None: ...

@@ -22,7 +22,13 @@ def model_factory() -> ScanModelFactory:
     def factory(z_offset: float, temperature_compensation: TemperatureCompensationModel | None) -> ScanModel:
         poly = Polynomial([0, 1])
         poly = cast("Polynomial", poly.convert(domain=[1 / 5.5, 10]))
-        config = ScanModelConfiguration("test", poly.coef, poly.domain, z_offset=z_offset, reference_temperature=40)
+        config = ScanModelConfiguration(
+            "test",
+            poly.coef,
+            poly.domain,
+            z_offset=z_offset,
+            reference_temperature=40,
+        )
 
         model = ScanModel(config, temperature_compensation)
         return model

@@ -114,6 +114,10 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         logger.info("Initialized %s MCU", self.klipper_mcu.get_status()["mcu_version"])
 
     @override
+    def get_mcu_version(self) -> str:
+        return self.klipper_mcu.get_status()["mcu_version"]
+
+    @override
     def start_homing_scan(self, print_time: float, frequency: float) -> ReactorCompletion:
         self._ensure_sensor_ready()
 
@@ -231,9 +235,9 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         data : _RawData
             Raw data from the MCU to process.
         """
+        count = data["data"]
         clock = self.klipper_mcu.clock32_to_clock64(data["clock"])
         time = self.klipper_mcu.clock_to_print_time(clock)
-        count = data["data"]
 
         frequency = self.constants.count_to_frequency(count)
         temperature = self.constants.calculate_temperature(data["temp"])

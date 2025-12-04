@@ -71,6 +71,7 @@ class MockConfiguration(Configuration):
         bed_mesh: BedMeshConfig = default_bed_mesh_config,
         coil: CoilConfiguration = default_coil_configuration,
     ):
+        self.runtime_warnings: list[str] = []
         self.general = general
         self.scan = scan
         self.touch = touch
@@ -100,3 +101,7 @@ class MockConfiguration(Configuration):
     @override
     def save_coil_model(self, config: CoilCalibrationConfiguration) -> None:
         self.coil = replace(self.coil, calibration=config)
+
+    @override
+    def log_runtime_warning(self, message: str) -> None:
+        self.runtime_warnings.append(message)
