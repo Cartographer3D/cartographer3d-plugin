@@ -42,6 +42,7 @@ from cartographer.macros.touch import (
 from cartographer.probe.probe import Probe
 from cartographer.probe.scan_mode import ScanMode, ScanModeConfiguration
 from cartographer.probe.touch_mode import TouchMode, TouchModeConfiguration
+from cartographer.task_executor import MultiprocessingExecutor
 from cartographer.toolhead import BacklashCompensatingToolhead
 
 if TYPE_CHECKING:
@@ -62,6 +63,7 @@ class PrinterCartographer:
     def __init__(self, adapters: Adapters) -> None:
         self.mcu = adapters.mcu
         self.config = adapters.config
+        self.task_executor = MultiprocessingExecutor(adapters.scheduler)
 
         # Initialize toolhead with optional backlash compensation
         toolhead = self._create_toolhead(adapters.toolhead)
@@ -202,7 +204,7 @@ class PrinterCartographer:
                             toolhead,
                             adapters.bed_mesh,
                             adapters.axis_twist_compensation,
-                            adapters.task_executor,
+                            self.task_executor,
                             BedMeshCalibrateConfiguration.from_config(self.config),
                         ),
                         use_prefix=False,
@@ -215,7 +217,7 @@ class PrinterCartographer:
                             toolhead,
                             self.config,
                             adapters.gcode,
-                            adapters.task_executor,
+                            self.task_executor,
                         ),
                     ),
                 ]

@@ -31,7 +31,9 @@ def model_factory() -> ScanModelFactory:
 
 
 def test_fit() -> None:
-    samples = [Sample(time=i, frequency=1 / i, position=Position(0, 0, 0), temperature=0) for i in range(1, 20)]
+    samples = [
+        Sample(raw_count=i, time=i, frequency=1 / i, position=Position(0, 0, 0), temperature=0) for i in range(1, 20)
+    ]
 
     fit = ScanModel.fit("test", samples, 0)
 
