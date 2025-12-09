@@ -47,11 +47,16 @@ def test_stable_versions(version: str, minimum: tuple[int, int, int], expected: 
 @pytest.mark.parametrize(
     "version,minimum,expected",
     [
-        # Prereleases of exact version should fail
-        ("1.0.0a1", (1, 0, 0), False),
-        ("1.0.0b1", (1, 0, 0), False),
-        ("1.0.0rc1", (1, 0, 0), False),
-        ("1.1.0a1", (1, 1, 0), False),
+        # Prereleases of previous version should fail
+        ("1.0.0a1", (2, 0, 0), False),
+        ("1.0.0b1", (1, 1, 0), False),
+        ("1.0.0rc1", (1, 0, 1), False),
+        ("1.1.0a1", (1, 2, 0), False),
+        # Prereleases of exact version should pass
+        ("1.0.0a1", (1, 0, 0), True),
+        ("1.0.0b1", (1, 0, 0), True),
+        ("1.0.0rc1", (1, 0, 0), True),
+        ("1.1.0a1", (1, 1, 0), True),
         # Prereleases of higher versions should pass
         ("1.1.0a1", (1, 0, 0), True),
         ("2.0.0a1", (1, 0, 0), True),
