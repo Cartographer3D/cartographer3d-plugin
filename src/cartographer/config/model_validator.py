@@ -24,12 +24,7 @@ def meets_minimum_version(version: str, minimum: tuple[int, int, int]) -> bool:
 
     v_base = tuple(int(x or 0) for x in match.groups())
 
-    if v_base != minimum:
-        return v_base > minimum
-
-    # Equal base: prerelease < stable
-    is_prerelease = bool(re.search(r"(a|b|rc)\d", version))
-    return not is_prerelease
+    return v_base >= minimum
 
 
 def _is_model_compatible(
@@ -77,11 +72,11 @@ def validate_and_remove_incompatible_models(
         )
         if not compatible:
             config.log_runtime_warning(
-                f"[cartographer] Removing incompatible scan model '{name}' {reason}. Please recalibrate."
+                f"[cartographer] Removing incompatible scan model '{name}': {reason}. Please recalibrate."
             )
             config.remove_scan_model(name)
         elif reason:
-            config.log_runtime_warning(f"[cartographer] Old scan model '{name}' {reason}. Consider recalibrating.")
+            config.log_runtime_warning(f"[cartographer] Old scan model '{name}': {reason}. Consider recalibrating.")
 
     # Validate touch models
     for name in list(config.touch.models.keys()):
