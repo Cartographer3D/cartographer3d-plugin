@@ -413,7 +413,7 @@ class TouchCalibrateMacro(Macro):
         self._config.save_touch_model(model)
         self._probe.touch.load_model(name)
         logger.info(
-            "Touch model %s has been saved for the current session.\n"
+            "Touch model '%s' has been saved for the current session.\n"
             "The SAVE_CONFIG command will update the printer config "
             "file and restart the printer.",
             name,

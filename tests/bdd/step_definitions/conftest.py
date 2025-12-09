@@ -69,7 +69,11 @@ def given_probe() -> None:
 def given_scan_calibrated(scan: ScanMode, config: Configuration, session: Session[Sample]):
     config.save_scan_model(
         ScanModelConfiguration(
-            name="default", coefficients=[0.3] * 9, domain=(0.1, 5.5), z_offset=0.0, reference_temperature=30
+            name="default",
+            coefficients=[0.3] * 9,
+            domain=(0.1, 5.5),
+            z_offset=0.0,
+            reference_temperature=30,
         )
     )
     scan.load_model("default")
@@ -84,7 +88,12 @@ def given_scan_offset(scan: ScanMode, config: Configuration, offset: float):
 
 @given("the probe has touch calibrated")
 def given_touch_calibrated(touch: TouchMode, config: Configuration):
-    config.touch.models["default"] = TouchModelConfiguration(name="default", threshold=1000, speed=3, z_offset=0.0)
+    config.touch.models["default"] = TouchModelConfiguration(
+        name="default",
+        threshold=1000,
+        speed=3,
+        z_offset=0.0,
+    )
     touch.load_model("default")
 
 

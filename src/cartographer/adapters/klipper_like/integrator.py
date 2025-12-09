@@ -83,6 +83,10 @@ class KlipperLikeIntegrator(Integrator, ABC):
         self._printer.add_object(object_name, sensor)
         pheaters.available_sensors.append(object_name)
 
+    @override
+    def register_ready_callback(self, callback: Callable[[], None]) -> None:
+        self._printer.register_event_handler("klippy:ready", callback)
+
     @reraise_for_klipper
     def _handle_home_rails_end(self, homing: Homing, rails: Sequence[_Rail]) -> None:
         homing_state = KlipperHomingState(homing)

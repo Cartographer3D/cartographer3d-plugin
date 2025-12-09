@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, final
 from cartographer.coil.temperature_compensation import (
     CoilTemperatureCompensationModel,
 )
+from cartographer.config.model_validator import validate_and_remove_incompatible_models
 from cartographer.macros.axis_twist_compensation import (
     AxisTwistCompensationMacro,
 )
@@ -70,7 +71,7 @@ class PrinterCartographer:
 
         # Initialize probe modes
         self.scan_mode = self._create_scan_mode(toolhead, adapters)
-        self.touch_mode = self._create_touch_mode(toolhead, adapters)
+        self.touch_mode = TouchMode(self.mcu, toolhead, TouchModeConfiguration.from_config(self.config))
 
         # Create probe
         probe = Probe(self.scan_mode, self.touch_mode)
@@ -81,6 +82,15 @@ class PrinterCartographer:
 
         # Register all macros
         self.macros = self._create_macro_registrations(probe, toolhead, adapters)
+
+    def ready_callback(self) -> None:
+        validate_and_remove_incompatible_models(self.config, self.mcu.get_mcu_version())
+
+        if DEFAULT_SCAN_MODEL_NAME in self.config.scan.models:
+            self.scan_mode.load_model(DEFAULT_SCAN_MODEL_NAME)
+
+        if DEFAULT_TOUCH_MODEL_NAME in self.config.touch.models:
+            self.touch_mode.load_model(DEFAULT_TOUCH_MODEL_NAME)
 
     def _register_macro(self, name: str, macro: Macro, use_prefix: bool = True) -> list[MacroRegistration]:
         """Register a macro with optional prefixing."""
@@ -118,19 +128,7 @@ class PrinterCartographer:
             adapters.axis_twist_compensation,
         )
 
-        if DEFAULT_SCAN_MODEL_NAME in adapters.config.scan.models:
-            scan_mode.load_model(DEFAULT_SCAN_MODEL_NAME)
-
         return scan_mode
-
-    def _create_touch_mode(self, toolhead: Toolhead, adapters: Adapters) -> TouchMode:
-        """Initialize touch mode with optional model loading."""
-        touch_mode = TouchMode(self.mcu, toolhead, TouchModeConfiguration.from_config(self.config))
-
-        if DEFAULT_TOUCH_MODEL_NAME in adapters.config.touch.models:
-            touch_mode.load_model(DEFAULT_TOUCH_MODEL_NAME)
-
-        return touch_mode
 
     def _create_macro_registrations(
         self,

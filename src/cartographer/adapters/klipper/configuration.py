@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from dataclasses import astuple
+from dataclasses import astuple, replace
 from functools import partial
 from math import inf
 from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
+from cartographer import __version__
 from cartographer.config.parser import (
     ParseConfigWrapper,
     parse_bed_mesh_config,
@@ -20,12 +21,15 @@ from cartographer.config.parser import (
 from cartographer.interfaces.configuration import (
     CoilCalibrationConfiguration,
     Configuration,
+    ModelVersionInfo,
     ScanModelConfiguration,
     TouchModelConfiguration,
 )
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
+
+    from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
 
 
 @final
@@ -79,8 +83,9 @@ class KlipperConfigWrapper(ParseConfigWrapper):
 
 @final
 class KlipperConfiguration(Configuration):
-    def __init__(self, config: ConfigWrapper) -> None:
+    def __init__(self, config: ConfigWrapper, mcu: KlipperCartographerMcu) -> None:
         self.wrapper = config
+        self._mcu = mcu
         self._config = config.get_printer().lookup_object("configfile")
 
         self.name = config.get_name()
@@ -113,7 +118,21 @@ class KlipperConfiguration(Configuration):
         save("domain", ",".join(map(str, config.domain)))
         save("z_offset", round(config.z_offset, 3))
         save("reference_temperature", round(config.reference_temperature, 2))
-        self.scan.models[config.name] = config
+
+        # Save version information
+        sw_version = __version__
+        mcu_version = self._mcu.get_mcu_version()
+        save("software_version", sw_version)
+        save("mcu_version", mcu_version)
+
+        updated_config = replace(
+            config,
+            version_info=ModelVersionInfo(
+                software_version=sw_version,
+                mcu_version=mcu_version,
+            ),
+        )
+        self.scan.models[config.name] = updated_config
 
     @override
     def remove_scan_model(self, name: str) -> None:
@@ -126,7 +145,21 @@ class KlipperConfiguration(Configuration):
         save("threshold", config.threshold)
         save("speed", config.speed)
         save("z_offset", round(config.z_offset, 3))
-        self.touch.models[config.name] = config
+
+        # Save version information
+        sw_version = __version__
+        mcu_version = self._mcu.get_mcu_version()
+        save("software_version", sw_version)
+        save("mcu_version", mcu_version)
+
+        updated_config = replace(
+            config,
+            version_info=ModelVersionInfo(
+                software_version=sw_version,
+                mcu_version=mcu_version,
+            ),
+        )
+        self.touch.models[config.name] = updated_config
 
     @override
     def remove_touch_model(self, name: str) -> None:
@@ -141,3 +174,7 @@ class KlipperConfiguration(Configuration):
     def save_coil_model(self, config: CoilCalibrationConfiguration) -> None:
         value = ",".join(map(str, astuple(config)))
         self._config.set(f"{self.name} coil", "calibration", value)
+
+    @override
+    def log_runtime_warning(self, message: str) -> None:
+        return self._config.runtime_warning(message)
