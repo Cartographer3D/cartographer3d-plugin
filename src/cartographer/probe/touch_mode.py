@@ -250,8 +250,12 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             raise RuntimeError(msg)
 
         pos = self._toolhead.get_position()
-        if not self.is_within_boundaries(x=pos.x, y=pos.y):
-            msg = f"Position ({pos.x:.2f},{pos.y:.2f}) is outside of the touch boundaries"
+        if not self.boundaries.is_within(x=pos.x, y=pos.y):
+            msg = (
+                f"Position ({pos.x:.2f}, {pos.y:.2f}) is outside touch boundaries. "
+                f"Valid range: X=[{self.boundaries.min_x:.2f}, {self.boundaries.max_x:.2f}], "
+                f"Y=[{self.boundaries.min_y:.2f}, {self.boundaries.max_y:.2f}]"
+            )
             raise RuntimeError(msg)
 
         nozzle_temperature = max(self._toolhead.get_extruder_temperature())
@@ -260,9 +264,6 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             msg = f"Nozzle temperature must be below {max_temp:d}C"
             raise RuntimeError(msg)
         return self._mcu.start_homing_touch(print_time, model.threshold)
-
-    def is_within_boundaries(self, *, x: float, y: float) -> bool:
-        return self.boundaries.is_within(x=x, y=y)
 
     @override
     def on_home_end(self, homing_state: HomingState) -> None:
