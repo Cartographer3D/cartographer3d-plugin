@@ -187,7 +187,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         max_samples = self._config.max_samples
 
         logger.debug(
-            "Starting touch sequence for %d samples within %d touches.. .",
+            "Starting touch sequence for %d samples within %d touches...",
             required_samples,
             max_samples,
         )
