@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 @final
 class TouchModelManager(Macro):
-    description: str = "Manage saved touch models"
+    description = "Manage saved touch models"
 
     def __init__(self, mode: TouchMode, config: Configuration) -> None:
         self._mode = mode
@@ -40,7 +40,7 @@ class TouchModelManager(Macro):
 
 @final
 class ScanModelManager(Macro):
-    description: str = "Manage saved scan models"
+    description = "Manage saved scan models"
 
     def __init__(self, mode: ScanMode, config: Configuration) -> None:
         self._mode = mode
