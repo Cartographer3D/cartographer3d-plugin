@@ -256,7 +256,7 @@ class PrinterCartographer:
                 [
                     self._register_macro(
                         "TOUCH_CALIBRATE",
-                        TouchCalibrateMacro(probe, self.mcu, toolhead, self.config),
+                        TouchCalibrateMacro(probe, self.mcu, toolhead, self.config, self.task_executor),
                     ),
                     self._register_macro(
                         "TOUCH_MODEL",

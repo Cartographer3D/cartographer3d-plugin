@@ -26,6 +26,7 @@ from cartographer.probe.touch_mode import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from cartographer.interfaces.multiprocessing import TaskExecutor
     from cartographer.interfaces.printer import Toolhead
     from cartographer.probe.probe import Probe
 
@@ -144,11 +145,13 @@ class TouchCalibrateMacro(Macro):
         mcu: Mcu,
         toolhead: Toolhead,
         config: Configuration,
+        task_executor: TaskExecutor,
     ) -> None:
         self._probe = probe
         self._mcu = mcu
         self._toolhead = toolhead
         self._config = config
+        self._task_executor = task_executor
 
     @override
     def run(self, params: MacroParams) -> None:
@@ -352,7 +355,8 @@ class TouchCalibrateMacro(Macro):
         best = find_best_subset(samples, required_samples)
         best_range = compute_range(best) if best else float("inf")
 
-        success_rate = estimate_success_rate(
+        success_rate = self._task_executor.run(
+            estimate_success_rate,
             samples,
             max_probed_samples=max_samples,
             required_samples=required_samples,
