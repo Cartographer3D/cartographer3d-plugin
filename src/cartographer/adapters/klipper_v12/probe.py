@@ -8,8 +8,9 @@ if TYPE_CHECKING:
     from gcode import GCodeCommand
 
     from cartographer.interfaces.configuration import GeneralConfig
-    from cartographer.interfaces.printer import ProbeMode, Toolhead
+    from cartographer.interfaces.printer import Toolhead
     from cartographer.macros.probe import ProbeMacro, QueryProbeMacro
+    from cartographer.probe.probe import Probe
 
 
 @final
@@ -17,7 +18,7 @@ class KlipperV12CartographerProbe:
     def __init__(
         self,
         toolhead: Toolhead,
-        probe: ProbeMode,
+        probe: Probe,
         probe_macro: ProbeMacro,
         query_probe_macro: QueryProbeMacro,
         config: GeneralConfig,
@@ -42,14 +43,14 @@ class KlipperV12CartographerProbe:
 
     def get_offsets(self) -> tuple[float, float, float]:
         """Return (x_offset, y_offset, z_offset) tuple."""
-        return self.probe.offset.as_tuple()
+        return self.probe.current_mode.offset.as_tuple()
 
     @reraise_for_klipper
     def run_probe(self, gcmd: GCodeCommand) -> list[float]:
         """Execute a single probe and return [x, y, z] position list."""
         del gcmd
         pos = self.toolhead.get_position()
-        trigger_pos = self.probe.perform_probe()
+        trigger_pos = self.probe.current_mode.perform_probe()
         return [pos.x, pos.y, trigger_pos]
 
     def get_status(self, eventtime: float) -> dict[str, object]:

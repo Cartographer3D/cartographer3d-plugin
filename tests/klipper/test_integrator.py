@@ -70,7 +70,7 @@ class TestRegisterProbe:
 
         probe_class.assert_called_once_with(
             adapters.toolhead,
-            cartographer.scan_mode,
+            cartographer.probe,
             cartographer.probe_macro,
             cartographer.query_probe_macro,
             cartographer.config.general,

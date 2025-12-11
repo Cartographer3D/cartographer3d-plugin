@@ -31,9 +31,10 @@ if TYPE_CHECKING:
     from cartographer.adapters.klipper.configuration import KlipperConfiguration
     from cartographer.core import MacroRegistration, PrinterCartographer
     from cartographer.interfaces.configuration import GeneralConfig
-    from cartographer.interfaces.printer import Endstop, ProbeMode, Toolhead
+    from cartographer.interfaces.printer import Endstop, Toolhead
     from cartographer.macros.probe import ProbeMacro, QueryProbeMacro
     from cartographer.mcu.mcu import CartographerMcu
+    from cartographer.probe.probe import Probe
 
 logger = logging.getLogger(__name__)
 
@@ -71,7 +72,7 @@ class KlipperLikeIntegrator(Integrator):
     def __init__(
         self,
         adapters: KlipperLikeAdapters,
-        target_probe_class: Callable[[Toolhead, ProbeMode, ProbeMacro, QueryProbeMacro, GeneralConfig], object],
+        target_probe_class: Callable[[Toolhead, Probe, ProbeMacro, QueryProbeMacro, GeneralConfig], object],
     ) -> None:
         self._config: KlipperConfiguration = adapters.config
         self._printer: Printer = adapters.printer
@@ -105,7 +106,7 @@ class KlipperLikeIntegrator(Integrator):
         if isinstance(macro, SupportsFallbackMacro):
             original = self._gcode.register_command(name, None)
             if original:
-                macro.set_fallback_macro(FallbackMacroAdapter(name, original))
+                macro.set_fallback_macro(FallbackMacroAdapter(original))
             else:
                 logger.warning("No original macro found to fallback to for '%s'", name)
 
@@ -117,7 +118,7 @@ class KlipperLikeIntegrator(Integrator):
             "probe",
             self._target_probe_class(
                 self._toolhead,
-                cartographer.scan_mode,
+                cartographer.probe,
                 cartographer.probe_macro,
                 cartographer.query_probe_macro,
                 cartographer.config.general,
@@ -169,12 +170,12 @@ def catch_macro_errors(func: Callable[[GCodeCommand], None]) -> Callable[[GCodeC
 
 @final
 class FallbackMacroAdapter(Macro):
-    def __init__(self, name: str, handler: Callable[[GCodeCommand], None]) -> None:
-        self.name = name
-        self.description: str = f"Fallback for {name}"
+    description = None
+
+    def __init__(self, handler: Callable[[GCodeCommand], None]) -> None:
         self._handler: Callable[[GCodeCommand], None] = handler
 
     @override
     def run(self, params: MacroParams) -> None:
-        assert isinstance(params, GCodeCommand), f"Invalid gcode params type for {self.name}"
+        assert isinstance(params, GCodeCommand), f"Invalid params type {type(params).__name__}, expected GCodeCommand"
         self._handler(params)

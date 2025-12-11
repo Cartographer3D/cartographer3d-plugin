@@ -10,6 +10,7 @@ from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
 from cartographer.adapters.klipper.mcu_platform import KlipperMcuPlatform
 from cartographer.adapters.klipper.toolhead import KlipperToolhead
 from cartographer.adapters.klipper_like.scheduler import KlipperScheduler
+from cartographer.adapters.klipper_like.utils import try_load_object
 from cartographer.config.fields import parse
 from cartographer.interfaces.configuration import GeneralConfig
 from cartographer.mcu.mcu import CartographerMcu
@@ -40,3 +41,11 @@ class KlipperAdapters(Adapters):
         self.axis_twist_compensation = None
         if config.has_section("axis_twist_compensation"):
             self.axis_twist_compensation = KlipperAxisTwistCompensationAdapter(config)
+
+        self.probe_method_macros = ["BED_MESH_CALIBRATE"]
+        if try_load_object(self.printer, config, "z_tilt"):
+            self.probe_method_macros.append("Z_TILT_ADJUST")
+        if try_load_object(self.printer, config, "quad_gantry_level"):
+            self.probe_method_macros.append("QUAD_GANTRY_LEVEL")
+        if try_load_object(self.printer, config, "screws_tilt_adjust"):
+            self.probe_method_macros.append("SCREWS_TILT_CALCULATE")
