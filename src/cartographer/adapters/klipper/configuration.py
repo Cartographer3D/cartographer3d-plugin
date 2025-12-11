@@ -185,6 +185,9 @@ class KlipperConfiguration(Configuration):
         if not self.wrapper.has_section("stepper_z"):
             return
         stepper_z = self.wrapper.getsection("stepper_z")
+        if stepper_z.get("endstop_pin", default=None) != "probe:z_virtual_endstop":
+            return
+
         homing_retract_dist = stepper_z.getfloat("homing_retract_dist", default=None, note_valid=False)
         if homing_retract_dist is None or homing_retract_dist != 0:
             msg = "Option 'homing_retract_dist' in section 'stepper_z' must be set to 0"
