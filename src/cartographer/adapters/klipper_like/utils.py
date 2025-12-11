@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 from functools import wraps
-from typing import Callable, TypeVar
+from typing import TYPE_CHECKING, Callable, TypeVar
 
 from gcode import CommandError
 from typing_extensions import ParamSpec
 
 from cartographer.interfaces.errors import ProbeTriggerError
+
+if TYPE_CHECKING:
+    from configfile import ConfigWrapper
+    from klippy import Printer
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -58,3 +62,10 @@ def reraise_from_klipper(
             raise RuntimeError(error_message) from e
 
     return wrapper
+
+
+def try_load_object(printer: Printer, config: ConfigWrapper, section: str) -> bool:
+    if not config.has_section(section):
+        return False
+    _ = printer.load_object(config.getsection(section), section)
+    return True

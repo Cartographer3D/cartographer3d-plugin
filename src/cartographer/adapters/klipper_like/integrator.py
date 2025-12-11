@@ -68,7 +68,7 @@ class KlipperLikeIntegrator(Integrator, ABC):
         if isinstance(macro, SupportsFallbackMacro):
             original = self._gcode.register_command(name, None)
             if original:
-                macro.set_fallback_macro(FallbackMacroAdapter(name, original))
+                macro.set_fallback_macro(FallbackMacroAdapter(original))
             else:
                 logger.warning("No original macro found to fallback to for '%s'", name)
 
@@ -116,12 +116,12 @@ def _catch_macro_errors(func: Callable[[GCodeCommand], None]) -> Callable[[GCode
 
 @final
 class FallbackMacroAdapter(Macro):
-    def __init__(self, name: str, handler: Callable[[GCodeCommand], None]) -> None:
-        self.name = name
-        self.description: str = f"Fallback for {name}"
+    description = None
+
+    def __init__(self, handler: Callable[[GCodeCommand], None]) -> None:
         self._handler: Callable[[GCodeCommand], None] = handler
 
     @override
     def run(self, params: MacroParams) -> None:
-        assert isinstance(params, GCodeCommand), f"Invalid gcode params type for {self.name}"
+        assert isinstance(params, GCodeCommand), f"Invalid params type {type(params).__name__}, expected GCodeCommand"
         self._handler(params)
