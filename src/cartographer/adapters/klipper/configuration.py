@@ -90,6 +90,8 @@ class KlipperConfiguration(Configuration):
 
         self.name = config.get_name()
 
+        self._validate_stepper_z()
+
         self.general = parse_general_config(KlipperConfigWrapper(config))
         self.coil = parse_coil_config(KlipperConfigWrapper(config.getsection("cartographer coil")))
 
@@ -178,3 +180,12 @@ class KlipperConfiguration(Configuration):
     @override
     def log_runtime_warning(self, message: str) -> None:
         return self._config.runtime_warning(message)
+
+    def _validate_stepper_z(self) -> None:
+        if not self.wrapper.has_section("stepper_z"):
+            return
+        stepper_z = self.wrapper.getsection("stepper_z")
+        homing_retract_dist = stepper_z.getfloat("homing_retract_dist", default=None, note_valid=False)
+        if homing_retract_dist is None or homing_retract_dist != 0:
+            msg = "Option 'homing_retract_dist' in section 'stepper_z' must be set to 0"
+            raise self.wrapper.error(msg)
