@@ -107,6 +107,10 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
             "constants": self._constants.get_status() if self._constants else None,
         }
 
+    @override
+    def get_last_sample(self) -> Sample | None:
+        return self._stream.last_item
+
     def _initialize(self) -> None:
         self._constants = KlipperCartographerConstants(self.klipper_mcu)
         self._commands = KlipperCartographerCommands(self.klipper_mcu)

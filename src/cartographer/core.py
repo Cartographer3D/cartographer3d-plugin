@@ -64,7 +64,8 @@ class PrinterCartographer:
     def __init__(self, adapters: Adapters) -> None:
         self.mcu = adapters.mcu
         self.config = adapters.config
-        self.task_executor = MultiprocessingExecutor(adapters.scheduler)
+        self.scheduler = adapters.scheduler
+        self.task_executor = MultiprocessingExecutor(self.scheduler)
 
         # Initialize toolhead with optional backlash compensation
         toolhead = self._create_toolhead(adapters.toolhead)
@@ -216,6 +217,7 @@ class PrinterCartographer:
                             self.config,
                             adapters.gcode,
                             self.task_executor,
+                            self.scheduler,
                         ),
                     ),
                 ]
