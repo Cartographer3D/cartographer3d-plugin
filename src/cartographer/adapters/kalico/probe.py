@@ -49,8 +49,8 @@ class KalicoCartographerProbe:
         return gcmd.get_float("LIFT_SPEED", self.lift_speed, above=0.0)
 
     @reraise_for_klipper
-    def run_probe(self, gcmd: GCodeCommand) -> list[float]:
-        del gcmd
+    def run_probe(self, gcmd: GCodeCommand, *args: object, **kwargs: object) -> list[float]:
+        del gcmd, args, kwargs
         pos = self.toolhead.get_position()
         trigger_pos = self.probe.perform_probe()
         return [pos.x, pos.y, trigger_pos]
