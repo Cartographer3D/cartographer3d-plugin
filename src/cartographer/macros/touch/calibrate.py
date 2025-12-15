@@ -39,7 +39,7 @@ MAX_STEP = 1000
 DEFAULT_TOUCH_MODEL_NAME = "default"
 DEFAULT_Z_OFFSET = -0.05
 
-DEFAULT_SUCCESS_RATE = 95
+DEFAULT_SUCCESS_RATE = 0.95
 SIMULATION_COUNT = 1000
 
 
@@ -163,8 +163,12 @@ class TouchCalibrateMacro(Macro):
             default=5000,
             minval=threshold_start,
         )
-        input_success_rate = params.get_int("SUCCESS_RATE", default=DEFAULT_SUCCESS_RATE, minval=10, maxval=99)
-        required_success_rate = input_success_rate / 100
+        required_success_rate = params.get_float(
+            "SUCCESS_RATE",
+            default=DEFAULT_SUCCESS_RATE,
+            minval=0.1,
+            maxval=0.99,
+        )
 
         if not self._toolhead.is_homed("x") or not self._toolhead.is_homed("y"):
             msg = "Must home x and y before calibration"
