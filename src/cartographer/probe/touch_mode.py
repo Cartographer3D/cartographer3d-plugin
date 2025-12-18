@@ -263,6 +263,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         if nozzle_temperature > max_temp + MAX_TOUCH_TEMPERATURE_EPSILON:
             msg = f"Nozzle temperature must be below {max_temp:d}C"
             raise RuntimeError(msg)
+
         return self._mcu.start_homing_touch(print_time, model.threshold)
 
     @override
@@ -273,7 +274,8 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
 
     @override
     def home_wait(self, home_end_time: float) -> float:
-        return self._mcu.stop_homing(home_end_time)
+        trigger_time = self._mcu.stop_homing(home_end_time)
+        return trigger_time
 
     @override
     def query_is_triggered(self, print_time: float) -> bool:
