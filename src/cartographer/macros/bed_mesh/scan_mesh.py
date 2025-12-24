@@ -170,11 +170,16 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
     def run(self, params: MacroParams) -> None:
         """Main entry point for bed mesh calibration."""
         # Handle fallback for non-scan methods
-        method = params.get("METHOD", "scan")
-        if method.lower() != "scan":
+        method = params.get("METHOD", "scan").lower()
+        if method != "scan":
             if self._fallback is None:
                 msg = f"Bed mesh calibration method '{method}' not supported"
                 raise RuntimeError(msg)
+
+            probe_method = params.get("PROBE_METHOD", "scan").lower()
+            if method == "touch" or probe_method == "touch":
+                with self.probe.as_touch():
+                    return self._fallback.run(params)
             return self._fallback.run(params)
 
         # Parse parameters and validate
