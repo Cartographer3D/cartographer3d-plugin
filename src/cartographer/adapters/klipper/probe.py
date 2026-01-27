@@ -25,10 +25,16 @@ class KlipperProbeSession:
         trigger_pos = self._probe.perform_probe()
         self._results.append([pos.x, pos.y, trigger_pos])
 
-    def pull_probed_results(self):
-        result = self._results
+    def pull_probed_results(
+        from collections import namedtuple
+        ProbeResult = namedtuple('ProbeResult', ['bed_z'])
+        formatted_results = []
+        for pos in self._results:
+            result = ProbeResult(bed_z=pos[2])
+            formatted_results.append(result)
+
         self._results = []
-        return result
+        return formatted_results
 
     def end_probe_session(self) -> None:
         self._results = []
