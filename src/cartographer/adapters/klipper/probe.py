@@ -66,7 +66,7 @@ class KlipperCartographerProbe:
             "samples_result": "median",
         }
 
-    def get_offsets(self) -> tuple[float, float, float]:
+    def get_offsets(self, gcmd=None) -> tuple[float, float, float]:
         return self.probe.offset.as_tuple()
 
     def get_status(self, eventtime: float):
