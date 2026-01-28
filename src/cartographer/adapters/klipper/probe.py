@@ -26,7 +26,10 @@ class KlipperProbeSession:
         self._results.append([pos.x, pos.y, trigger_pos])
 
     def pull_probed_results(self):
-        result = self._results
+        # Convert lists to ProbeResult objects for compatibility with Klipper's z_tilt and bed_mesh
+        import importlib
+        manual_probe = importlib.import_module(".manual_probe", "extras")
+        result = [manual_probe.ProbeResult(pos[0], pos[1], pos[2], pos[0], pos[1], pos[2]) for pos in self._results]
         self._results = []
         return result
 
@@ -66,7 +69,7 @@ class KlipperCartographerProbe:
             "samples_result": "median",
         }
 
-    def get_offsets(self) -> tuple[float, float, float]:
+    def get_offsets(self, gcmd=None) -> tuple[float, float, float]:
         return self.probe.offset.as_tuple()
 
     def get_status(self, eventtime: float):
