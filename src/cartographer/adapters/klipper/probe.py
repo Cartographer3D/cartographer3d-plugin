@@ -26,10 +26,21 @@ class KlipperProbeSession:
         self._results.append([pos.x, pos.y, trigger_pos])
 
     def pull_probed_results(self):
-        # Convert lists to ProbeResult objects for compatibility with Klipper's z_tilt and bed_mesh
+        # Return ProbeResult objects if available (Klipper >= v0.13.0-465), otherwise return lists
+        # for backward compatibility with older Klipper versions
         import importlib
-        manual_probe = importlib.import_module(".manual_probe", "extras")
-        result = [manual_probe.ProbeResult(pos[0], pos[1], pos[2], pos[0], pos[1], pos[2]) for pos in self._results]
+        try:
+            manual_probe = importlib.import_module(".manual_probe", "extras")
+            # Check if ProbeResult exists (introduced in Dec 2025)
+            if hasattr(manual_probe, 'ProbeResult'):
+                result = [manual_probe.ProbeResult(pos[0], pos[1], pos[2], pos[0], pos[1], pos[2]) 
+                         for pos in self._results]
+            else:
+                # Older Klipper versions expect plain lists
+                result = self._results
+        except (ImportError, AttributeError):
+            # Fallback for very old Klipper versions
+            result = self._results
         self._results = []
         return result
 
