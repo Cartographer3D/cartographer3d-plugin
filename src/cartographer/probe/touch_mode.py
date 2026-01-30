@@ -46,6 +46,7 @@ class TouchModeConfiguration:
     mesh_min: tuple[float, float]
     mesh_max: tuple[float, float]
     max_touch_temperature: int
+    lift_speed: float
 
     models: dict[str, TouchModelConfiguration]
 
@@ -60,6 +61,7 @@ class TouchModeConfiguration:
             mesh_min=config.bed_mesh.mesh_min,
             mesh_max=config.bed_mesh.mesh_max,
             max_touch_temperature=config.touch.max_touch_temperature,
+            lift_speed=config.general.lift_speed,
         )
 
 
@@ -168,7 +170,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             raise RuntimeError(msg)
 
         if self._toolhead.get_position().z < 5:
-            self._toolhead.move(z=5, speed=5)
+            self._toolhead.move(z=5, speed=self._config.lift_speed)
         self._toolhead.wait_moves()
 
         self.last_z_result = self._run_probe()
@@ -225,7 +227,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
     def _perform_single_probe(self) -> float:
         model = self.get_model()
         if self._toolhead.get_position().z < RETRACT_DISTANCE:
-            self._toolhead.move(z=RETRACT_DISTANCE, speed=5)
+            self._toolhead.move(z=RETRACT_DISTANCE, speed=self._config.lift_speed)
         self._toolhead.wait_moves()
 
         max_accel = self._toolhead.get_max_accel()

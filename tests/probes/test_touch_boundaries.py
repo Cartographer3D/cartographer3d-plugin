@@ -44,6 +44,7 @@ def make_config(
         max_touch_temperature=150,
         x_offset=x_offset,
         y_offset=y_offset,
+        lift_speed=5,
         models={},
     )
 
