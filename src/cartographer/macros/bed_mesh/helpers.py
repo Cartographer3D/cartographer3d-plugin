@@ -293,7 +293,7 @@ class CoordinateTransformer:
             rbf = rbf_interpolator(valid_points, valid_values, neighbors=64, smoothing=0.0)
 
             missing_points = points_grid[mask.ravel()]
-            interpolated = rbf(missing_points)
+            interpolated = rbf(missing_points)  # pyright: ignore[reportUnknownVariableType]
 
             z_grid_masked[mask] = interpolated
 

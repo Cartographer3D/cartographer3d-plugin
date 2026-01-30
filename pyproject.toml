@@ -71,7 +71,7 @@ packages = ["src/cartographer"]
 [tool.hatch.build.targets.wheel.hooks.custom]
 
 [build-system]
-requires = ["hatchling", "hatch-vcs"]
+requires = ["hatchling", "hatch-vcs", "typing-extensions"]
 build-backend = "hatchling.build"
 
 [tool.coverage.run]
