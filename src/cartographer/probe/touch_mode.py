@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
 
 TOUCH_ACCEL = 100
 MAX_SAMPLE_RANGE = 0.010  # All samples must be within 10 microns
-RETRACT_DISTANCE = 2.0
 MAX_TOUCH_TEMPERATURE_EPSILON = 2
 
 
@@ -48,6 +47,7 @@ class TouchModeConfiguration:
     max_touch_temperature: int
     lift_speed: float
 
+    retract_distance: float
     models: dict[str, TouchModelConfiguration]
 
     @staticmethod
@@ -62,6 +62,7 @@ class TouchModeConfiguration:
             mesh_max=config.bed_mesh.mesh_max,
             max_touch_temperature=config.touch.max_touch_temperature,
             lift_speed=config.general.lift_speed,
+            retract_distance=config.touch.retract_distance,
         )
 
 
@@ -169,8 +170,8 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             msg = "Z axis must be homed before probing"
             raise RuntimeError(msg)
 
-        if self._toolhead.get_position().z < 5:
-            self._toolhead.move(z=5, speed=self._config.lift_speed)
+        if self._toolhead.get_position().z < self._config.retract_distance:
+            self._toolhead.move(z=self._config.retract_distance, speed=self._config.lift_speed)
         self._toolhead.wait_moves()
 
         self.last_z_result = self._run_probe()
@@ -226,8 +227,8 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
 
     def _perform_single_probe(self) -> float:
         model = self.get_model()
-        if self._toolhead.get_position().z < RETRACT_DISTANCE:
-            self._toolhead.move(z=RETRACT_DISTANCE, speed=self._config.lift_speed)
+        if self._toolhead.get_position().z < self._config.retract_distance:
+            self._toolhead.move(z=self._config.retract_distance, speed=self._config.lift_speed)
         self._toolhead.wait_moves()
 
         max_accel = self._toolhead.get_max_accel()
@@ -239,7 +240,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
 
         pos = self._toolhead.get_position()
         self._toolhead.move(
-            z=max(pos.z + RETRACT_DISTANCE, RETRACT_DISTANCE),
+            z=max(pos.z + self._config.retract_distance, self._config.retract_distance),
             speed=5,
         )
         return trigger_pos - model.z_offset

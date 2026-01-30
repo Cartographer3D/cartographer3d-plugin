@@ -45,6 +45,7 @@ def make_config(
         x_offset=x_offset,
         y_offset=y_offset,
         lift_speed=5,
+        retract_distance=2.0,
         models={},
     )
 
