@@ -40,6 +40,7 @@ default_touch_config = TouchConfig(
     max_samples=10,
     max_touch_temperature=150,
     home_random_radius=0.0,
+    retract_distance=2.0,
     models={},
 )
 default_bed_mesh_config = BedMeshConfig(

@@ -51,24 +51,24 @@ def test_probe_includes_z_offset(
     assert probe.touch.perform_probe() == 0
 
 
-def test_probe_moves_below_5(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_probe_moves_below_2(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
     toolhead.z_probing_move = mocker.Mock(return_value=0.5)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
     move_spy = mocker.spy(toolhead, "move")
 
     _ = probe.touch.perform_probe()
 
-    assert move_spy.mock_calls[0] == mocker.call(z=5, speed=mocker.ANY)
+    assert move_spy.mock_calls[0] == mocker.call(z=2, speed=mocker.ANY)
 
 
-def test_does_not_move_above_5(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_does_not_move_above_2(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
     toolhead.z_probing_move = mocker.Mock(return_value=0.5)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 10))
     move_spy = mocker.spy(toolhead, "move")
 
     _ = probe.touch.perform_probe()
 
-    assert move_spy.mock_calls[0] != mocker.call(z=5, speed=mocker.ANY)
+    assert move_spy.mock_calls[0] != mocker.call(z=2, speed=mocker.ANY)
 
 
 def test_probe_standard_deviation_failure(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
