@@ -10,6 +10,7 @@ from extras.bed_mesh import BedMesh
 from extras.exclude_object import ExcludeObject
 from extras.heaters import PrinterHeaters
 from extras.homing import Homing, HomingMove, PrinterHoming
+from extras.manual_probe import ProbeResult
 from extras.motion_report import PrinterMotionReport
 from gcode import CommandError, GCodeDispatch
 from gcode_move import GCodeMove
@@ -107,7 +108,7 @@ class Printer:
     @overload
     def lookup_object(self, name: Literal["cartographer"]) -> PrinterCartographer: ...
     @overload
-    def send_event(self, event: Literal["probe:update_results"], pos: list[float]) -> None: ...
+    def send_event(self, event: Literal["probe:update_results"], pos: list[float] | list[ProbeResult]) -> None: ...
     @overload
     def send_event(
         self, event: Literal["homing:home_rails_end"], homing: Homing, rails: list[GenericPrinterRail]

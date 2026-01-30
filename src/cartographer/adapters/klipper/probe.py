@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, final
 
+from extras import manual_probe
+
 from cartographer.adapters.klipper_like.utils import reraise_for_klipper
 
 if TYPE_CHECKING:
@@ -26,23 +28,29 @@ class KlipperProbeSession:
         self._results.append([pos.x, pos.y, trigger_pos])
 
     def pull_probed_results(self):
+        results = self._results
+        self._results = []
+
         # Return ProbeResult objects if available (Klipper >= v0.13.0-465), otherwise return lists
         # for backward compatibility with older Klipper versions
-        import importlib
-        try:
-            manual_probe = importlib.import_module(".manual_probe", "extras")
-            # Check if ProbeResult exists (introduced in Dec 2025)
-            if hasattr(manual_probe, 'ProbeResult'):
-                result = [manual_probe.ProbeResult(pos[0], pos[1], pos[2], pos[0], pos[1], pos[2]) 
-                         for pos in self._results]
-            else:
-                # Older Klipper versions expect plain lists
-                result = self._results
-        except (ImportError, AttributeError):
-            # Fallback for very old Klipper versions
-            result = self._results
-        self._results = []
-        return result
+
+        # Check if ProbeResult exists (introduced in Dec 2025)
+        if not hasattr(manual_probe, "ProbeResult"):
+            # Older Klipper versions expect plain lists
+            return results
+
+        offset = self._probe.offset
+        return [
+            manual_probe.ProbeResult(
+                px + offset.x,
+                py + offset.y,
+                pz - offset.z,
+                px,
+                py,
+                pz,
+            )
+            for [px, py, pz] in results
+        ]
 
     def end_probe_session(self) -> None:
         self._results = []
@@ -80,7 +88,8 @@ class KlipperCartographerProbe:
             "samples_result": "median",
         }
 
-    def get_offsets(self, gcmd=None) -> tuple[float, float, float]:
+    def get_offsets(self, gcmd: GCodeCommand | None = None) -> tuple[float, float, float]:
+        del gcmd
         return self.probe.offset.as_tuple()
 
     def get_status(self, eventtime: float):
