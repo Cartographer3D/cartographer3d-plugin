@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, final
 
+from extras import manual_probe
+
 from cartographer.adapters.klipper_like.utils import reraise_for_klipper
 
 if TYPE_CHECKING:
@@ -26,9 +28,29 @@ class KlipperProbeSession:
         self._results.append([pos.x, pos.y, trigger_pos])
 
     def pull_probed_results(self):
-        result = self._results
+        results = self._results
         self._results = []
-        return result
+
+        # Return ProbeResult objects if available (Klipper >= v0.13.0-465), otherwise return lists
+        # for backward compatibility with older Klipper versions
+
+        # Check if ProbeResult exists (introduced in Dec 2025)
+        if not hasattr(manual_probe, "ProbeResult"):
+            # Older Klipper versions expect plain lists
+            return results
+
+        offset = self._probe.offset
+        return [
+            manual_probe.ProbeResult(
+                px + offset.x,
+                py + offset.y,
+                pz - offset.z,
+                px,
+                py,
+                pz,
+            )
+            for [px, py, pz] in results
+        ]
 
     def end_probe_session(self) -> None:
         self._results = []
@@ -66,7 +88,8 @@ class KlipperCartographerProbe:
             "samples_result": "median",
         }
 
-    def get_offsets(self) -> tuple[float, float, float]:
+    def get_offsets(self, gcmd: GCodeCommand | None = None) -> tuple[float, float, float]:
+        del gcmd
         return self.probe.offset.as_tuple()
 
     def get_status(self, eventtime: float):
