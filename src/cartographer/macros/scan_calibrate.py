@@ -89,7 +89,7 @@ class ScanCalibrateMacro(Macro):
         self._calibrate(name)
 
     def _calibrate(self, name: str):
-        self._toolhead.move(z=5.5, speed=5)
+        self._toolhead.move(z=5.5, speed=self._config.general.lift_speed)
         self._toolhead.wait_moves()
 
         with self._probe.scan.start_session() as session:
@@ -102,7 +102,7 @@ class ScanCalibrateMacro(Macro):
             session.wait_for(lambda samples: samples[-1].time >= time)
             count = len(session.items)
             session.wait_for(lambda samples: len(samples) >= count + 50)
-        self._toolhead.move(z=5, speed=5)
+        self._toolhead.move(z=5, speed=self._config.general.lift_speed)
 
         samples = session.get_items()
         logger.debug("Collected %d samples", len(samples))
