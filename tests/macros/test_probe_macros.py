@@ -4,8 +4,6 @@ import itertools
 import logging
 from typing import TYPE_CHECKING
 
-import pytest
-
 if TYPE_CHECKING:
     from unittest.mock import Mock
 
