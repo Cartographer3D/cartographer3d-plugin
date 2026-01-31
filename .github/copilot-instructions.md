@@ -35,6 +35,12 @@ pip install -e ".[scipy]"
 pip install -e ".[test,lint,typecheck,dev,scripts]"
 ```
 
+### Updating Dependencies
+```bash
+# After modifying dependencies in pyproject.toml, update the lockfile
+uv sync --dev --all-extras --all-groups
+```
+
 ## Build and Test Commands
 
 ### Linting
@@ -52,9 +58,6 @@ uv run basedpyright
 ```bash
 # Run all tests
 uv run pytest
-
-# Run with coverage
-uv run pytest --cov
 
 # Run specific test file
 uv run pytest tests/test_core.py
@@ -120,7 +123,7 @@ This project uses Ruff with the following rule sets:
 ### Dependencies
 - Core: `typing-extensions~=4.12`
 - Optional: `scipy~=1.9` (for advanced calculations)
-- Test: `pytest`, `pytest-cov`, `pytest-mock`
+- Test: `pytest`, `pytest-mock`
 - Lint: `ruff~=0.14`
 - Type checking: `basedpyright~=1.27`
 

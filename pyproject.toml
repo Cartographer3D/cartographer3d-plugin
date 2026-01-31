@@ -24,7 +24,6 @@ scipy = ["scipy~=1.9"]
 [dependency-groups]
 test = [
   "pytest~=8.3",
-  "pytest-cov~=5.0",
   "pytest-mock~=3.14",
 ]
 lint = ["ruff~=0.14"]
@@ -73,30 +72,8 @@ packages = ["src/cartographer"]
 requires = ["hatchling", "hatch-vcs", "typing-extensions"]
 build-backend = "hatchling.build"
 
-[tool.coverage.run]
-branch = true
-relative_files = true
-omit = ["tests", "src/cartographer/klipper/**"]
-source = ["src"]
-
-[tool.coverage.report]
-exclude_also = [
-  "def __repr__",
-  "raise AssertionError",
-  "raise NotImplementedError",
-  "if TYPE_CHECKING:",
-  'class .*\bProtocol\):',
-  '@(abc\.)?abstractmethod',
-]
-
 [tool.hatch.envs.hatch-static-analysis]
 config-path = "none"
-
-[tool.hatch.envs.hatch-test.scripts]
-run = "pytest{env:HATCH_TEST_ARGS:} {args}"
-run-cov = "coverage run -m pytest{env:HATCH_TEST_ARGS:} --junitxml=junit.{env:HATCH_ENV_ACTIVE:}.xml {args}"
-cov-combine = "coverage combine"
-cov-report = "coverage report"
 
 [[tool.hatch.envs.hatch-test.matrix]]
 python = ["3.13", "3.12", "3.11", "3.10", "3.9", "3.8"]
