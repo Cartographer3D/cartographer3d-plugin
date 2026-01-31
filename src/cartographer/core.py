@@ -78,7 +78,7 @@ class PrinterCartographer:
         probe = Probe(self.scan_mode, self.touch_mode)
 
         # Store specific macros needed by integrators
-        self.probe_macro = ProbeMacro(probe)
+        self.probe_macro = ProbeMacro(probe, toolhead)
         self.query_probe_macro = QueryProbeMacro(probe)
 
         # Register all macros
@@ -264,7 +264,7 @@ class PrinterCartographer:
                     ),
                     self._register_macro(
                         "TOUCH_PROBE",
-                        TouchProbeMacro(self.touch_mode),
+                        TouchProbeMacro(self.touch_mode, toolhead),
                     ),
                     self._register_macro(
                         "TOUCH_ACCURACY",

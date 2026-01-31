@@ -162,7 +162,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         return {
             "current_model": (self.get_model().name if self.has_model() else "none"),
             "models": ", ".join(self._config.models.keys()),
-            "last_z_result": self.last_z_result,
+            "last_z_result": round(self.last_z_result, 6) if self.last_z_result is not None else None,
         }
 
     @override

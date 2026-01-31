@@ -37,14 +37,15 @@ def test_touch_macro_output(
     caplog: LogCaptureFixture,
     probe: Probe,
     params: MacroParams,
+    toolhead: Toolhead,
 ):
-    macro = TouchProbeMacro(probe)
+    macro = TouchProbeMacro(probe, toolhead)
     probe.perform_probe = mocker.Mock(return_value=5.0)
 
     with caplog.at_level(logging.INFO):
         macro.run(params)
 
-    assert "Result is z=5.000000" in caplog.messages
+    assert "Result: at 10.000,10.000 estimate contact at z=5.000000" in caplog.messages
 
 
 def test_touch_accuracy_macro_output(
