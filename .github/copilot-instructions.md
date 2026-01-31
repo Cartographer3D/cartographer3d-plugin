@@ -35,6 +35,12 @@ pip install -e ".[scipy]"
 pip install -e ".[test,lint,typecheck,dev,scripts]"
 ```
 
+### Updating Dependencies
+```bash
+# After modifying dependencies in pyproject.toml, update the lockfile
+uv sync --dev --all-extras --all-groups
+```
+
 ## Build and Test Commands
 
 ### Linting
