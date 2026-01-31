@@ -241,7 +241,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         pos = self._toolhead.get_position()
         self._toolhead.move(
             z=max(pos.z + self._config.retract_distance, self._config.retract_distance),
-            speed=5,
+            speed=self._config.lift_speed,
         )
         return trigger_pos - model.z_offset
 
