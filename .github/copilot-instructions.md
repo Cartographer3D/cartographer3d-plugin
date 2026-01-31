@@ -14,8 +14,8 @@ This is a Python plugin for Klipper that integrates with Cartographer3D, a 3D pr
   - `lib/` - Utility libraries
   - `macros/` - G-code macros (bed mesh, probing, calibration, etc.)
   - `probe/` - Probe modes (scan mode, touch mode)
-  - `runtime/` - Runtime components
-- `tests/` - Test suite with unit tests, BDD tests, and mocks
+  - `runtime/` - Runtime environment detection (Klipper version/fork detection)
+- `tests/` - Test suite with unit tests and mocks
 - `scripts/` - Helper scripts
 - `typings/` - Type stubs for dependencies
 
@@ -97,7 +97,6 @@ This project uses Ruff with the following rule sets:
 
 ### Testing Conventions
 - Unit tests in `tests/` directory
-- BDD tests in `tests/bdd/` for behavior-driven scenarios
 - Mocks in `tests/mocks/` for external dependencies
 - Use `pytest` fixtures extensively
 - Mock Klipper interfaces (printer, mcu, toolhead, etc.)
@@ -121,7 +120,7 @@ This project uses Ruff with the following rule sets:
 ### Dependencies
 - Core: `typing-extensions~=4.12`
 - Optional: `scipy~=1.9` (for advanced calculations)
-- Test: `pytest`, `pytest-cov`, `pytest-mock`, `pytest-bdd`
+- Test: `pytest`, `pytest-cov`, `pytest-mock`
 - Lint: `ruff~=0.14`
 - Type checking: `basedpyright~=1.27`
 
