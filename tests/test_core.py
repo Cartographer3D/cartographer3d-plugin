@@ -20,6 +20,7 @@ def mock_adapters(config: Configuration):
     adapters.bed_mesh = Mock()
     adapters.task_executor = Mock()
     adapters.gcode = Mock()
+    adapters.probe_method_macros = []
 
     # Add other necessary mock configurations
     return adapters
