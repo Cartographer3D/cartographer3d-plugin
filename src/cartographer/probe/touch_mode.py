@@ -222,7 +222,8 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             self._log_sample_stats("Best subset was", best)
 
         msg = (
-            f"Unable to find {required_samples:d} samples within {self._config.sample_range:.3f}mm after {max_samples:d} touches"
+            f"Unable to find {required_samples:d} samples within "
+            f"{self._config.sample_range:.3f}mm after {max_samples:d} touches"
         )
         raise TouchError(msg)
 
