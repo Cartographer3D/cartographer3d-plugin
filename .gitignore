@@ -9,6 +9,5 @@ __pycache__/
 __version__.py
 dist/
 .tox/
-.coverage*
 junit*.xml
 release_info
