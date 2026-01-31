@@ -99,6 +99,7 @@ def parse_touch_config(wrapper: ParseConfigWrapper, models: dict[str, TouchModel
         home_random_radius=wrapper.get_float("EXPERIMENTAL_home_random_radius", default=0.0, minimum=0.0),
         models=models,
         retract_distance=wrapper.get_float("retract_distance", default=2.0, minimum=1.0),
+        sample_range=wrapper.get_float("sample_range", default=0.010, minimum=0.001, maximum=0.015),
     )
 
 

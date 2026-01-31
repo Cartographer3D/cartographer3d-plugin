@@ -16,7 +16,6 @@ from cartographer.interfaces.errors import ProbeTriggerError
 from cartographer.interfaces.printer import Macro, MacroParams, Mcu
 from cartographer.macros.utils import force_home_z
 from cartographer.probe.touch_mode import (
-    MAX_SAMPLE_RANGE,
     TouchMode,
     TouchModeConfiguration,
     compute_range,
@@ -52,10 +51,9 @@ class ScreeningResult:
     best_subset: Sequence[float] | None
     best_range: float
 
-    @property
-    def passed(self) -> bool:
+    def passed(self, sample_range: float) -> bool:
         """Check if screening found any valid subset."""
-        return self.best_range <= MAX_SAMPLE_RANGE
+        return self.best_range <= sample_range
 
 
 @dataclass(frozen=True)
@@ -76,19 +74,20 @@ class VerificationResult:
 def would_probing_pass(
     samples: Sequence[float],
     required_samples: int,
+    sample_range: float,
 ) -> bool:
     """
     Check if a set of samples would pass at runtime.
 
     Simulates _run_probe logic: pass if any subset of required_samples
-    has range <= MAX_SAMPLE_RANGE.
+    has range <= sample_range.
     """
     if len(samples) < required_samples:
         return False
     sorted_samples = sorted(samples)
     for i in range(len(sorted_samples) - required_samples + 1):
         window = sorted_samples[i : i + required_samples]
-        if window[-1] - window[0] <= MAX_SAMPLE_RANGE:
+        if window[-1] - window[0] <= sample_range:
             return True
     return False
 
@@ -97,6 +96,7 @@ def estimate_success_rate(
     samples: Sequence[float],
     max_probed_samples: int,
     required_samples: int,
+    sample_range: float,
     simulation_count: int = SIMULATION_COUNT,
 ) -> float:
     """
@@ -114,6 +114,8 @@ def estimate_success_rate(
         Number of samples collected during a probe sequence.
     required_samples
         Number of samples needed to form a valid subset.
+    sample_range
+        Maximum range allowed for a valid subset.
     simulation_count
         Number of Monte Carlo simulations to run.
 
@@ -129,7 +131,7 @@ def estimate_success_rate(
 
     for _ in range(simulation_count):
         runtime_set = random.sample(samples_list, max_probed_samples)
-        if would_probing_pass(runtime_set, required_samples):
+        if would_probing_pass(runtime_set, required_samples, sample_range):
             passing += 1
 
     return passing / simulation_count
@@ -188,7 +190,7 @@ class TouchCalibrateMacro(Macro):
         logger.info(
             "Looking for %d samples within %.3fmm range (max %d attempts, %.0f%% success rate required)",
             required_samples,
-            MAX_SAMPLE_RANGE,
+            self._config.touch.sample_range,
             max_samples,
             required_success_rate * 100,
         )
@@ -257,7 +259,7 @@ class TouchCalibrateMacro(Macro):
 
             self._log_screening_result(screening)
 
-            if not screening.passed:
+            if not screening.passed(self._config.touch.sample_range):
                 threshold += self._calculate_step(threshold, screening.best_range)
                 continue
 
@@ -360,6 +362,7 @@ class TouchCalibrateMacro(Macro):
             samples,
             max_probed_samples=max_samples,
             required_samples=required_samples,
+            sample_range=self._config.touch.sample_range,
         )
 
         result = VerificationResult(
@@ -381,7 +384,7 @@ class TouchCalibrateMacro(Macro):
         """
         if range_value is None:
             return min(MAX_STEP, max(MIN_STEP, int(threshold * 0.20)))
-        if range_value > MAX_SAMPLE_RANGE * 10:
+        if range_value > self._config.touch.sample_range * 10:
             return min(MAX_STEP, max(MIN_STEP, int(threshold * 0.20)))
         return min(MAX_STEP, max(MIN_STEP, int(threshold * 0.10)))
 

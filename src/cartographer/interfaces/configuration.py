@@ -34,6 +34,7 @@ class TouchConfig:
     models: dict[str, TouchModelConfiguration]
     home_random_radius: float
     retract_distance: float
+    sample_range: float
 
 
 @dataclass(frozen=True)
