@@ -40,7 +40,10 @@ class KalicoCartographerProbe:
         return {
             "name": "cartographer",
             "last_query": 1 if self.query_probe_macro.last_triggered else 0,
-            "last_z_result": self.probe_macro.last_trigger_position or 0,
+            "last_z_result": round(self.probe_macro.last_trigger_position or 0, 6),
+            "last_probe_position": tuple(round(c, 6) for c in self.probe_macro.last_probe_position.as_tuple())
+            if self.probe_macro.last_probe_position is not None
+            else (0, 0, 0),
         }
 
     def get_lift_speed(self, gcmd: GCodeCommand | None = None):

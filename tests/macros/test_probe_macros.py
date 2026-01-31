@@ -4,6 +4,8 @@ import itertools
 import logging
 from typing import TYPE_CHECKING
 
+from cartographer.macros.probe import ProbeMacro
+
 if TYPE_CHECKING:
     from unittest.mock import Mock
 
@@ -19,20 +21,16 @@ def test_probe_macro_logs_result(
     caplog: LogCaptureFixture,
     probe: Probe,
     params: MacroParams,
+    toolhead: Toolhead,
 ):
     """Test PROBE macro logs the probed Z value."""
-    from cartographer.macros.probe import ProbeMacro
-
-    # Setup: the probe measures 2
     probe.scan.perform_probe = mocker.Mock(return_value=2.0)
 
-    # Execute
-    macro = ProbeMacro(probe)
+    macro = ProbeMacro(probe, toolhead)
     with caplog.at_level(logging.INFO):
         macro.run(params)
 
-    # Verify
-    assert "Result is z=2" in caplog.text
+    assert "Result: at 10.000,10.000 estimate contact at z=0.000000" in caplog.messages
 
 
 def test_probe_accuracy_respects_samples_parameter(
