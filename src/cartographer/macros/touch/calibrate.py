@@ -257,7 +257,7 @@ class TouchCalibrateMacro(Macro):
                 threshold += self._calculate_step(threshold, None)
                 continue
 
-            self._log_screening_result(screening)
+            self._log_screening_result(screening, self._config.touch.sample_range)
 
             if not screening.passed(self._config.touch.sample_range):
                 threshold += self._calculate_step(threshold, screening.best_range)
@@ -426,9 +426,9 @@ class TouchCalibrateMacro(Macro):
             name,
         )
 
-    def _log_screening_result(self, result: ScreeningResult) -> None:
+    def _log_screening_result(self, result: ScreeningResult, sample_range: float) -> None:
         """Log a screening result."""
-        status = "✓" if result.passed else "✗"
+        status = "✓" if result.passed(sample_range) else "✗"
         logger.info(
             "Screening %d: %s best=%.4fmm (%d samples)",
             result.threshold,
