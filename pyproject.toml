@@ -24,7 +24,6 @@ scipy = ["scipy~=1.9"]
 [dependency-groups]
 test = [
   "pytest~=8.3",
-  "pytest-bdd~=8.1 ; python_version~='3.9'",
   "pytest-cov~=5.0",
   "pytest-mock~=3.14",
 ]
