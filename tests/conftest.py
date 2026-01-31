@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from typing import TYPE_CHECKING
 
 import pytest
@@ -29,11 +28,6 @@ if TYPE_CHECKING:
 
     from cartographer.interfaces.configuration import Configuration
     from cartographer.interfaces.multiprocessing import TaskExecutor
-
-collect_ignore: list[str] = []
-if sys.version_info < (3, 9):
-    # pytest-bdd 8.0.0 requires Python 3.9+
-    collect_ignore.append("bdd")
 
 
 @pytest.fixture
