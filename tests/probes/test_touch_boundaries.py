@@ -47,6 +47,7 @@ def make_config(
         lift_speed=5,
         retract_distance=2.0,
         models={},
+        sample_range=0.010,
     )
 
 

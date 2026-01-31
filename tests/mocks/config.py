@@ -42,6 +42,7 @@ default_touch_config = TouchConfig(
     home_random_radius=0.0,
     retract_distance=2.0,
     models={},
+    sample_range=0.010,
 )
 default_bed_mesh_config = BedMeshConfig(
     mesh_min=(0.0, 0.0),

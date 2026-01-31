@@ -31,7 +31,6 @@ logger = logging.getLogger(__name__)
 
 
 TOUCH_ACCEL = 100
-MAX_SAMPLE_RANGE = 0.010  # All samples must be within 10 microns
 MAX_TOUCH_TEMPERATURE_EPSILON = 2
 
 
@@ -49,6 +48,7 @@ class TouchModeConfiguration:
 
     retract_distance: float
     models: dict[str, TouchModelConfiguration]
+    sample_range: float
 
     @staticmethod
     def from_config(config: Configuration):
@@ -63,6 +63,7 @@ class TouchModeConfiguration:
             max_touch_temperature=config.touch.max_touch_temperature,
             lift_speed=config.general.lift_speed,
             retract_distance=config.touch.retract_distance,
+            sample_range=config.touch.sample_range,
         )
 
 
@@ -208,7 +209,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
                 continue
 
             sample_range = compute_range(best)
-            if sample_range > MAX_SAMPLE_RANGE:
+            if sample_range > self._config.sample_range:
                 continue
 
             self._log_sample_stats("Acceptable samples found", best)
@@ -221,7 +222,8 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             self._log_sample_stats("Best subset was", best)
 
         msg = (
-            f"Unable to find {required_samples:d} samples within {MAX_SAMPLE_RANGE:.3f}mm after {max_samples:d} touches"
+            f"Unable to find {required_samples:d} samples within "
+            f"{self._config.sample_range:.3f}mm after {max_samples:d} touches"
         )
         raise TouchError(msg)
 
@@ -306,7 +308,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             message,
             ", ".join(f"{s:.4f}" for s in samples),
             range_v,
-            MAX_SAMPLE_RANGE,
+            self._config.sample_range,
             min_v,
             max_v,
             mean,
