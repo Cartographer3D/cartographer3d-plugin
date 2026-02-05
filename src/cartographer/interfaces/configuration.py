@@ -47,6 +47,7 @@ class BedMeshConfig:
     adaptive_margin: float
     zero_reference_position: tuple[float, float]
     faulty_regions: list[tuple[tuple[float, float], tuple[float, float]]]
+    mesh_radius: float | None = None
     mesh_origin: tuple[float, float] | None = None
 
 
