@@ -56,6 +56,9 @@ class BedMeshCalibrateConfiguration:
     direction: Literal["x", "y"]
     height: float
     path: Literal["snake", "alternating_snake", "spiral", "random"]
+    mesh_radius: float | None = None
+    mesh_origin: tuple[float, float] | None = None
+    round_probe_count: int | None = None
 
     @staticmethod
     def from_config(config: Configuration):
@@ -71,6 +74,9 @@ class BedMeshCalibrateConfiguration:
             height=config.scan.mesh_height,
             path=config.scan.mesh_path,
             faulty_regions=list(map(lambda r: Region(r[0], r[1]), config.bed_mesh.faulty_regions)),
+            mesh_radius=config.bed_mesh.mesh_radius,
+            mesh_origin=config.bed_mesh.mesh_origin,
+            round_probe_count=config.bed_mesh.round_probe_count,
         )
 
 
@@ -95,23 +101,57 @@ class MeshScanParams:
     adaptive_margin: float
     profile: str | None
     path_generator: PathGenerator
-
+    mesh_radius: float | None = None
+    mesh_origin: tuple[float, float] | None = None
     @classmethod
     def from_macro_params(
         cls, params: MacroParams, config: BedMeshCalibrateConfiguration, adapter: BedMeshAdapter
     ) -> MeshScanParams:
         """Create parameters from macro input and configuration."""
-        base_bounds = MeshBounds(
-            get_float_tuple(params, "MESH_MIN", default=config.mesh_min),
-            get_float_tuple(params, "MESH_MAX", default=config.mesh_max),
-        )
-        base_resolution = get_int_tuple(params, "PROBE_COUNT", default=config.probe_count)
+
+        # Initialize for both rectangular and circular cases
+        radius = None
+        origin = None
+
+        # User can only override mesh_radius if it's defined in config.
+        radius_val = config.mesh_radius
+        if radius_val is not None and radius_val > 0.0:
+            # Round bed mesh
+            radius = params.get_float('MESH_RADIUS', default=config.mesh_radius, minval=0)
+
+            # Validate correct radius to be defined.
+            if radius is None or radius <= 0:
+                radius = radius_val
+                logger.warning("MESH_RADIUS parameter is invalid or not defined. Using config value of %.2f", radius)
+
+            origin = get_float_tuple(
+                params, 'MESH_ORIGIN', default=config.mesh_origin or (0.0, 0.0)
+            )
+            base_bounds = MeshBounds(
+                (origin[0] - radius, origin[1] - radius),
+                (origin[0] + radius, origin[1] + radius),
+            )
+
+            round_probe_count = params.get_int('ROUND_PROBE_COUNT', default=config.round_probe_count or 15)
+
+            # Ensure odd number of probe points for round beds
+            # This should be already validated in config parsing, but we enforce it here as well for safety
+            round_probe_count = round_probe_count if round_probe_count % 2 == 1 else round_probe_count + 1
+
+            base_resolution = (round_probe_count, round_probe_count)
+        else:
+            base_bounds = MeshBounds(
+                get_float_tuple(params, "MESH_MIN", default=config.mesh_min),
+                get_float_tuple(params, "MESH_MAX", default=config.mesh_max),
+            )
+            base_resolution = get_int_tuple(params, "PROBE_COUNT", default=config.probe_count)
 
         adaptive = params.get_int("ADAPTIVE", default=0) != 0
         adaptive_margin = params.get_float("ADAPTIVE_MARGIN", config.adaptive_margin, minval=0)
 
         # Calculate actual bounds and resolution
-        if adaptive:
+        #Todo: Modify adaptive mesh calculator to support round beds, using only full points for now.
+        if adaptive and (radius is None or radius <= 0):
             calculator = AdaptiveMeshCalculator(base_bounds, base_resolution)
             object_points = list(chain.from_iterable(adapter.get_objects()))
             mesh_bounds = calculator.calculate_adaptive_bounds(object_points, adaptive_margin)
@@ -137,6 +177,8 @@ class MeshScanParams:
             adaptive_margin=adaptive_margin,
             profile=profile,
             path_generator=path_generator,
+            mesh_radius = radius,
+            mesh_origin = origin,
         )
 
 
@@ -186,6 +228,8 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
             scan_params.mesh_bounds.max_point,
             scan_params.resolution[0],
             scan_params.resolution[1],
+            scan_params.mesh_radius,
+            scan_params.mesh_origin,
         )
         # Generate path and collect samples
         path = self._generate_path(grid, scan_params)

@@ -49,6 +49,7 @@ class BedMeshConfig:
     faulty_regions: list[tuple[tuple[float, float], tuple[float, float]]]
     mesh_radius: float | None = None
     mesh_origin: tuple[float, float] | None = None
+    round_probe_count: int | None = None
 
 
 @dataclass(frozen=True)

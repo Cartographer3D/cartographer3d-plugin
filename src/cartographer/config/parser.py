@@ -143,8 +143,10 @@ def parse_bed_mesh_config(wrapper: ParseConfigWrapper) -> BedMeshConfig:
 
     # Try to get mesh_radius for round beds, otherwise use rectangular
     _radius = wrapper.get_float('mesh_radius',default=0)
-
-    if _radius > 0.0:
+    _round_probe_count = None
+    _origin = None
+    
+    if _radius is not None and _radius > 0.0:
         _origin = list_to_tuple(wrapper.get_required_float_list("mesh_origin", count=2))
         _round_probe_count = wrapper.get_int('round_probe_count', default=5, minimum=3)
         #Round beds should have odd number of probe points.
@@ -162,8 +164,8 @@ def parse_bed_mesh_config(wrapper: ParseConfigWrapper) -> BedMeshConfig:
         _mesh_min=list_to_tuple(wrapper.get_required_float_list("mesh_min", count=2))
         _mesh_max=list_to_tuple(wrapper.get_required_float_list("mesh_max", count=2))
         _probe_count=list_to_tuple(wrapper.get_required_int_list("probe_count", count=2))
-        _origin = None
         _radius = None
+
     return BedMeshConfig(
         mesh_min=_mesh_min,
         mesh_max=_mesh_max,
@@ -175,6 +177,7 @@ def parse_bed_mesh_config(wrapper: ParseConfigWrapper) -> BedMeshConfig:
         faulty_regions=faulty_regions,
         mesh_origin=_origin,
         mesh_radius=_radius,
+        round_probe_count=_round_probe_count
     )
 
 def _parse_version_info(wrapper: ParseConfigWrapper) -> ModelVersionInfo:
