@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from math import isfinite
 from typing import TYPE_CHECKING, final
 
 import numpy as np
 import pytest
+from scipy.interpolate import griddata
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Position, Sample, Toolhead
@@ -83,8 +85,34 @@ class MockBedMeshAdapter(BedMeshAdapter):
             yi = y_indices[y]
             matrix[yi, xi] = z
 
+        # Handle NaN values for circular mesh grid
         if np.isnan(matrix).any():
-            msg = "Mesh has missing points or inconsistent coordinates"
+            # 1. Get coordinates of where we HAVE data
+            valid_mask = ~np.isnan(matrix)
+            # Create a coordinate grid (y, x) matching the matrix shape
+            yy, xx = np.indices(matrix.shape)
+            
+            points_known = np.stack((yy[valid_mask], xx[valid_mask]), axis=-1)
+            values_known = matrix[valid_mask]
+            
+            # 2. Get coordinates of where we NEED data (the NaNs)
+            points_nan = np.stack((yy[~valid_mask], xx[~valid_mask]), axis=-1)
+
+            # 3. Perform Nearest Neighbor interpolation to fill NaNs
+            # This effectively "extends" the edge heights outwards to the corners
+            filled_values = griddata(
+                points_known, 
+                values_known, 
+                points_nan, 
+                method='nearest'
+            )
+
+            # 4. Map the filled values back into the matrix
+            matrix[~valid_mask] = filled_values
+
+        # Final safety check after interpolation
+        if np.isnan(matrix).any():
+            msg = "Mesh has missing points that could not be extrapolated"
             raise RuntimeError(msg)
 
     @override
@@ -120,6 +148,26 @@ class TestBedMeshIntegration:
             height=2.0,
             path="snake",
             faulty_regions=[],
+        )
+
+    @pytest.fixture
+    def circular_mesh_config(self):
+        """Configuration for circular bed mesh testing."""
+        return BedMeshCalibrateConfiguration(
+            mesh_min=(10.0, 10.0),
+            mesh_max=(90.0, 90.0),
+            probe_count=(5, 5),
+            speed=100.0,
+            adaptive_margin=5.0,
+            zero_reference_position=(50.0, 50.0),
+            runs=1,
+            direction="x",
+            height=2.0,
+            path="circular_snake",  # Spiral path works better for circular meshes
+            faulty_regions=[],
+            mesh_radius=40.0,
+            mesh_origin=(50.0, 50.0),
+            round_probe_count=5,
         )
 
     def create_samples_at_probe_positions(
@@ -173,6 +221,20 @@ class TestBedMeshIntegration:
         """Create a bed mesh macro with mocked dependencies."""
         task_executor = InlineTaskExecutor()
         macro = BedMeshCalibrateMacro(probe, toolhead, adapter, None, task_executor, mesh_config)
+
+        return macro
+
+    @pytest.fixture
+    def circular_bed_mesh_macro(
+        self,
+        probe: Probe,
+        toolhead: Toolhead,
+        adapter: BedMeshAdapter,
+        circular_mesh_config: BedMeshCalibrateConfiguration,
+    ):
+        """Create a bed mesh macro with mocked dependencies."""
+        task_executor = InlineTaskExecutor()
+        macro = BedMeshCalibrateMacro(probe, toolhead, adapter, None, task_executor, circular_mesh_config)
 
         return macro
 
@@ -368,3 +430,111 @@ class TestBedMeshIntegration:
         # Check that all expected nozzle positions were visited
         missing = expected_nozzle_positions - actual_move_positions
         assert not missing, f"Missing expected nozzle moves: {missing}"
+
+    def test_circular_mesh_boundary_and_coordinate_transformation(
+        self,
+        mocker: MockerFixture,
+        probe_offset: Position,
+        params: MockParams,
+        session: Mock,
+        circular_mesh_config: BedMeshCalibrateConfiguration,
+        circular_bed_mesh_macro: BedMeshCalibrateMacro,
+        adapter: MockBedMeshAdapter,
+        toolhead: MockToolhead,
+    ):
+        """Test that circular mesh generates only interior points and transforms coordinates properly."""
+
+        # Calculate grid spacing from config
+        mesh_min_x, mesh_min_y = circular_mesh_config.mesh_min
+        mesh_max_x, mesh_max_y = circular_mesh_config.mesh_max
+        probe_count_x, probe_count_y = circular_mesh_config.probe_count
+        
+        step_x = (mesh_max_x - mesh_min_x) / (probe_count_x - 1)
+        step_y = (mesh_max_y - mesh_min_y) / (probe_count_y - 1)
+        
+        # Generate all grid points
+        all_grid_points = [
+            (float(mesh_min_x + step_x * x), float(mesh_min_y + step_y * y))
+            for x in range(probe_count_x)
+            for y in range(probe_count_y)
+        ]
+        
+        # Filter to only points within circular boundary
+        assert circular_mesh_config.mesh_origin is not None, "mesh_origin must be set for circular mesh"
+        assert circular_mesh_config.mesh_radius is not None, "mesh_radius must be set for circular mesh"
+        
+        mesh_origin_x, mesh_origin_y = circular_mesh_config.mesh_origin
+        mesh_radius = circular_mesh_config.mesh_radius
+        
+        expected_probe_positions = []
+        for px, py in all_grid_points:
+            distance_sq = (px - mesh_origin_x) ** 2 + (py - mesh_origin_y) ** 2
+            if distance_sq <= (mesh_radius + 0.01) ** 2:  # Include epsilon for floating point
+                expected_probe_positions.append((px, py))
+
+        # Create mock heights for each position
+        heights = [1.5 + 0.1 * i for i in range(len(expected_probe_positions))]
+
+        # Create samples that would be generated when probe visits these positions
+        mock_samples = self.create_samples_at_probe_positions(expected_probe_positions, heights, probe_offset)
+
+        # Mock the probe session to return our samples
+        session.get_items = mocker.Mock(return_value=mock_samples)
+
+        params.params = {"METHOD": "scan", "PATH": "circular_snake"}
+        circular_bed_mesh_macro.run(params)
+
+        # After gap filling, mesh should have all grid points (5x5 = 25)
+        # Gap filling converts sparse circular mesh to complete rectangular grid
+        assert len(adapter.mesh_positions) == 25  # Full grid after gap filling
+        
+        # Verify all original circular mesh points are present
+        mesh_coords = {(p.x, p.y) for p in adapter.mesh_positions}
+        for px, py in expected_probe_positions:
+            assert (px, py) in mesh_coords, f"Expected probe position ({px}, {py}) not found in mesh"
+        
+        # Verify corner points were filled (not NaN)
+        for pos in adapter.mesh_positions:
+            assert isfinite(pos.z), f"Position ({pos.x}, {pos.y}) has non-finite z value: {pos.z}"
+
+        zero_reference_height = circular_mesh_config.height - heights[
+            expected_probe_positions.index(circular_mesh_config.zero_reference_position)
+        ]
+
+        # Verify original circular mesh points have correct heights
+        for i, (px, py) in enumerate(expected_probe_positions):
+            expected_z = heights[i]
+            
+            # Find the matching mesh position
+            actual_pos = None
+            for pos in adapter.mesh_positions:
+                if pos.x == px and pos.y == py:
+                    actual_pos = pos
+                    break
+            
+            assert actual_pos is not None, f"Position ({px}, {py}) not found in mesh"
+            
+            expected_mesh_z = round(circular_mesh_config.height - expected_z - zero_reference_height, 2)
+            actual_mesh_z = round(actual_pos.z, 2)
+            assert actual_mesh_z == expected_mesh_z, \
+                f"Position ({px}, {py}): expected z={expected_mesh_z}, got z={actual_mesh_z}"
+
+        # Verify that corner points WERE filled (gap filling adds them)
+        corner_points = [(10.0, 10.0), (90.0, 10.0), (10.0, 90.0), (90.0, 90.0)]
+        actual_xy_positions = {(round(p.x, 2), round(p.y, 2)) for p in adapter.mesh_positions}
+        
+        for corner in corner_points:
+            assert corner in actual_xy_positions, f"Corner point {corner} should be filled by gap filling"
+
+        # Convert toolhead moves to set of (rounded) XY positions
+        actual_move_positions = {(round(x, 2), round(y, 2)) for x, y in toolhead.moves}
+
+        # Convert expected probe positions to expected nozzle positions
+        expected_nozzle_positions = {
+            (round(px - probe_offset.x, 2), round(py - probe_offset.y, 2)) for (px, py) in expected_probe_positions
+        }
+
+        # Check that all expected nozzle positions were visited
+        missing = expected_nozzle_positions - actual_move_positions
+        assert not missing, f"Missing expected nozzle moves: {missing}"
+

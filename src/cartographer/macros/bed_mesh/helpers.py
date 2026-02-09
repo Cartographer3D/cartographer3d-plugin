@@ -357,7 +357,8 @@ class CoordinateTransformer:
         for i in range(len(ys)):
             for j in range(len(xs)):
                 point = (xs[j], ys[i])
-                if any(region.contains_point(point) for region in faulty_regions):
+                # Only mark as faulty if it's in a faulty region AND not already NaN (outside mesh radius)
+                if not np.isnan(z_grid[i, j]) and any(region.contains_point(point) for region in faulty_regions):
                     mask[i, j] = True
 
         z_grid_masked = np.where(mask, np.nan, z_grid)
@@ -373,18 +374,28 @@ class CoordinateTransformer:
             X, Y = np.meshgrid(xs, ys)  # noqa: N806
             points_grid = np.column_stack([X.ravel(), Y.ravel()])
 
-            valid_points = points_grid[~mask.ravel()]
-            valid_values = z_grid_masked[~mask]
+            # For circular mesh we should also mask NaN values, this can happen if faulty region
+            # overlaps with points outside of sparse mesh radius. 
+            # This ensures we only interpolate based on valid points.
+            nan_mask = np.isnan(z_grid_masked.ravel())
+            combined_mask = mask.ravel() | nan_mask
+            
+            valid_points = points_grid[~combined_mask]
+            valid_values = z_grid_masked.ravel()[~combined_mask]
 
-            rbf = rbf_interpolator(valid_points, valid_values, neighbors=64, smoothing=0.0)
+            rbf = rbf_interpolator(valid_points, valid_values, neighbors=min(64, len(valid_points)), smoothing=0.0)
 
             missing_points = points_grid[mask.ravel()]
             interpolated = rbf(missing_points)  # pyright: ignore[reportUnknownVariableType]
 
             z_grid_masked[mask] = interpolated
 
+        # We are now filtering out any remaining NaN values which is caused by rectangular zgrid
+        # being filled with NaN for points outside of circular mesh radius.
         new_positions = [
-            Position(x=float(x), y=float(y), z=float(z)) for y, row in zip(ys, z_grid_masked) for x, z in zip(xs, row)
+            Position(x=float(x), y=float(y), z=float(z))
+            for y, row in zip(ys, z_grid_masked)
+            for x, z in zip(xs, row)
         ]
         return new_positions
 

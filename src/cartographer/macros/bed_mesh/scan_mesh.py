@@ -6,7 +6,10 @@ from itertools import chain
 from math import isfinite
 from typing import TYPE_CHECKING, Literal, final
 
+import numpy as np
 from typing_extensions import override
+from scipy.interpolate import griddata
+
 
 from cartographer.interfaces.printer import (
     AxisTwistCompensation,
@@ -31,6 +34,7 @@ from cartographer.macros.bed_mesh.paths.alternating_snake import AlternatingSnak
 from cartographer.macros.bed_mesh.paths.random_path import RandomPathGenerator
 from cartographer.macros.bed_mesh.paths.snake_path import SnakePathGenerator
 from cartographer.macros.bed_mesh.paths.spiral_path import SpiralPathGenerator
+from cartographer.macros.bed_mesh.paths.circular_snake_path import CircularSnakePathGenerator
 from cartographer.macros.utils import get_choice, get_float_tuple, get_int_tuple
 
 if TYPE_CHECKING:
@@ -55,7 +59,7 @@ class BedMeshCalibrateConfiguration:
     runs: int
     direction: Literal["x", "y"]
     height: float
-    path: Literal["snake", "alternating_snake", "spiral", "random"]
+    path: Literal["snake", "alternating_snake", "spiral", "random","circular_snake"]
     mesh_radius: float | None = None
     mesh_origin: tuple[float, float] | None = None
     round_probe_count: int | None = None
@@ -87,6 +91,7 @@ PATH_GENERATOR_MAP = {
     "alternating_snake": AlternatingSnakePathGenerator,
     "spiral": SpiralPathGenerator,
     "random": RandomPathGenerator,
+    "circular_snake": CircularSnakePathGenerator,
 }
 
 
@@ -164,7 +169,10 @@ class MeshScanParams:
 
         # Create path generator
         direction: Literal["x", "y"] = get_choice(params, "DIRECTION", _directions, default=config.direction)
-        path_type = get_choice(params, "PATH", default=config.path, choices=PATH_GENERATOR_MAP.keys())
+        if radius is not None and radius > 0:
+           path_type = "circular_snake"
+        else:
+            path_type = get_choice(params, "PATH", default=config.path, choices=PATH_GENERATOR_MAP.keys())
         path_generator = PATH_GENERATOR_MAP[path_type](direction)
 
         return cls(
@@ -238,6 +246,11 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
 
         # Process samples and create mesh
         positions = self.task_executor.run(self._process_samples_to_positions, grid, samples, scan_params.height)
+
+        # Fill gaps in circular mesh if needed
+        if scan_params.mesh_radius is not None and scan_params.mesh_radius > 0:
+            positions = self._fill_circular_mesh_gaps(positions, grid) #As this now converts positions to rectangular mesh we can get
+                                                                        #rid of changes in apply_zero_reference_height and apply_mesh
         positions = self._apply_zero_reference_height(positions, scan_params, grid)
 
         # Apply mesh to adapter
@@ -351,3 +364,81 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
             positions.append(Position(x=float(rx), y=float(ry), z=z))
 
         return positions
+
+    def _fill_circular_mesh_gaps(self, positions: list[Position], grid: MeshGrid) -> list[Position]:
+        """Fill NaN gaps in circular mesh using nearest neighbor interpolation.
+        
+        This converts a circular mesh (with NaN values outside the circle) to a complete
+        rectangular mesh by extrapolating edge values to the corners.
+        """
+        if not positions:
+            return positions
+
+        # Check if there are any NaN values to fill
+        has_nan = any(np.isnan(p.z) for p in positions)
+        if not has_nan:
+            # No gaps to fill
+            return positions
+
+        # Convert positions to a matrix
+        arr = np.asarray([(p.x, p.y, p.z) for p in positions])
+        xs = np.unique(arr[:, 0])
+        ys = np.unique(arr[:, 1])
+        
+        # create full grid with NaNs
+        matrix = np.full((len(ys), len(xs)), np.nan)
+        
+        # Create lookup maps for efficient coordinate → index conversion
+        x_index_map = {float(x): i for i, x in enumerate(xs)}
+        y_index_map = {float(y): i for i, y in enumerate(ys)}
+        
+        # Populate z values at their corresponding grid positions
+        for position in positions:
+            x_grid_idx = x_index_map.get(position.x)
+            y_grid_idx = y_index_map.get(position.y)
+            
+            if x_grid_idx is not None and y_grid_idx is not None:
+                matrix[y_grid_idx, x_grid_idx] = position.z
+        
+        # Fill NaN values if any exist
+        if np.isnan(matrix).any():
+            # 1. Get coordinates of where we HAVE data
+            valid_mask = ~np.isnan(matrix)
+            # Create a coordinate grid (y, x) matching the matrix shape
+            yy, xx = np.indices(matrix.shape)
+            
+            points_known = np.stack((yy[valid_mask], xx[valid_mask]), axis=-1)
+            values_known = matrix[valid_mask]
+            
+            # 2. Get coordinates of where we NEED data (the NaNs)
+            points_nan = np.stack((yy[~valid_mask], xx[~valid_mask]), axis=-1)
+
+            # 3. Perform Nearest Neighbor interpolation to fill NaNs
+            # This effectively "extends" the edge heights outwards to the corners
+            filled_values = griddata(
+                points_known, 
+                values_known, 
+                points_nan, 
+                method='nearest'
+            )
+
+            # 4. Map the filled values back into the matrix
+            matrix[~valid_mask] = filled_values
+
+        # Safety check
+        if np.isnan(matrix).any():
+            msg = "Mesh has missing points that could not be extrapolated"
+            raise RuntimeError(msg)
+        
+        # Convert back to list of positions (in same order as grid: y-major, x-minor)
+        filled_positions: list[Position] = [
+            Position(x=float(x), y=float(y), z=float(matrix[j, i]))
+            for j, y in enumerate(ys)
+            for i, x in enumerate(xs)
+        ]
+        
+        # Count how many NaN values were filled
+        nan_count_before = sum(1 for p in positions if np.isnan(p.z))
+        logger.info("Filled %d circular mesh gaps using nearest neighbor interpolation",  nan_count_before)
+        
+        return filled_positions
