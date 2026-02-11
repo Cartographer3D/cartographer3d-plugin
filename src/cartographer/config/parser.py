@@ -155,7 +155,7 @@ def parse_bed_mesh_config(wrapper: ParseConfigWrapper) -> BedMeshConfig:
                 raise ValueError(msg)
         #Radius should be rounded to 0.1mm to avoid excessive precision.
         _radius = math.floor(_radius * 10) / 10
-        _mesh_min = (-_radius, _radius)
+        _mesh_min = (-_radius, -_radius)
         _mesh_max = (_radius, _radius)
         _probe_count = (_round_probe_count, _round_probe_count)
 
