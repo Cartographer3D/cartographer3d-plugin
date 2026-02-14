@@ -68,6 +68,7 @@ class KlipperBedMesh(BedMeshAdapter):
             yi = y_indices[y]
             matrix[yi, xi] = z
 
+        # TODO: Review if immediate rectangular conversion is strictly necessary here or if it can be optimized.
         if np.isnan(matrix).any():
             # 1. Get coordinates of where we HAVE data
             valid_mask = ~np.isnan(matrix)

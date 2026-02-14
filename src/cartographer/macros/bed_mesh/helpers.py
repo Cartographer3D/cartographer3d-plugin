@@ -231,6 +231,8 @@ class CoordinateTransformer:
         xs = np.unique(arr[:, 0])
         ys = np.unique(arr[:, 1])
 
+
+        # TODO: Review if immediate rectangular conversion is strictly necessary here or if it can be optimized.
         # Check if rectangular grid is complete or if we have an sparse (circular) grid.
         if len(xs) * len(ys) == len(positions):
             # Sort positions in matching y-major order and reshape z
