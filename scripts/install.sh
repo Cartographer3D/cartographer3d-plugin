@@ -86,13 +86,7 @@ except ImportError:
 function install_dependencies() {
   ensure_numpy
   echo "Installing or upgrading '$PACKAGE_NAME' into '$klippy_env'..."
-  # Install from GitHub repository instead of PyPI to get latest fork changes
-  "$klippy_env/bin/pip" install --upgrade --force-reinstall "git+https://github.com/Affen/cartographer3d-plugin.git"
-  
-  # Install scipy for circular mesh gap filling
-  echo "Installing scipy for circular mesh support..."
-  "$klippy_env/bin/pip" install "scipy~=1.9"
-  
+  "$klippy_env/bin/pip" install --upgrade "$PACKAGE_NAME"
   echo "'$PACKAGE_NAME' has been successfully installed or upgraded into '$klippy_env'."
 }
 
