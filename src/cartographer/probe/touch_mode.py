@@ -235,6 +235,13 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
 
         max_accel = self._toolhead.get_max_accel()
         self._toolhead.set_max_accel(TOUCH_ACCEL)
+
+        # Wait for a single new sample
+        # This seems to help avoid triggering prior to move
+        time = self._toolhead.get_last_move_time()
+        with self._mcu.start_session(lambda sample: sample.time >= time):
+            pass
+
         try:
             trigger_pos = self._toolhead.z_probing_move(self, speed=model.speed)
         finally:
