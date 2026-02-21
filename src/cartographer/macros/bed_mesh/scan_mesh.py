@@ -382,10 +382,10 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         logger.debug("%s (%d points): %s", message, len(positions), formatted_positions)
 
     def _fill_circular_mesh_gaps(self, positions: list[Position], grid: MeshGrid) -> list[Position]:
-        """Fill NaN gaps in circular mesh using linear interpolation with nearest neighbor fallback.
+        """Fill NaN gaps in circular mesh by replicating row edge values.
         
         This converts a circular mesh (with NaN values outside the circle) to a complete
-        rectangular mesh by smoothly blending edge values into the corners.
+        rectangular mesh by repeating leftmost/rightmost values in each row (matches Klipper behavior).
         """
         if not positions:
             return positions
@@ -416,41 +416,29 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
             if x_grid_idx is not None and y_grid_idx is not None:
                 matrix[y_grid_idx, x_grid_idx] = position.z
         
-        # Fill NaN values if any exist
+        # Fill NaN values if any exist (row-by-row like Klipper)
         if np.isnan(matrix).any():
-            # 1. Get coordinates of where we HAVE data
-            valid_mask = ~np.isnan(matrix)
-            # Create a coordinate grid (y, x) matching the matrix shape
-            yy, xx = np.indices(matrix.shape)
-            
-            points_known = np.stack((yy[valid_mask], xx[valid_mask]), axis=-1)
-            values_known = matrix[valid_mask]
-            
-            # 2. Get coordinates of where we NEED data (the NaNs)
-            points_nan = np.stack((yy[~valid_mask], xx[~valid_mask]), axis=-1)
-
-            # 3. Perform linear interpolation to fill NaNs with smooth blending
-            # This creates gradual transitions at corners rather than copying edge peaks
-            filled_values = griddata(
-                points_known, 
-                values_known, 
-                points_nan, 
-                method='linear'
-            )
-            
-            # 4. Fallback to nearest neighbor for any points linear couldn't fill
-            # (e.g., extrapolation beyond convex hull)
-            nan_mask = np.isnan(filled_values)
-            if nan_mask.any():
-                filled_values[nan_mask] = griddata(
-                    points_known,
-                    values_known,
-                    points_nan[nan_mask],
-                    method='nearest'
-                )
-
-            # 5. Map the filled values back into the matrix
-            matrix[~valid_mask] = filled_values
+            # Process each row independently
+            for j in range(len(ys)):
+                row = matrix[j, :]
+                
+                # Find first and last valid (non-NaN) indices in this row
+                valid_indices = np.where(~np.isnan(row))[0]
+                
+                if len(valid_indices) == 0:
+                    # Entire row is NaN - shouldn't happen in circular mesh
+                    continue
+                
+                first_valid_idx = valid_indices[0]
+                last_valid_idx = valid_indices[-1]
+                
+                # Fill left side gaps by repeating leftmost valid value
+                if first_valid_idx > 0:
+                    row[0:first_valid_idx] = row[first_valid_idx]
+                
+                # Fill right side gaps by repeating rightmost valid value
+                if last_valid_idx < len(row) - 1:
+                    row[last_valid_idx + 1:] = row[last_valid_idx]
 
         # Safety check
         if np.isnan(matrix).any():
@@ -466,6 +454,6 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         
         # Count how many NaN values were filled
         nan_count_before = sum(1 for p in positions if np.isnan(p.z))
-        logger.info("Filled %d circular mesh gaps using linear interpolation",  nan_count_before)
+        logger.info("Filled %d circular mesh gaps by replicating row edge values",  nan_count_before)
         
         return filled_positions
