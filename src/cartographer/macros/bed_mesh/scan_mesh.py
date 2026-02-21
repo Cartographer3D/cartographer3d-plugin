@@ -382,10 +382,10 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         logger.debug("%s (%d points): %s", message, len(positions), formatted_positions)
 
     def _fill_circular_mesh_gaps(self, positions: list[Position], grid: MeshGrid) -> list[Position]:
-        """Fill NaN gaps in circular mesh using nearest neighbor interpolation.
+        """Fill NaN gaps in circular mesh using linear interpolation with nearest neighbor fallback.
         
         This converts a circular mesh (with NaN values outside the circle) to a complete
-        rectangular mesh by extrapolating edge values to the corners.
+        rectangular mesh by smoothly blending edge values into the corners.
         """
         if not positions:
             return positions
@@ -429,16 +429,27 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
             # 2. Get coordinates of where we NEED data (the NaNs)
             points_nan = np.stack((yy[~valid_mask], xx[~valid_mask]), axis=-1)
 
-            # 3. Perform Nearest Neighbor interpolation to fill NaNs
-            # This effectively "extends" the edge heights outwards to the corners
+            # 3. Perform linear interpolation to fill NaNs with smooth blending
+            # This creates gradual transitions at corners rather than copying edge peaks
             filled_values = griddata(
                 points_known, 
                 values_known, 
                 points_nan, 
-                method='nearest'
+                method='linear'
             )
+            
+            # 4. Fallback to nearest neighbor for any points linear couldn't fill
+            # (e.g., extrapolation beyond convex hull)
+            nan_mask = np.isnan(filled_values)
+            if nan_mask.any():
+                filled_values[nan_mask] = griddata(
+                    points_known,
+                    values_known,
+                    points_nan[nan_mask],
+                    method='nearest'
+                )
 
-            # 4. Map the filled values back into the matrix
+            # 5. Map the filled values back into the matrix
             matrix[~valid_mask] = filled_values
 
         # Safety check
@@ -455,6 +466,6 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         
         # Count how many NaN values were filled
         nan_count_before = sum(1 for p in positions if np.isnan(p.z))
-        logger.info("Filled %d circular mesh gaps using nearest neighbor interpolation",  nan_count_before)
+        logger.info("Filled %d circular mesh gaps using linear interpolation",  nan_count_before)
         
         return filled_positions
