@@ -249,8 +249,10 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
 
         # Fill gaps in circular mesh if needed
         if scan_params.mesh_radius is not None and scan_params.mesh_radius > 0:
+            self._log_positions_debug("Circular mesh positions before gap fill", positions)
             positions = self._fill_circular_mesh_gaps(positions, grid) #As this now converts positions to rectangular mesh we can get
                                                                         #rid of changes in apply_zero_reference_height and apply_mesh
+            self._log_positions_debug("Circular mesh positions after gap fill", positions)
         positions = self._apply_zero_reference_height(positions, scan_params, grid)
 
         # Apply mesh to adapter
@@ -364,6 +366,20 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
             positions.append(Position(x=float(rx), y=float(ry), z=z))
 
         return positions
+
+    def _log_positions_debug(self, message: str, positions: list[Position]) -> None:
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+
+        formatted_positions = [
+            (
+                round(position.x, 4),
+                round(position.y, 4),
+                "nan" if np.isnan(position.z) else round(position.z, 6),
+            )
+            for position in positions
+        ]
+        logger.debug("%s (%d points): %s", message, len(positions), formatted_positions)
 
     def _fill_circular_mesh_gaps(self, positions: list[Position], grid: MeshGrid) -> list[Position]:
         """Fill NaN gaps in circular mesh using nearest neighbor interpolation.
