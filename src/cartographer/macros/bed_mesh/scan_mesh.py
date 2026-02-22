@@ -382,10 +382,12 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         logger.debug("%s (%d points): %s", message, len(positions), formatted_positions)
 
     def _fill_circular_mesh_gaps(self, positions: list[Position], grid: MeshGrid) -> list[Position]:
-        """Fill NaN gaps in circular mesh by replicating row edge values.
+        """Fill NaN gaps in circular mesh iteratively from known samples outward.
         
         This converts a circular mesh (with NaN values outside the circle) to a complete
-        rectangular mesh by repeating leftmost/rightmost values in each row (matches Klipper behavior).
+        rectangular mesh by iteratively filling gaps. Each empty position is filled by
+        averaging its closest neighbors in X and Y directions, propagating values from
+        the edge of sampled points outward layer by layer.
         """
         if not positions:
             return positions
@@ -416,29 +418,74 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
             if x_grid_idx is not None and y_grid_idx is not None:
                 matrix[y_grid_idx, x_grid_idx] = position.z
         
-        # Fill NaN values if any exist (row-by-row like Klipper)
+        # Fill NaN values iteratively from known samples outward
+        nan_count = 0
         if np.isnan(matrix).any():
-            # Process each row independently
-            for j in range(len(ys)):
-                row = matrix[j, :]
+            # Track which positions have known values (initially just measured samples)
+            filled = ~np.isnan(matrix)
+            initial_nan_count = np.sum(~filled)
+            
+            # Iterate until no more gaps can be filled
+            max_iterations = len(xs) * len(ys)  # Safety limit
+            iteration = 0
+            
+            while np.any(~filled) and iteration < max_iterations:
+                iteration += 1
+                made_progress = False
+                fills_this_iteration = []  # Collect all fills for this iteration
                 
-                # Find first and last valid (non-NaN) indices in this row
-                valid_indices = np.where(~np.isnan(row))[0]
+                for j in range(len(ys)):  # j is Y index (row)
+                    for i in range(len(xs)):  # i is X index (column)
+                        if not filled[j, i]:  # This position needs filling
+                            # Find closest filled neighbor in X direction (same Y row)
+                            # Only consider immediate adjacent neighbors (distance = 1)
+                            closest_x_value = None
+                            min_x_dist = float('inf')
+                            max_neighbor_dist = 1  # Only use immediate neighbors
+                            
+                            for ii in range(len(xs)):  # Search across columns (X values)
+                                if filled[j, ii]:  # Same row j, different column ii
+                                    dist = abs(ii - i)
+                                    if dist > 0 and dist <= max_neighbor_dist and dist < min_x_dist:
+                                        min_x_dist = dist
+                                        closest_x_value = matrix[j, ii]
+                            
+                            # Find closest filled neighbor in Y direction (same X column)
+                            # Only consider adjacent neighbors (within max_neighbor_dist grid cells)
+                            closest_y_value = None
+                            min_y_dist = float('inf')
+                            
+                            for jj in range(len(ys)):  # Search across rows (Y values)
+                                if filled[jj, i]:  # Different row jj, same column i
+                                    dist = abs(jj - j)
+                                    if dist > 0 and dist <= max_neighbor_dist and dist < min_y_dist:
+                                        min_y_dist = dist
+                                        closest_y_value = matrix[jj, i]
+                            
+                            # Determine fill value based on available neighbors
+                            fill_value = None
+                            if closest_x_value is not None and closest_y_value is not None:
+                                fill_value = (closest_x_value + closest_y_value) / 2.0
+                            elif closest_x_value is not None:
+                                fill_value = closest_x_value
+                            elif closest_y_value is not None:
+                                fill_value = closest_y_value
+                            
+                            if fill_value is not None:
+                                fills_this_iteration.append((j, i, fill_value))
+                                made_progress = True
                 
-                if len(valid_indices) == 0:
-                    # Entire row is NaN - shouldn't happen in circular mesh
-                    continue
+                # Apply all fills for this iteration at once
+                # This ensures newly-filled values don't affect other fills in the same iteration
+                for j, i, value in fills_this_iteration:
+                    matrix[j, i] = value
+                    filled[j, i] = True
                 
-                first_valid_idx = valid_indices[0]
-                last_valid_idx = valid_indices[-1]
-                
-                # Fill left side gaps by repeating leftmost valid value
-                if first_valid_idx > 0:
-                    row[0:first_valid_idx] = row[first_valid_idx]
-                
-                # Fill right side gaps by repeating rightmost valid value
-                if last_valid_idx < len(row) - 1:
-                    row[last_valid_idx + 1:] = row[last_valid_idx]
+                if not made_progress:
+                    break  # No more positions can be filled
+            
+            nan_count = initial_nan_count
+            logger.debug("Filled gaps in %d iterations", iteration)
 
         # Safety check
         if np.isnan(matrix).any():
@@ -452,8 +499,8 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
             for i, x in enumerate(xs)
         ]
         
-        # Count how many NaN values were filled
-        nan_count_before = sum(1 for p in positions if np.isnan(p.z))
-        logger.info("Filled %d circular mesh gaps by replicating row edge values",  nan_count_before)
+        # Log how many NaN values were filled
+        if nan_count > 0:
+            logger.info("Filled %d circular mesh gaps iteratively in %d iteration(s)", nan_count, iteration)
         
         return filled_positions
