@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from collections import defaultdict
-from typing import TYPE_CHECKING, Iterator, Literal, cast
+from typing import TYPE_CHECKING, Iterator, cast
 
 import numpy as np
 from typing_extensions import TypeAlias
@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 Vec: TypeAlias = "NDArray[np.float_]"
 
 
-def cluster_points(points: list[Point], axis: Literal["x", "y"], tol: float = 1e-3) -> list[list[Point]]:
+def cluster_points(points: list[Point], axis: str, tol: float = 1e-3) -> list[list[Point]]:
     # axis to cluster on:
     # if main_direction = "x", cluster on y (index 1)
     # if main_direction = "y", cluster on x (index 0)

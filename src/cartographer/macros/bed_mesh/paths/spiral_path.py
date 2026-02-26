@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterator, Literal, final
+from typing import TYPE_CHECKING, Iterator, final
 
 import numpy as np
 from typing_extensions import override
@@ -23,7 +23,7 @@ BUFFER = 0.5
 
 @final
 class SpiralPathGenerator(PathGenerator):
-    def __init__(self, main_direction: Literal["x", "y"]):
+    def __init__(self, main_direction: str):
         del main_direction
 
     @override

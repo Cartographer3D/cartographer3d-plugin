@@ -11,6 +11,8 @@ from cartographer.interfaces.configuration import (
     CoilConfiguration,
     Configuration,
     GeneralConfig,
+    MeshDirection,
+    MeshPath,
     ScanConfig,
     ScanModelConfiguration,
     TouchConfig,
@@ -18,6 +20,7 @@ from cartographer.interfaces.configuration import (
 )
 
 default_general_config = GeneralConfig(
+    mcu="mcu",
     x_offset=0.0,
     y_offset=0.0,
     lift_speed=5,
@@ -31,9 +34,9 @@ default_scan_config = ScanConfig(
     models={},
     probe_speed=5.0,
     mesh_runs=1,
-    mesh_direction="x",
+    mesh_direction=MeshDirection.X,
     mesh_height=4.0,
-    mesh_path="snake",
+    mesh_path=MeshPath.SNAKE,
 )
 default_touch_config = TouchConfig(
     samples=5,

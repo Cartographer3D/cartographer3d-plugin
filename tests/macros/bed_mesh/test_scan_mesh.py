@@ -7,6 +7,7 @@ import numpy as np
 import pytest
 from typing_extensions import override
 
+from cartographer.interfaces.configuration import MeshPath
 from cartographer.interfaces.printer import Position, Sample, Toolhead
 from cartographer.macros.bed_mesh.interfaces import BedMeshAdapter
 from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateConfiguration, BedMeshCalibrateMacro
@@ -118,7 +119,7 @@ class TestBedMeshIntegration:
             runs=1,
             direction="x",
             height=2.0,
-            path="snake",
+            path=MeshPath.SNAKE,
             faulty_regions=[],
         )
 

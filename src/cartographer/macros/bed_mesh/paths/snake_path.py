@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Iterator, Literal, final
+from typing import TYPE_CHECKING, Iterator, final
 
 import numpy as np
 from typing_extensions import override
@@ -24,8 +24,8 @@ BUFFER = 0.5
 
 @final
 class SnakePathGenerator(PathGenerator):
-    def __init__(self, main_direction: Literal["x", "y"]):
-        self.main_direction: Literal["x", "y"] = main_direction
+    def __init__(self, main_direction: str):
+        self.main_direction: str = main_direction
 
     @override
     def generate_path(
