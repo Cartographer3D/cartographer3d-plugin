@@ -1,0 +1,54 @@
+name: Update Configuration Docs
+
+on:
+  release:
+    types: [published]
+
+jobs:
+  update-docs:
+    if: ${{ !github.event.release.prerelease }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout plugin
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install plugin
+        run: pip install -e .
+
+      - name: Generate docs
+        run: python -m cartographer.config.docs > configuration-reference.md
+
+      - name: Generate GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.DOCS_APP_ID }}
+          private-key: ${{ secrets.DOCS_APP_PRIVATE_KEY }}
+          owner: Cartographer3D
+          repositories: docs
+
+      - name: Checkout docs repo
+        uses: actions/checkout@v4
+        with:
+          repository: Cartographer3D/docs
+          token: ${{ steps.app-token.outputs.token }}
+          path: docs-repo
+
+      - name: Update docs
+        run: |
+          cp configuration-reference.md docs-repo/cartographer-probe/reference/configuration-reference.md
+
+      - name: Commit and push
+        working-directory: docs-repo
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add cartographer-probe/reference/configuration-reference.md
+          git diff --cached --quiet && echo "No changes to commit" && exit 0
+          git commit -m "docs: update configuration reference for ${{ github.event.release.tag_name }}"
+          git push
