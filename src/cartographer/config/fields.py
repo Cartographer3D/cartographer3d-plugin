@@ -318,3 +318,74 @@ def get_option_name(cls: type, field_name: str) -> str:
 
     msg = f"Field '{field_name}' not found on {cls.__name__}"
     raise ValueError(msg)
+
+
+@dataclass(frozen=True)
+class OptionInfo:
+    """Public metadata for a single config option, used for docs generation."""
+
+    name: str
+    type: str
+    description: str | None
+    default: Any
+    required: bool
+    min: float | None
+    max: float | None
+    choices: list[str] | None
+
+    @property
+    def has_default(self) -> bool:
+        """Whether this option has a default value."""
+        return self.default is not _MISSING
+
+
+def get_all_options(cls: type) -> list[OptionInfo]:
+    """Extract all documented option() fields from a dataclass as OptionInfo objects.
+
+    Fields without a description (description is None) are excluded.
+
+    Args:
+        cls: The dataclass type to inspect.
+
+    Returns:
+        A list of OptionInfo for each documented option() field.
+    """
+    if not dataclasses.is_dataclass(cls):
+        msg = f"{cls.__name__} is not a dataclass"
+        raise TypeError(msg)
+
+    result: list[OptionInfo] = []
+    for f in fields(cls):
+        meta = _get_option_meta(f)
+        if meta is None:
+            continue
+        if meta.description is None:
+            continue
+
+        config_key = meta.key if meta.key is not None else f.name
+        type_hint = f.type
+        is_required = meta.default is _MISSING
+
+        # Detect Enum choices
+        choices: list[str] | None = None
+        try:
+            resolved = _resolve_type(type_hint, cls.__module__)
+            if issubclass(resolved, Enum):
+                choices = [str(m.value) for m in resolved]
+        except TypeError:
+            pass
+
+        result.append(
+            OptionInfo(
+                name=config_key,
+                type=type_hint if isinstance(type_hint, str) else type_hint.__name__,
+                description=meta.description,
+                default=meta.default if not is_required else _MISSING,
+                required=is_required,
+                min=meta.min,
+                max=meta.max,
+                choices=choices,
+            )
+        )
+
+    return result
