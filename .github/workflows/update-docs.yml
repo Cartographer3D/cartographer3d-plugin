@@ -12,16 +12,13 @@ jobs:
       - name: Checkout plugin
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.12"
-
-      - name: Install plugin
-        run: pip install -e .
+          enable-cache: true
 
       - name: Generate docs
-        run: python -m cartographer.config.docs > configuration-reference.md
+        run: uv run python -m cartographer.config.docs > configuration-reference.md
 
       - name: Generate GitHub App token
         id: app-token
