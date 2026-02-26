@@ -24,13 +24,17 @@ def _run_git_command(cmd: str) -> str:
 
 
 def get_commit_sha(root: str) -> str:
-    cmd = f"git -C {root} rev-parse HEAD"
-    return _run_git_command(cmd)
+    sha = _run_git_command(f"git -C {root} rev-parse HEAD")
+    return sha or os.getenv("COMMIT_SHA", "")
 
 
 def retrieve_git_version(root: str) -> str:
-    cmd = f"git -C {root} describe --always --tags --long --dirty"
-    return _run_git_command(cmd)
+    version = _run_git_command(f"git -C {root} describe --always --tags --long --dirty")
+    return version or os.getenv("GIT_VERSION", "")
+
+
+def _is_ci() -> bool:
+    return os.getenv("GITHUB_ACTIONS") == "true"
 
 
 class ReleaseInfo(TypedDict):
@@ -65,13 +69,20 @@ class CustomBuildHook(BuildHookInterface[BuilderConfig]):
         if ref_name is not None and repository is not None:
             urls["changelog"] = f"https://github.com/{repository}/releases/tag/{ref_name}"
 
+        git_version = retrieve_git_version(self.root)
+        commit_sha = get_commit_sha(self.root)
+
+        if _is_ci() and (not git_version or not commit_sha):
+            msg = f"CI build is missing git metadata: git_version={git_version!r}, commit_sha={commit_sha!r}"
+            raise RuntimeError(msg)
+
         data = ReleaseInfo(
             project_name=project.get("name"),
             package_name=self.metadata.name,  # pyright: ignore[reportUnknownMemberType]
             urls=urls,
             package_version=self.metadata.version,  # pyright: ignore[reportUnknownMemberType]
-            git_version=retrieve_git_version(self.root),
-            commit_sha=get_commit_sha(self.root),
+            git_version=git_version,
+            commit_sha=commit_sha,
             build_time=datetime.isoformat(build_time, timespec="seconds"),
             system_dependencies={},
         )
