@@ -4,10 +4,11 @@ import logging
 from dataclasses import dataclass, replace
 from itertools import chain
 from math import isfinite
-from typing import TYPE_CHECKING, Literal, final
+from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
+from cartographer.interfaces.configuration import MeshPath
 from cartographer.interfaces.printer import (
     AxisTwistCompensation,
     Macro,
@@ -53,9 +54,9 @@ class BedMeshCalibrateConfiguration:
     faulty_regions: list[Region]
 
     runs: int
-    direction: Literal["x", "y"]
+    direction: str
     height: float
-    path: Literal["snake", "alternating_snake", "spiral", "random"]
+    path: MeshPath
 
     @staticmethod
     def from_config(config: Configuration):
@@ -74,13 +75,14 @@ class BedMeshCalibrateConfiguration:
         )
 
 
-_directions: list[Literal["x", "y"]] = ["x", "y"]
+_directions: list[str] = ["x", "y"]
+
 
 PATH_GENERATOR_MAP = {
-    "snake": SnakePathGenerator,
-    "alternating_snake": AlternatingSnakePathGenerator,
-    "spiral": SpiralPathGenerator,
-    "random": RandomPathGenerator,
+    MeshPath.SNAKE: SnakePathGenerator,
+    MeshPath.ALTERNATING_SNAKE: AlternatingSnakePathGenerator,
+    MeshPath.SPIRAL: SpiralPathGenerator,
+    MeshPath.RANDOM: RandomPathGenerator,
 }
 
 
@@ -123,7 +125,7 @@ class MeshScanParams:
             profile = params.get("PROFILE", default="default")
 
         # Create path generator
-        direction: Literal["x", "y"] = get_choice(params, "DIRECTION", _directions, default=config.direction)
+        direction: str = get_choice(params, "DIRECTION", _directions, default=config.direction)
         path_type = get_choice(params, "PATH", default=config.path, choices=PATH_GENERATOR_MAP.keys())
         path_generator = PATH_GENERATOR_MAP[path_type](direction)
 

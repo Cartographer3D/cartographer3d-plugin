@@ -416,7 +416,7 @@ class TouchCalibrateMacro(Macro):
             threshold,
             speed,
         )
-        model = TouchModelConfiguration(name, threshold, speed, DEFAULT_Z_OFFSET)
+        model = TouchModelConfiguration(name=name, threshold=threshold, speed=speed, z_offset=DEFAULT_Z_OFFSET)
         self._config.save_touch_model(model)
         self._probe.touch.load_model(name)
         logger.info(

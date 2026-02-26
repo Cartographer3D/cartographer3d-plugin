@@ -78,10 +78,11 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         self,
         config: ConfigWrapper,
         scheduler: Scheduler,
+        mcu_name: str,
     ):
         self._sensor_ready = False
         self.printer = config.get_printer()
-        self.klipper_mcu = mcu.get_printer_mcu(self.printer, config.get("mcu"))
+        self.klipper_mcu = mcu.get_printer_mcu(self.printer, mcu_name)
         self._reactor: Reactor = self.klipper_mcu.get_printer().get_reactor()
         self._stream = KlipperStream[Sample](self, self._reactor)
         self.dispatch = KlipperTriggerDispatch(self.klipper_mcu)
