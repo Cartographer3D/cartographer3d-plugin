@@ -273,7 +273,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         nozzle_temperature = max(self._toolhead.get_extruder_temperature())
         max_temp = self._config.max_touch_temperature
         if nozzle_temperature > max_temp + MAX_TOUCH_TEMPERATURE_EPSILON:
-            msg = f"Nozzle temperature must be below {max_temp:d}C"
+            msg = f"Nozzle temperature must be below {max_temp:d}C, was {nozzle_temperature:d}C"
             raise RuntimeError(msg)
         return self._mcu.start_homing_touch(print_time, model.threshold)
 
