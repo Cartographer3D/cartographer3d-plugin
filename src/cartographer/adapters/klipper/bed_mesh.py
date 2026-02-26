@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, final
 
 import numpy as np
 from extras import bed_mesh
+from scipy.interpolate import griddata
 from typing_extensions import override
 
 from cartographer.macros.bed_mesh.interfaces import BedMeshAdapter, Polygon
@@ -67,8 +68,34 @@ class KlipperBedMesh(BedMeshAdapter):
             yi = y_indices[y]
             matrix[yi, xi] = z
 
+        # TODO: Review if immediate rectangular conversion is strictly necessary here or if it can be optimized.
         if np.isnan(matrix).any():
-            msg = "Mesh has missing points or inconsistent coordinates"
+            # 1. Get coordinates of where we HAVE data
+            valid_mask = ~np.isnan(matrix)
+            # Create a coordinate grid (y, x) matching the matrix shape
+            yy, xx = np.indices(matrix.shape)
+            
+            points_known = np.stack((yy[valid_mask], xx[valid_mask]), axis=-1)
+            values_known = matrix[valid_mask]
+            
+            # 2. Get coordinates of where we NEED data (the NaNs)
+            points_nan = np.stack((yy[~valid_mask], xx[~valid_mask]), axis=-1)
+
+            # 3. Perform Nearest Neighbor interpolation to fill NaNs
+            # This effectively "extends" the edge heights outwards to the corners
+            filled_values = griddata(
+                points_known, 
+                values_known, 
+                points_nan, 
+                method='nearest'
+            )
+
+            # 4. Map the filled values back into the matrix
+            matrix[~valid_mask] = filled_values
+
+        # Safety check remains the same
+        if np.isnan(matrix).any():
+            msg = "Mesh has missing points that could not be extrapolated"
             raise RuntimeError(msg)
 
         mesh_params: BedMeshParams = {

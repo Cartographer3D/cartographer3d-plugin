@@ -6,7 +6,10 @@ from itertools import chain
 from math import isfinite
 from typing import TYPE_CHECKING, Literal, final
 
+import numpy as np
 from typing_extensions import override
+from scipy.interpolate import griddata
+
 
 from cartographer.interfaces.printer import (
     AxisTwistCompensation,
@@ -31,6 +34,7 @@ from cartographer.macros.bed_mesh.paths.alternating_snake import AlternatingSnak
 from cartographer.macros.bed_mesh.paths.random_path import RandomPathGenerator
 from cartographer.macros.bed_mesh.paths.snake_path import SnakePathGenerator
 from cartographer.macros.bed_mesh.paths.spiral_path import SpiralPathGenerator
+from cartographer.macros.bed_mesh.paths.circular_snake_path import CircularSnakePathGenerator
 from cartographer.macros.utils import get_choice, get_float_tuple, get_int_tuple
 
 if TYPE_CHECKING:
@@ -55,7 +59,10 @@ class BedMeshCalibrateConfiguration:
     runs: int
     direction: Literal["x", "y"]
     height: float
-    path: Literal["snake", "alternating_snake", "spiral", "random"]
+    path: Literal["snake", "alternating_snake", "spiral", "random","circular_snake"]
+    mesh_radius: float | None = None
+    mesh_origin: tuple[float, float] | None = None
+    round_probe_count: int | None = None
 
     @staticmethod
     def from_config(config: Configuration):
@@ -71,6 +78,9 @@ class BedMeshCalibrateConfiguration:
             height=config.scan.mesh_height,
             path=config.scan.mesh_path,
             faulty_regions=list(map(lambda r: Region(r[0], r[1]), config.bed_mesh.faulty_regions)),
+            mesh_radius=config.bed_mesh.mesh_radius,
+            mesh_origin=config.bed_mesh.mesh_origin,
+            round_probe_count=config.bed_mesh.round_probe_count,
         )
 
 
@@ -81,6 +91,7 @@ PATH_GENERATOR_MAP = {
     "alternating_snake": AlternatingSnakePathGenerator,
     "spiral": SpiralPathGenerator,
     "random": RandomPathGenerator,
+    "circular_snake": CircularSnakePathGenerator,
 }
 
 
@@ -95,23 +106,57 @@ class MeshScanParams:
     adaptive_margin: float
     profile: str | None
     path_generator: PathGenerator
-
+    mesh_radius: float | None = None
+    mesh_origin: tuple[float, float] | None = None
     @classmethod
     def from_macro_params(
         cls, params: MacroParams, config: BedMeshCalibrateConfiguration, adapter: BedMeshAdapter
     ) -> MeshScanParams:
         """Create parameters from macro input and configuration."""
-        base_bounds = MeshBounds(
-            get_float_tuple(params, "MESH_MIN", default=config.mesh_min),
-            get_float_tuple(params, "MESH_MAX", default=config.mesh_max),
-        )
-        base_resolution = get_int_tuple(params, "PROBE_COUNT", default=config.probe_count)
+
+        # Initialize for both rectangular and circular cases
+        radius = None
+        origin = None
+
+        # User can only override mesh_radius if it's defined in config.
+        radius_val = config.mesh_radius
+        if radius_val is not None and radius_val > 0.0:
+            # Round bed mesh
+            radius = params.get_float('MESH_RADIUS', default=config.mesh_radius, minval=0)
+
+            # Validate correct radius to be defined.
+            if radius is None or radius <= 0:
+                radius = radius_val
+                logger.warning("MESH_RADIUS parameter is invalid or not defined. Using config value of %.2f", radius)
+
+            origin = get_float_tuple(
+                params, 'MESH_ORIGIN', default=config.mesh_origin or (0.0, 0.0)
+            )
+            base_bounds = MeshBounds(
+                (origin[0] - radius, origin[1] - radius),
+                (origin[0] + radius, origin[1] + radius),
+            )
+
+            round_probe_count = params.get_int('ROUND_PROBE_COUNT', default=config.round_probe_count or 15)
+
+            # Ensure odd number of probe points for round beds
+            # This should be already validated in config parsing, but we enforce it here as well for safety
+            round_probe_count = round_probe_count if round_probe_count % 2 == 1 else round_probe_count + 1
+
+            base_resolution = (round_probe_count, round_probe_count)
+        else:
+            base_bounds = MeshBounds(
+                get_float_tuple(params, "MESH_MIN", default=config.mesh_min),
+                get_float_tuple(params, "MESH_MAX", default=config.mesh_max),
+            )
+            base_resolution = get_int_tuple(params, "PROBE_COUNT", default=config.probe_count)
 
         adaptive = params.get_int("ADAPTIVE", default=0) != 0
         adaptive_margin = params.get_float("ADAPTIVE_MARGIN", config.adaptive_margin, minval=0)
 
         # Calculate actual bounds and resolution
-        if adaptive:
+        #Todo: Modify adaptive mesh calculator to support round beds, using only full points for now.
+        if adaptive and (radius is None or radius <= 0):
             calculator = AdaptiveMeshCalculator(base_bounds, base_resolution)
             object_points = list(chain.from_iterable(adapter.get_objects()))
             mesh_bounds = calculator.calculate_adaptive_bounds(object_points, adaptive_margin)
@@ -124,7 +169,10 @@ class MeshScanParams:
 
         # Create path generator
         direction: Literal["x", "y"] = get_choice(params, "DIRECTION", _directions, default=config.direction)
-        path_type = get_choice(params, "PATH", default=config.path, choices=PATH_GENERATOR_MAP.keys())
+        if radius is not None and radius > 0:
+           path_type = "circular_snake"
+        else:
+            path_type = get_choice(params, "PATH", default=config.path, choices=PATH_GENERATOR_MAP.keys())
         path_generator = PATH_GENERATOR_MAP[path_type](direction)
 
         return cls(
@@ -137,6 +185,8 @@ class MeshScanParams:
             adaptive_margin=adaptive_margin,
             profile=profile,
             path_generator=path_generator,
+            mesh_radius = radius,
+            mesh_origin = origin,
         )
 
 
@@ -186,6 +236,8 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
             scan_params.mesh_bounds.max_point,
             scan_params.resolution[0],
             scan_params.resolution[1],
+            scan_params.mesh_radius,
+            scan_params.mesh_origin,
         )
         # Generate path and collect samples
         path = self._generate_path(grid, scan_params)
@@ -194,6 +246,13 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
 
         # Process samples and create mesh
         positions = self.task_executor.run(self._process_samples_to_positions, grid, samples, scan_params.height)
+
+        # Fill gaps in circular mesh if needed
+        if scan_params.mesh_radius is not None and scan_params.mesh_radius > 0:
+            self._log_positions_debug("Circular mesh positions before gap fill", positions)
+            positions = self._fill_circular_mesh_gaps(positions, grid) #As this now converts positions to rectangular mesh we can get
+                                                                        #rid of changes in apply_zero_reference_height and apply_mesh
+            self._log_positions_debug("Circular mesh positions after gap fill", positions)
         positions = self._apply_zero_reference_height(positions, scan_params, grid)
 
         # Apply mesh to adapter
@@ -307,3 +366,141 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
             positions.append(Position(x=float(rx), y=float(ry), z=z))
 
         return positions
+
+    def _log_positions_debug(self, message: str, positions: list[Position]) -> None:
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+
+        formatted_positions = [
+            (
+                round(position.x, 4),
+                round(position.y, 4),
+                "nan" if np.isnan(position.z) else round(position.z, 6),
+            )
+            for position in positions
+        ]
+        logger.debug("%s (%d points): %s", message, len(positions), formatted_positions)
+
+    def _fill_circular_mesh_gaps(self, positions: list[Position], grid: MeshGrid) -> list[Position]:
+        """Fill NaN gaps in circular mesh iteratively from known samples outward.
+        
+        This converts a circular mesh (with NaN values outside the circle) to a complete
+        rectangular mesh by iteratively filling gaps. Each empty position is filled by
+        averaging its closest neighbors in X and Y directions, propagating values from
+        the edge of sampled points outward layer by layer.
+        """
+        if not positions:
+            return positions
+
+        # Check if there are any NaN values to fill
+        has_nan = any(np.isnan(p.z) for p in positions)
+        if not has_nan:
+            # No gaps to fill
+            return positions
+
+        # Convert positions to a matrix
+        arr = np.asarray([(p.x, p.y, p.z) for p in positions])
+        xs = np.unique(arr[:, 0])
+        ys = np.unique(arr[:, 1])
+        
+        # create full grid with NaNs
+        matrix = np.full((len(ys), len(xs)), np.nan)
+        
+        # Create lookup maps for efficient coordinate → index conversion
+        x_index_map = {float(x): i for i, x in enumerate(xs)}
+        y_index_map = {float(y): i for i, y in enumerate(ys)}
+        
+        # Populate z values at their corresponding grid positions
+        for position in positions:
+            x_grid_idx = x_index_map.get(position.x)
+            y_grid_idx = y_index_map.get(position.y)
+            
+            if x_grid_idx is not None and y_grid_idx is not None:
+                matrix[y_grid_idx, x_grid_idx] = position.z
+        
+        # Fill NaN values iteratively from known samples outward
+        nan_count = 0
+        if np.isnan(matrix).any():
+            # Track which positions have known values (initially just measured samples)
+            filled = ~np.isnan(matrix)
+            initial_nan_count = np.sum(~filled)
+            
+            # Iterate until no more gaps can be filled
+            max_iterations = len(xs) * len(ys)  # Safety limit
+            iteration = 0
+            
+            while np.any(~filled) and iteration < max_iterations:
+                iteration += 1
+                made_progress = False
+                fills_this_iteration = []  # Collect all fills for this iteration
+                
+                for j in range(len(ys)):  # j is Y index (row)
+                    for i in range(len(xs)):  # i is X index (column)
+                        if not filled[j, i]:  # This position needs filling
+                            # Find closest filled neighbor in X direction (same Y row)
+                            # Only consider immediate adjacent neighbors (distance = 1)
+                            closest_x_value = None
+                            min_x_dist = float('inf')
+                            max_neighbor_dist = 1  # Only use immediate neighbors
+                            
+                            for ii in range(len(xs)):  # Search across columns (X values)
+                                if filled[j, ii]:  # Same row j, different column ii
+                                    dist = abs(ii - i)
+                                    if dist > 0 and dist <= max_neighbor_dist and dist < min_x_dist:
+                                        min_x_dist = dist
+                                        closest_x_value = matrix[j, ii]
+                            
+                            # Find closest filled neighbor in Y direction (same X column)
+                            # Only consider adjacent neighbors (within max_neighbor_dist grid cells)
+                            closest_y_value = None
+                            min_y_dist = float('inf')
+                            
+                            for jj in range(len(ys)):  # Search across rows (Y values)
+                                if filled[jj, i]:  # Different row jj, same column i
+                                    dist = abs(jj - j)
+                                    if dist > 0 and dist <= max_neighbor_dist and dist < min_y_dist:
+                                        min_y_dist = dist
+                                        closest_y_value = matrix[jj, i]
+                            
+                            # Determine fill value based on available neighbors
+                            fill_value = None
+                            if closest_x_value is not None and closest_y_value is not None:
+                                fill_value = (closest_x_value + closest_y_value) / 2.0
+                            elif closest_x_value is not None:
+                                fill_value = closest_x_value
+                            elif closest_y_value is not None:
+                                fill_value = closest_y_value
+                            
+                            if fill_value is not None:
+                                fills_this_iteration.append((j, i, fill_value))
+                                made_progress = True
+                
+                # Apply all fills for this iteration at once
+                # This ensures newly-filled values don't affect other fills in the same iteration
+                for j, i, value in fills_this_iteration:
+                    matrix[j, i] = value
+                    filled[j, i] = True
+                
+                if not made_progress:
+                    break  # No more positions can be filled
+            
+            nan_count = initial_nan_count
+            logger.debug("Filled gaps in %d iterations", iteration)
+
+        # Safety check
+        if np.isnan(matrix).any():
+            msg = "Mesh has missing points that could not be extrapolated"
+            raise RuntimeError(msg)
+        
+        # Convert back to list of positions (in same order as grid: y-major, x-minor)
+        filled_positions: list[Position] = [
+            Position(x=float(x), y=float(y), z=float(matrix[j, i]))
+            for j, y in enumerate(ys)
+            for i, x in enumerate(xs)
+        ]
+        
+        # Log how many NaN values were filled
+        if nan_count > 0:
+            logger.info("Filled %d circular mesh gaps iteratively in %d iteration(s)", nan_count, iteration)
+        
+        return filled_positions

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from typing import Iterable, Literal, Protocol, TypeVar
 
 from typing_extensions import TypeAlias
@@ -70,11 +71,12 @@ def parse_general_config(wrapper: ParseConfigWrapper) -> GeneralConfig:
 
 
 _directions: list[Literal["x", "y"]] = ["x", "y"]
-_paths: list[Literal["snake", "alternating_snake", "spiral", "random"]] = [
+_paths: list[Literal["snake", "alternating_snake", "spiral", "random","circular_snake"]] = [
     "snake",
     "alternating_snake",
     "spiral",
     "random",
+    "circular_snake",
 ]
 
 
@@ -140,17 +142,44 @@ def _parse_faulty_regions(wrapper: ParseConfigWrapper) -> list[Region]:
 def parse_bed_mesh_config(wrapper: ParseConfigWrapper) -> BedMeshConfig:
     faulty_regions = _parse_faulty_regions(wrapper)
 
+    # Try to get mesh_radius for round beds, otherwise use rectangular
+    _radius = wrapper.get_float('mesh_radius',default=0)
+    _round_probe_count = None
+    _origin = None
+    
+    if _radius is not None and _radius > 0.0:
+        _origin = list_to_tuple(wrapper.get_required_float_list("mesh_origin", count=2))
+        _round_probe_count = wrapper.get_int('round_probe_count', default=5, minimum=3)
+        #Round beds should have odd number of probe points.
+        if not _round_probe_count & 1:
+                msg = f"Invalid round_probe_count {_round_probe_count}: must be an odd integer for round beds."
+                raise ValueError(msg)
+        #Radius should be rounded to 0.1mm to avoid excessive precision.
+        _radius = math.floor(_radius * 10) / 10
+        _mesh_min = (-_radius, -_radius)
+        _mesh_max = (_radius, _radius)
+        _probe_count = (_round_probe_count, _round_probe_count)
+
+    else:
+        # rectangular
+        _mesh_min=list_to_tuple(wrapper.get_required_float_list("mesh_min", count=2))
+        _mesh_max=list_to_tuple(wrapper.get_required_float_list("mesh_max", count=2))
+        _probe_count=list_to_tuple(wrapper.get_required_int_list("probe_count", count=2))
+        _radius = None
+
     return BedMeshConfig(
-        mesh_min=list_to_tuple(wrapper.get_required_float_list("mesh_min", count=2)),
-        mesh_max=list_to_tuple(wrapper.get_required_float_list("mesh_max", count=2)),
-        probe_count=list_to_tuple(wrapper.get_required_int_list("probe_count", count=2)),
+        mesh_min=_mesh_min,
+        mesh_max=_mesh_max,
+        probe_count=_probe_count,
         speed=wrapper.get_float("speed", default=50, minimum=1),
         horizontal_move_z=wrapper.get_float("horizontal_move_z", default=5, minimum=1),
         adaptive_margin=wrapper.get_float("adaptive_margin", default=5, minimum=0),
         zero_reference_position=list_to_tuple(wrapper.get_required_float_list("zero_reference_position", count=2)),
         faulty_regions=faulty_regions,
+        mesh_origin=_origin,
+        mesh_radius=_radius,
+        round_probe_count=_round_probe_count
     )
-
 
 def _parse_version_info(wrapper: ParseConfigWrapper) -> ModelVersionInfo:
     """Parse version information from model config."""

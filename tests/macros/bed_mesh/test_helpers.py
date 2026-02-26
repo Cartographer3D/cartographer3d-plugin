@@ -105,6 +105,88 @@ class TestMeshGrid:
         assert grid.is_valid_index(3, 0) is False
         assert grid.is_valid_index(0, 3) is False
 
+    def test_circular_mesh_creation(self):
+        """Test circular mesh grid creation with radius and origin."""
+        grid = MeshGrid(
+            min_point=(0.0, 0.0),
+            max_point=(10.0, 10.0),
+            x_resolution=5,
+            y_resolution=5,
+            mesh_radius=5.0,
+            mesh_origin=(5.0, 5.0),
+        )
+
+        assert grid.mesh_radius == 5.0
+        assert grid.mesh_origin == (5.0, 5.0)
+
+    def test_circular_mesh_contains_point(self):
+        """Test circular containment checking and generate_points filtering."""
+        grid = MeshGrid(
+            min_point=(0.0, 0.0),
+            max_point=(10.0, 10.0),
+            x_resolution=5,
+            y_resolution=5,
+            mesh_radius=5.0,
+            mesh_origin=(5.0, 5.0),
+        )
+
+        # Points inside circle (distance from origin <= radius + epsilon)
+        assert grid.contains_point((5.0, 5.0)) is True  # Center
+        assert grid.contains_point((10.0, 5.0)) is True  # Right edge
+        assert grid.contains_point((0.0, 5.0)) is True  # Left edge
+        assert grid.contains_point((5.0, 10.0)) is True  # Top edge
+        assert grid.contains_point((5.0, 0.0)) is True  # Bottom edge
+
+        # Point outside circle
+        assert grid.contains_point((10.0, 10.0)) is False  # Corner (diagonal distance > radius)
+        assert grid.contains_point((0.0, 0.0)) is False  # Corner
+
+        # Points near boundary (within epsilon)
+        assert grid.contains_point((9.99, 5.0)) is True  # Near right edge
+        assert grid.contains_point((5.0, 9.99)) is True  # Near top edge
+
+        # Test generate_points() filtering for circular mesh
+        points = grid.generate_points()
+
+        # Should not include all 25 points (5x5) due to circular filtering
+        assert len(points) < 25
+
+        # Should include center
+        assert (5.0, 5.0) in points
+
+        # Should not include corners (distance from center > radius)
+        assert (0.0, 0.0) not in points
+        assert (10.0, 10.0) not in points
+        assert (0.0, 10.0) not in points
+        assert (10.0, 0.0) not in points
+
+        # All generated points should be inside circular boundary
+        for point in points:
+            dist_sq = (point[0] - 5.0) ** 2 + (point[1] - 5.0) ** 2
+            assert dist_sq <= (5.0 + 1e-2) ** 2
+
+    def test_rectangular_vs_circular_fallback(self):
+        """Test that rectangular containment is used when radius/origin not set."""
+        rect_grid = MeshGrid((0.0, 0.0), (10.0, 10.0), 3, 3, mesh_radius=None, mesh_origin=None)
+
+        # Rectangular check
+        assert rect_grid.contains_point((5.0, 5.0)) is True
+        assert rect_grid.contains_point((10.0, 10.0)) is True
+
+        # Circular grid with different settings
+        circ_grid = MeshGrid(
+            (0.0, 0.0),
+            (10.0, 10.0),
+            3,
+            3,
+            mesh_radius=5.0,
+            mesh_origin=(5.0, 5.0),
+        )
+
+        # Corner point is in rectangular bounds but outside circle
+        assert rect_grid.contains_point((10.0, 10.0)) is True
+        assert circ_grid.contains_point((10.0, 10.0)) is False
+
 
 def mock_sample(position: Position | None):
     return Sample(0, 0, position, 0, 0)
@@ -192,6 +274,140 @@ class TestSampleProcessor:
         result_00 = next(r for r in results if r.point == (0.0, 0.0))
         assert result_00.z == 2.0  # Median of [1.0, 2.0, 3.0]
         assert result_00.sample_count == 3
+
+
+class TestCircularSampleProcessor:
+    """Test cases for SampleProcessor with circular meshes."""
+
+    def test_circular_mesh_sample_assignment(self):
+        """Test sample assignment skips grid points outside circular boundary."""
+        circ_grid = MeshGrid(
+            min_point=(0.0, 0.0),
+            max_point=(10.0, 10.0),
+            x_resolution=3,
+            y_resolution=3,
+            mesh_radius=5.0,
+            mesh_origin=(5.0, 5.0),
+        )
+        circ_processor = SampleProcessor(circ_grid, max_distance=1.0)
+
+        # Samples distributed across grid
+        samples = [
+            mock_sample(Position(5.0, 5.0, 0.0)),  # Center (inside)
+            mock_sample(Position(0.0, 0.0, 0.0)),  # Corner (outside circle)
+            mock_sample(Position(10.0, 10.0, 0.0)),  # Corner (outside circle)
+            mock_sample(Position(5.0, 0.0, 0.0)),  # Bottom (inside)
+            mock_sample(Position(5.0, 10.0, 0.0)),  # Top (inside)
+        ]
+
+        height_calc = Mock(return_value=2.5)
+        results = circ_processor.assign_samples_to_grid(samples, height_calc)
+
+        # Should have fewer results than rectangular grid (fewer valid grid points)
+        # Circular mesh filters out corners
+        assert len(results) < 9
+
+        # All result points should be inside circular boundary
+        for result in results:
+            dist_sq = (result.point[0] - 5.0) ** 2 + (result.point[1] - 5.0) ** 2
+            assert dist_sq <= (5.0 + 1e-2) ** 2
+
+    def test_circular_mesh_assigns_correct_heights(self):
+        """Verify that samples inside the circle are correctly assigned with median heights."""
+        circ_grid = MeshGrid(
+            min_point=(0.0, 0.0),
+            max_point=(10.0, 10.0),
+            x_resolution=3,
+            y_resolution=3,
+            mesh_radius=5.0,
+            mesh_origin=(5.0, 5.0),
+        )
+        circ_processor = SampleProcessor(circ_grid, max_distance=1.0)
+
+        # Create multiple samples at the center point
+        samples = [
+            mock_sample(Position(5.0, 5.0, 0.0)),
+            mock_sample(Position(5.0, 5.0, 0.0)),
+            mock_sample(Position(5.0, 5.0, 0.0)),
+        ]
+
+        # Return different heights for each sample
+        height_calc = Mock(side_effect=[1.0, 2.0, 3.0])
+        results = circ_processor.assign_samples_to_grid(samples, height_calc)
+
+        # Find the center point result
+        center_result = next((r for r in results if r.point == (5.0, 5.0)), None)
+        assert center_result is not None, "Center point should have a result"
+        assert center_result.z == 2.0, "Height should be median of [1.0, 2.0, 3.0]"
+        assert center_result.sample_count == 3, "Should have 3 samples"
+
+    def test_circular_mesh_nan_for_unsampled_interior_points(self):
+        """Verify that interior grid points with no samples get NaN height."""
+        circ_grid = MeshGrid(
+            min_point=(0.0, 0.0),
+            max_point=(10.0, 10.0),
+            x_resolution=3,
+            y_resolution=3,
+            mesh_radius=5.0,
+            mesh_origin=(5.0, 5.0),
+        )
+        circ_processor = SampleProcessor(circ_grid, max_distance=1.0)
+
+        # Only sample at center, leaving other interior points unmeasured
+        samples = [mock_sample(Position(5.0, 5.0, 0.0))]
+
+        height_calc = Mock(return_value=1.0)
+        results = circ_processor.assign_samples_to_grid(samples, height_calc)
+
+        # Find results at edge points (inside circle but no samples)
+        edge_points = [(5.0, 0.0), (5.0, 10.0), (0.0, 5.0), (10.0, 5.0)]
+
+        for point in edge_points:
+            result = next((r for r in results if r.point == point), None)
+            if result is not None:  # Only check if grid point is inside circle
+                assert np.isnan(result.z), f"Point {point} should have NaN (not sampled)"
+                assert result.sample_count == 0, f"Point {point} should have 0 samples"
+
+    def test_circular_mesh_sparse_grid_normalization(self):
+        """Test that normalize_to_zero_reference_point handles sparse circular grids."""
+        circ_grid = MeshGrid(
+            min_point=(0.0, 0.0),
+            max_point=(10.0, 10.0),
+            x_resolution=3,
+            y_resolution=3,
+            mesh_radius=5.0,
+            mesh_origin=(5.0, 5.0),
+        )
+        circ_processor = SampleProcessor(circ_grid, max_distance=1.0)
+        circ_transformer = CoordinateTransformer(probe_offset=Position(0.0, 0.0, 0))
+
+        # Create sparse position list (not all grid points)
+        positions = [
+            Position(5.0, 5.0, 1.0),  # Center
+            Position(5.0, 0.0, 1.5),  # Bottom
+            Position(5.0, 10.0, 2.0),  # Top
+            Position(0.0, 5.0, 2.5),  # Left
+            Position(10.0, 5.0, 1.8),  # Right
+        ]
+
+        # Should not crash on sparse grid (circular mesh with fewer positions than full grid)
+        # The method only normalizes heights, does not fill missing grid points
+        normalized = circ_transformer.normalize_to_zero_reference_point(
+            positions, zero_height=1.0
+        )
+
+        # Should return same number of positions, just with normalized heights
+        assert len(normalized) == 5
+
+        # Check that provided positions have their heights adjusted
+        norm_dict = {(p.x, p.y): p.z for p in normalized}
+
+        # Center position should be normalized relative to 1.0
+        assert norm_dict.get((5.0, 5.0)) == 0.0  # Was 1.0, now 0.0 after subtracting reference
+
+        # Other positions should also be adjusted
+        assert norm_dict.get((5.0, 0.0)) == 0.5  # Was 1.5, now 0.5
+        assert norm_dict.get((5.0, 10.0)) == 1.0  # Was 2.0, now 1.0
 
 
 transformer = CoordinateTransformer(probe_offset=Position(2.0, 1.0, 0))

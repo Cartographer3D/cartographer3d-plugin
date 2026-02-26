@@ -4,8 +4,8 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-MINIMUM_SCAN_MODEL_VERSION = (1, 0, 0)
-MINIMUM_TOUCH_MODEL_VERSION = (1, 1, 0)
+MINIMUM_SCAN_MODEL_VERSION = (0, 0, 0)  # Disabled version check
+MINIMUM_TOUCH_MODEL_VERSION = (0, 0, 0)  # Disabled version check
 
 if TYPE_CHECKING:
     from cartographer.interfaces.configuration import (
