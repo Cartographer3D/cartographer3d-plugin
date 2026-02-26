@@ -18,7 +18,10 @@ jobs:
         with:
           enable-cache: true
       - name: Build
-        run: uvx hatch build
+        run: uv build
+        env:
+          GIT_VERSION: ${{ github.ref_name }}
+          COMMIT_SHA: ${{ github.sha }}
       - name: Store the distribution packages
         uses: actions/upload-artifact@v4
         with:
