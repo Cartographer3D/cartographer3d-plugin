@@ -496,7 +496,7 @@ class CalibrationTouchMode(TouchMode):
         threshold: int,
         speed: float,
     ) -> None:
-        model = TouchModelConfiguration("calibration", threshold, speed, 0)
+        model = TouchModelConfiguration(name="calibration", threshold=threshold, speed=speed, z_offset=0)
         super().__init__(
             mcu,
             toolhead,
