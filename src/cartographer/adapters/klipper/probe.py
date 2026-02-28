@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from cartographer.interfaces.configuration import GeneralConfig
     from cartographer.interfaces.printer import ProbeMode, Toolhead
     from cartographer.macros.probe import ProbeMacro, QueryProbeMacro
+    from cartographer.probe import Probe
 
 
 class KlipperProbeSession:
@@ -61,7 +62,7 @@ class KlipperCartographerProbe:
     def __init__(
         self,
         toolhead: Toolhead,
-        probe: ProbeMode,
+        probe: Probe,
         probe_macro: ProbeMacro,
         query_probe_macro: QueryProbeMacro,
         config: GeneralConfig,
@@ -90,7 +91,7 @@ class KlipperCartographerProbe:
 
     def get_offsets(self, gcmd: GCodeCommand | None = None) -> tuple[float, float, float]:
         del gcmd
-        return self.probe.offset.as_tuple()
+        return self.probe.current_mode.offset.as_tuple()
 
     def get_status(self, eventtime: float):
         del eventtime
@@ -105,4 +106,4 @@ class KlipperCartographerProbe:
 
     def start_probe_session(self, gcmd: GCodeCommand) -> KlipperProbeSession:
         del gcmd
-        return KlipperProbeSession(self.probe, self.toolhead)
+        return KlipperProbeSession(self.probe.current_mode, self.toolhead)

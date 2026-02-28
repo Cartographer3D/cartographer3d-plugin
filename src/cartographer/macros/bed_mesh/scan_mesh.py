@@ -11,7 +11,6 @@ from typing_extensions import override
 from cartographer.interfaces.configuration import MeshPath
 from cartographer.interfaces.printer import (
     AxisTwistCompensation,
-    Macro,
     MacroParams,
     Position,
     Sample,
@@ -143,7 +142,7 @@ class MeshScanParams:
 
 
 @final
-class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
+class BedMeshCalibrateMacro(SupportsFallbackMacro):
     description = "Gather samples across the bed to calibrate the bed mesh."
 
     def __init__(
@@ -155,6 +154,7 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         task_executor: TaskExecutor,
         config: BedMeshCalibrateConfiguration,
     ):
+        super().__init__()
         self.probe = probe
         self.toolhead = toolhead
         self.adapter = adapter
@@ -162,22 +162,14 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         self.config = config
         self.coordinate_transformer = CoordinateTransformer(probe.scan.offset)
         self.axis_twist_compensation = axis_twist_compensation
-        self._fallback: Macro | None = None
-
-    @override
-    def set_fallback_macro(self, macro: Macro) -> None:
-        self._fallback = macro
 
     @override
     def run(self, params: MacroParams) -> None:
         """Main entry point for bed mesh calibration."""
         # Handle fallback for non-scan methods
-        method = params.get("METHOD", "scan")
-        if method.lower() != "scan":
-            if self._fallback is None:
-                msg = f"Bed mesh calibration method '{method}' not supported"
-                raise RuntimeError(msg)
-            return self._fallback.run(params)
+        method = params.get("METHOD", "scan").lower()
+        if method != "scan":
+            return self.fallback.run(params)
 
         # Parse parameters and validate
         scan_params = MeshScanParams.from_macro_params(params, self.config, self.adapter)

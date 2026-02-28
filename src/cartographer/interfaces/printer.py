@@ -1,7 +1,8 @@
 from __future__ import annotations
 
+from abc import ABC
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Literal, NamedTuple, Protocol, overload, runtime_checkable
+from typing import TYPE_CHECKING, Callable, Literal, NamedTuple, Protocol, overload
 
 if TYPE_CHECKING:
     from cartographer.stream import Session
@@ -85,6 +86,7 @@ class Mcu(Protocol):
 
 
 class MacroParams(Protocol):
+    def get_command_parameters(self) -> dict[str, str]: ...
     @overload
     def get(self, name: str, default: str = ...) -> str: ...
     @overload
@@ -107,15 +109,25 @@ class MacroParams(Protocol):
     ) -> int: ...
 
 
-@runtime_checkable
-class SupportsFallbackMacro(Protocol):
-    def set_fallback_macro(self, macro: Macro) -> None: ...
-
-
 class Macro(Protocol):
-    description: str
+    description: str | None
 
     def run(self, params: MacroParams) -> None: ...
+
+
+class SupportsFallbackMacro(Macro, ABC):
+    @property
+    def fallback(self) -> Macro:
+        if self._fallback is None:
+            msg = f"Fallback for {type(self).__name__} not found."
+            raise RuntimeError(msg)
+        return self._fallback
+
+    def __init__(self):
+        self._fallback: Macro | None = None
+
+    def set_fallback_macro(self, macro: Macro) -> None:
+        self._fallback = macro
 
 
 class ProbeMode(Protocol):
@@ -138,6 +150,8 @@ class GCodeDispatch(Protocol):
     def run_gcode(self, script: str) -> None:
         """Run the given gcode script."""
         ...
+
+    def clone_params(self, params: MacroParams, overrides: dict[str, str]) -> MacroParams: ...
 
 
 class AxisTwistCompensation(Protocol):
