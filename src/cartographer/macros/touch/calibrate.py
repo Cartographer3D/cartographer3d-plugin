@@ -63,9 +63,9 @@ class VerificationResult:
     probe_medians: list[float]
     median_range: float
 
-    def passed(self, max_consistency_range: float) -> bool:
+    def passed(self, max_verify_range: float) -> bool:
         """Check if threshold meets consistency requirements."""
-        return self.median_range <= max_consistency_range
+        return self.median_range <= max_verify_range
 
 
 def format_distance(distance_mm: float) -> str:
@@ -107,8 +107,8 @@ class TouchCalibrateMacro(Macro):
             default=5000,
             minval=threshold_start,
         )
-        max_consistency_range = params.get_float(
-            "MAX_CONSISTENCY_RANGE",
+        max_verify_range = params.get_float(
+            "MAX_VERIFY_RANGE",
             default=self._config.touch.sample_range * 2,
             minval=self._config.touch.sample_range,
             maxval=self._config.touch.sample_range * 4,
@@ -136,11 +136,11 @@ class TouchCalibrateMacro(Macro):
             threshold_max,
         )
         logger.info(
-            "Looking for %d samples within %smm range (max %d attempts per probe, consistency range <= %smm)",
+            "Looking for %d samples within %smm range (max %d attempts per probe, verify range <= %smm)",
             required_samples,
             format_distance(self._config.touch.sample_range),
             max_samples,
-            format_distance(max_consistency_range),
+            format_distance(max_verify_range),
         )
 
         calibration_mode = CalibrationTouchMode(
@@ -156,7 +156,7 @@ class TouchCalibrateMacro(Macro):
                 calibration_mode,
                 threshold_start,
                 threshold_max,
-                max_consistency_range,
+                max_verify_range,
                 verification_probes,
             )
 
@@ -180,7 +180,7 @@ class TouchCalibrateMacro(Macro):
         calibration_mode: CalibrationTouchMode,
         threshold_start: int,
         threshold_max: int,
-        max_consistency_range: float,
+        max_verify_range: float,
         verification_probes: int,
     ) -> int | None:
         """
@@ -217,7 +217,7 @@ class TouchCalibrateMacro(Macro):
             verification = self._verify_threshold(
                 calibration_mode,
                 threshold,
-                max_consistency_range,
+                max_verify_range,
                 verification_probes,
             )
 
@@ -225,7 +225,7 @@ class TouchCalibrateMacro(Macro):
                 threshold += self._calculate_step(threshold, None)
                 continue
 
-            if verification.passed(max_consistency_range):
+            if verification.passed(max_verify_range):
                 logger.info(
                     "Threshold %d verified: %smm median range across %d probes",
                     threshold,
@@ -238,7 +238,7 @@ class TouchCalibrateMacro(Macro):
             logger.debug(
                 "Verification failed: median range %smm > %smm, increasing threshold",
                 format_distance(verification.median_range),
-                format_distance(max_consistency_range),
+                format_distance(max_verify_range),
             )
             threshold += self._calculate_step(threshold, verification.median_range)
 
@@ -279,7 +279,7 @@ class TouchCalibrateMacro(Macro):
         self,
         calibration_mode: CalibrationTouchMode,
         threshold: int,
-        max_consistency_range: float,
+        max_verify_range: float,
         verification_probes: int,
     ) -> VerificationResult | None:
         """
@@ -321,11 +321,11 @@ class TouchCalibrateMacro(Macro):
             # Early exit: no point continuing if already inconsistent
             if len(probe_medians) >= 2:
                 current_range = float(np.max(probe_medians) - np.min(probe_medians))
-                if current_range > max_consistency_range:
+                if current_range > max_verify_range:
                     logger.debug(
                         "Early exit: median range %smm > %smm after %d probes",
                         format_distance(current_range),
-                        format_distance(max_consistency_range),
+                        format_distance(max_verify_range),
                         len(probe_medians),
                     )
                     break
@@ -338,7 +338,7 @@ class TouchCalibrateMacro(Macro):
             median_range=median_range,
         )
 
-        self._log_verification_result(result, max_consistency_range)
+        self._log_verification_result(result, max_verify_range)
         return result
 
     def _calculate_step(self, threshold: int, range_value: float | None) -> int:
@@ -420,10 +420,10 @@ class TouchCalibrateMacro(Macro):
     def _log_verification_result(
         self,
         result: VerificationResult,
-        max_consistency_range: float,
+        max_verify_range: float,
     ) -> None:
         """Log a verification result."""
-        status = "✓" if result.passed(max_consistency_range) else "✗"
+        status = "✓" if result.passed(max_verify_range) else "✗"
         logger.info(
             "Verification %d: %s median_range=%smm (%d probes)",
             result.threshold,
@@ -438,11 +438,11 @@ class TouchCalibrateMacro(Macro):
                 "Verification %d details:\n"
                 "  probe medians: [%s]\n"
                 "  median range: %s mm\n"
-                "  max consistency range: %s mm",
+                "  max verify range: %s mm",
                 result.threshold,
                 medians_str,
                 format_distance(result.median_range),
-                format_distance(max_consistency_range),
+                format_distance(max_verify_range),
             )
 
 
