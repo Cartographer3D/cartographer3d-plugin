@@ -184,18 +184,20 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         """
         Collect touch samples and find a consistent subset.
 
-        Collects samples one at a time, checking after each if there's
-        a subset of the required size where all samples are within
-        the acceptable range.
+        Uses a sliding window of the most recent max_window samples
+        to prevent cherry-picking good samples from across a noisy
+        sequence. Exits early as soon as a valid subset is found.
         """
         collected: list[float] = []
         required_samples = self._config.samples
         max_samples = self._config.max_samples
+        max_window = self._config.max_window
 
         logger.debug(
-            "Starting touch sequence for %d samples within %d touches...",
+            "Starting touch sequence for %d samples within %d touches (window=%d)...",
             required_samples,
             max_samples,
+            max_window,
         )
 
         for i in range(max_samples):
@@ -206,7 +208,8 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             if len(collected) < required_samples:
                 continue
 
-            best = find_best_subset(collected, required_samples)
+            window = collected[-max_window:]
+            best = find_best_subset(window, required_samples)
             if best is None:
                 continue
 
@@ -219,13 +222,15 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
 
         # Failed - log what we had
         self._log_sample_stats("No acceptable samples found", collected)
-        best = find_best_subset(collected, required_samples)
+        window = collected[-max_window:]
+        best = find_best_subset(window, required_samples)
         if best:
-            self._log_sample_stats("Best subset was", best)
+            self._log_sample_stats("Best subset in last window was", best)
 
         msg = (
             f"Unable to find {required_samples:d} samples within "
-            f"{self._config.sample_range:.3f}mm after {max_samples:d} touches"
+            f"{self._config.sample_range:.3f}mm in a window of {max_window:d} "
+            f"after {max_samples:d} touches"
         )
         raise TouchError(msg)
 
