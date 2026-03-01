@@ -38,6 +38,7 @@ MAX_TOUCH_TEMPERATURE_EPSILON = 2
 class TouchModeConfiguration:
     samples: int
     max_samples: int
+    max_window: int
 
     x_offset: float
     y_offset: float
@@ -55,6 +56,7 @@ class TouchModeConfiguration:
         return TouchModeConfiguration(
             samples=config.touch.samples,
             max_samples=config.touch.max_samples,
+            max_window=config.touch.samples + config.touch.max_noisy_samples,
             models=config.touch.models,
             x_offset=config.general.x_offset,
             y_offset=config.general.y_offset,

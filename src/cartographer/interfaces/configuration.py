@@ -175,6 +175,13 @@ class TouchConfig:
         "The maximum number of samples to do before giving up.",
         default=10,
     )
+    max_noisy_samples: int = option(
+        "The number of noisy samples tolerated within the sliding window."
+        " The window size is calculated as samples + max_noisy_samples."
+        " A smaller value prevents cherry-picking good samples from a noisy sequence.",
+        default=2,
+        min=0,
+    )
     max_touch_temperature: int = option(
         "The maximum allowed nozzle temperature to use when touching the plate."
         " This is set to 150C to avoid damaging your plate."

@@ -41,6 +41,7 @@ default_scan_config = ScanConfig(
 default_touch_config = TouchConfig(
     samples=5,
     max_samples=10,
+    max_noisy_samples=2,
     max_touch_temperature=150,
     home_random_radius=0.0,
     retract_distance=2.0,

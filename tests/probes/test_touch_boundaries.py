@@ -39,6 +39,7 @@ def make_config(
     return TouchModeConfiguration(
         samples=1,
         max_samples=1,
+        max_window=1,
         mesh_min=mesh_min,
         mesh_max=mesh_max,
         max_touch_temperature=150,
