@@ -86,8 +86,20 @@ def test_probe_suceeds_on_more(mocker: MockerFixture, toolhead: Toolhead, probe:
     assert probe.touch.perform_probe() == 0.5
 
 
-def test_probe_suceeds_on_spread_samples(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_probe_spread_samples_rejected_by_window(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+    # Spread-out good samples interleaved with bad ones can no longer be cherry-picked
+    # because the sliding window only considers the most recent samples + max_noisy_samples.
     toolhead.z_probing_move = mocker.Mock(side_effect=[0.5, 1.0, 1.5, 0.5, 2.5, 0.5, 3.5, 0.5, 4.5, 0.5])
+    toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
+
+    with pytest.raises(RuntimeError, match="Unable to find"):
+        _ = probe.touch.perform_probe()
+
+
+def test_probe_succeeds_within_window(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+    # First 3 are noisy, then 5 consistent samples within the window.
+    # samples=5, max_noisy_samples=0: window=5, so the last 5 samples [0.5, 0.5, 0.5, 0.5, 0.5] all agree.
+    toolhead.z_probing_move = mocker.Mock(side_effect=[1.0, 2.0, 3.0, 0.5, 0.5, 0.5, 0.5, 0.5])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
     assert probe.touch.perform_probe() == 0.5
