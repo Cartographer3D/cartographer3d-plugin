@@ -1,7 +1,7 @@
 """Generate macro parameter reference documentation from param() fields.
 
 Usage:
-    python -m cartographer.macros.docs > macros-overview.md
+    python -m cartographer.macros.docs > macro-reference.md
 """
 
 from __future__ import annotations
@@ -118,7 +118,7 @@ def generate_docs() -> str:
     parts.append("---")
     parts.append("description: Auto-generated from plugin source.")
     parts.append("---\n")
-    parts.append("# Macro Parameter Reference\n")
+    parts.append("# Macro Reference\n")
 
     for macro_name, macro_class, cls in MACROS:
         params = get_all_params(cls)
