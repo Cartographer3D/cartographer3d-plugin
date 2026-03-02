@@ -3,9 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
-import sys
 from dataclasses import dataclass, field, fields
-from enum import Enum
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -14,12 +12,15 @@ from typing import (
     overload,
 )
 
+from cartographer.lib.fields import MISSING, FieldInfo, FieldMeta, get_all_fields, parse_value
+
 if TYPE_CHECKING:
+    from enum import Enum
+
     from configfile import ConfigWrapper
 
 T = TypeVar("T")
 
-_MISSING = object()
 _OPTION_METADATA_KEY = "_config_option"
 
 
@@ -28,11 +29,22 @@ class _OptionMeta:
     """Internal metadata attached to dataclass fields via field(metadata=...)."""
 
     description: str | None
-    default: Any  # _MISSING means required
+    default: Any  # MISSING means required
     min: float | None
     max: float | None
     key: str | None
     parse_fn: Callable[[ConfigWrapper], Any] | None
+
+    @property
+    def field_meta(self) -> FieldMeta:
+        """Convert to shared FieldMeta for the generic parse/introspection layer."""
+        return FieldMeta(
+            description=self.description,
+            default=self.default,
+            min=self.min,
+            max=self.max,
+            key=self.key,
+        )
 
 
 @overload
@@ -71,7 +83,7 @@ def option(
 def option(
     description: str | None = None,
     *,
-    default: Any = _MISSING,
+    default: Any = MISSING,
     key: str | None = None,
     min: float | None = None,
     max: float | None = None,
@@ -103,7 +115,7 @@ def option(
         "metadata": {_OPTION_METADATA_KEY: meta},
     }
 
-    if default is not _MISSING:
+    if default is not MISSING:
         field_kwargs["default"] = default
 
     return field(**field_kwargs)
@@ -114,131 +126,75 @@ def _get_option_meta(f: dataclasses.Field[Any]) -> _OptionMeta | None:
     return f.metadata.get(_OPTION_METADATA_KEY)
 
 
-def _resolve_type(type_hint: Any, module_name: str | None = None) -> type:
-    """Resolve a type hint string (from __future__ annotations) to a real type.
-
-    Handles basic types used in config: float, int, str, bool, Enum subclasses,
-    and Optional variants.
-    """
-    if isinstance(type_hint, str):
-        type_map: dict[str, type] = {
-            "float": float,
-            "int": int,
-            "str": str,
-            "bool": bool,
-        }
-
-        base = type_hint.replace(" ", "").split("|")[0]
-        resolved = type_map.get(base)
-        if resolved is not None:
-            return resolved
-
-        # Try resolving from the dataclass's module (for Enum subclasses, etc.)
-        if module_name is not None:
-            module = sys.modules.get(module_name)
-            if module is not None:
-                resolved = getattr(module, base, None)
-                if isinstance(resolved, type):
-                    return resolved
-
-        msg = f"Cannot resolve type hint '{type_hint}' for config parsing"
-        raise TypeError(msg)
-
-    if isinstance(type_hint, type):
-        return type_hint
-
-    origin = getattr(type_hint, "__origin__", None)
-    if origin is not None:
-        return origin
-
-    msg = f"Cannot resolve type hint '{type_hint}' for config parsing"
-    raise TypeError(msg)
+# ---------------------------------------------------------------------------
+# Config-specific backend adapter
+# ---------------------------------------------------------------------------
 
 
-def _is_optional(type_hint: Any) -> bool:
-    """Check if a type hint is Optional (X | None)."""
-    if isinstance(type_hint, str):
-        return "None" in type_hint or "| None" in type_hint
-    origin = getattr(type_hint, "__origin__", None)
-    if origin is not None:
-        import typing
+class _ConfigBackend:
+    """Wraps a Klipper ConfigWrapper to satisfy the ParseBackend protocol."""
 
-        if origin is typing.Union:
-            args = getattr(type_hint, "__args__", ())
-            return type(None) in args
-    return False
+    def __init__(self, config: ConfigWrapper) -> None:
+        self._config: ConfigWrapper = config
 
-
-def _parse_field_value(
-    config: ConfigWrapper,
-    name: str,
-    type_hint: Any,
-    meta: _OptionMeta,
-    module_name: str | None,
-) -> Any:
-    """Parse a single field value from a ConfigWrapper based on type and metadata."""
-    is_required = meta.default is _MISSING
-    is_nullable = _is_optional(type_hint)
-    resolved_type = _resolve_type(type_hint, module_name)
-
-    if resolved_type is float:
+    def get_float(
+        self,
+        name: str,
+        *,
+        default: Any = MISSING,
+        minval: float | None = None,
+        maxval: float | None = None,
+    ) -> Any:
         kwargs: dict[str, Any] = {}
-        if meta.min is not None:
-            kwargs["minval"] = meta.min
-        if meta.max is not None:
-            kwargs["maxval"] = meta.max
+        if default is not MISSING:
+            kwargs["default"] = default
+        if minval is not None:
+            kwargs["minval"] = minval
+        if maxval is not None:
+            kwargs["maxval"] = maxval
+        return self._config.getfloat(name, **kwargs)
 
-        if is_required:
-            return config.getfloat(name, **kwargs)
+    def get_int(
+        self,
+        name: str,
+        *,
+        default: Any = MISSING,
+        minval: int | None = None,
+        maxval: int | None = None,
+    ) -> Any:
+        kwargs: dict[str, Any] = {}
+        if default is not MISSING:
+            kwargs["default"] = default
+        if minval is not None:
+            kwargs["minval"] = minval
+        if maxval is not None:
+            kwargs["maxval"] = maxval
+        return self._config.getint(name, **kwargs)
 
-        if is_nullable and meta.default is None:
-            return config.getfloat(name, default=None, **kwargs)
+    def get_str(self, name: str, *, default: Any = MISSING) -> Any:
+        kwargs: dict[str, Any] = {}
+        if default is not MISSING:
+            kwargs["default"] = default
+        return self._config.get(name, **kwargs)
 
-        return config.getfloat(name, default=meta.default, **kwargs)
+    def get_bool(self, name: str, *, default: Any = MISSING) -> Any:
+        kwargs: dict[str, Any] = {}
+        if default is not MISSING:
+            kwargs["default"] = default
+        return self._config.getboolean(name, **kwargs)
 
-    if resolved_type is int:
-        kwargs = {}
-        if meta.min is not None:
-            kwargs["minval"] = int(meta.min)
-        if meta.max is not None:
-            kwargs["maxval"] = int(meta.max)
+    def get_enum(self, name: str, enum_type: type[Enum], *, default: Any = MISSING) -> Any:
+        choices = {str(m.value): str(m.value) for m in enum_type}
+        kwargs: dict[str, Any] = {}
+        if default is not MISSING:
+            kwargs["default"] = str(default.value)
+        value = self._config.getchoice(name, choices, **kwargs)
+        return enum_type(value)
 
-        if is_required:
-            return config.getint(name, **kwargs)
 
-        if is_nullable and meta.default is None:
-            return config.getint(name, default=None, **kwargs)
-
-        return config.getint(name, default=meta.default, **kwargs)
-
-    if resolved_type is bool:
-        if is_required:
-            return config.getboolean(name)
-
-        if is_nullable and meta.default is None:
-            return config.getboolean(name, default=None)
-
-        return config.getboolean(name, default=meta.default)
-
-    if resolved_type is str:
-        if is_nullable and (meta.default is None or meta.default is _MISSING):
-            return config.get(name, default=None)
-
-        if is_required:
-            return config.get(name)
-
-        return config.get(name, default=meta.default)
-
-    if issubclass(resolved_type, Enum):
-        choices = {str(m.value): str(m.value) for m in resolved_type}
-        if is_required:
-            value = config.getchoice(name, choices)
-        else:
-            value = config.getchoice(name, choices, default=str(meta.default.value))
-        return resolved_type(value)
-
-    msg = f"Unsupported type '{type_hint}' for auto-parsing field '{name}'. Use parse_fn instead."
-    raise TypeError(msg)
+# ---------------------------------------------------------------------------
+# parse()
+# ---------------------------------------------------------------------------
 
 
 def parse(cls: type[T], config: ConfigWrapper, **overrides: Any) -> T:
@@ -264,6 +220,7 @@ def parse(cls: type[T], config: ConfigWrapper, **overrides: Any) -> T:
     hints = {f.name: f.type for f in fields(cls)}
 
     kwargs: dict[str, Any] = {}
+    backend = _ConfigBackend(config)
 
     for f in fields(cls):
         if f.name in overrides:
@@ -283,9 +240,14 @@ def parse(cls: type[T], config: ConfigWrapper, **overrides: Any) -> T:
 
         type_hint = hints[f.name]
         config_key = meta.key if meta.key is not None else f.name
-        kwargs[f.name] = _parse_field_value(config, config_key, type_hint, meta, cls.__module__)
+        kwargs[f.name] = parse_value(backend, config_key, type_hint, meta.field_meta, cls.__module__)
 
     return cls(**kwargs)
+
+
+# ---------------------------------------------------------------------------
+# get_option_name()
+# ---------------------------------------------------------------------------
 
 
 def get_option_name(cls: type, field_name: str) -> str:
@@ -320,23 +282,11 @@ def get_option_name(cls: type, field_name: str) -> str:
     raise ValueError(msg)
 
 
-@dataclass(frozen=True)
-class OptionInfo:
-    """Public metadata for a single config option, used for docs generation."""
+# ---------------------------------------------------------------------------
+# Introspection (OptionInfo / get_all_options)
+# ---------------------------------------------------------------------------
 
-    name: str
-    type: str
-    description: str | None
-    default: Any
-    required: bool
-    min: float | None
-    max: float | None
-    choices: list[str] | None
-
-    @property
-    def has_default(self) -> bool:
-        """Whether this option has a default value."""
-        return self.default is not _MISSING
+OptionInfo = FieldInfo
 
 
 def get_all_options(cls: type) -> list[OptionInfo]:
@@ -350,42 +300,4 @@ def get_all_options(cls: type) -> list[OptionInfo]:
     Returns:
         A list of OptionInfo for each documented option() field.
     """
-    if not dataclasses.is_dataclass(cls):
-        msg = f"{cls.__name__} is not a dataclass"
-        raise TypeError(msg)
-
-    result: list[OptionInfo] = []
-    for f in fields(cls):
-        meta = _get_option_meta(f)
-        if meta is None:
-            continue
-        if meta.description is None:
-            continue
-
-        config_key = meta.key if meta.key is not None else f.name
-        type_hint = f.type
-        is_required = meta.default is _MISSING
-
-        # Detect Enum choices
-        choices: list[str] | None = None
-        try:
-            resolved = _resolve_type(type_hint, cls.__module__)
-            if issubclass(resolved, Enum):
-                choices = [str(m.value) for m in resolved]
-        except TypeError:
-            pass
-
-        result.append(
-            OptionInfo(
-                name=config_key,
-                type=type_hint if isinstance(type_hint, str) else type_hint.__name__,
-                description=meta.description,
-                default=meta.default if not is_required else _MISSING,
-                required=is_required,
-                min=meta.min,
-                max=meta.max,
-                choices=choices,
-            )
-        )
-
-    return result
+    return get_all_fields(cls, _OPTION_METADATA_KEY, key_fn=lambda name, key: key if key is not None else name)

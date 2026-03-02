@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from enum import Enum
 from functools import partial
 from typing import TYPE_CHECKING, final
@@ -8,7 +9,7 @@ from typing import TYPE_CHECKING, final
 from typing_extensions import assert_never, override
 
 from cartographer.interfaces.printer import Macro, MacroParams, Position, Toolhead
-from cartographer.macros.utils import get_enum_choice
+from cartographer.macros.fields import param, parse
 from cartographer.probe import Probe, ScanModel
 
 if TYPE_CHECKING:
@@ -24,6 +25,14 @@ DEFAULT_SCAN_MODEL_NAME = "default"
 class ScanCalibrateMethod(Enum):
     TOUCH = "touch"
     MANUAL = "manual"
+
+
+@dataclass(frozen=True)
+class ScanCalibrateParams:
+    """Parameters for CARTOGRAPHER_CALIBRATE."""
+
+    model: str = param("Model name", default=DEFAULT_SCAN_MODEL_NAME)
+    method: ScanCalibrateMethod = param("Calibration method", default=ScanCalibrateMethod.MANUAL)
 
 
 @final
@@ -42,8 +51,8 @@ class ScanCalibrateMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        name = params.get("MODEL", DEFAULT_SCAN_MODEL_NAME).lower()
-        method = get_enum_choice(params, "METHOD", ScanCalibrateMethod, default=ScanCalibrateMethod.MANUAL)
+        p = parse(ScanCalibrateParams, params)
+        name = p.model.lower()
 
         if not self._toolhead.is_homed("x") or not self._toolhead.is_homed("y"):
             msg = "Must home x and y before calibration"
@@ -56,12 +65,12 @@ class ScanCalibrateMacro(Macro):
         )
         self._toolhead.wait_moves()
 
-        if method == ScanCalibrateMethod.TOUCH:
+        if p.method == ScanCalibrateMethod.TOUCH:
             return self._run_touch(name)
-        elif method == ScanCalibrateMethod.MANUAL:
+        elif p.method == ScanCalibrateMethod.MANUAL:
             return self._run_manual(name)
 
-        assert_never(method)
+        assert_never(p.method)
 
     def _run_touch(self, name: str) -> None:
         trigger_pos = self._probe.perform_touch()

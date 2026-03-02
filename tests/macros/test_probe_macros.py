@@ -50,7 +50,7 @@ def test_probe_accuracy_respects_samples_parameter(
     params.get_int = mocker.Mock(return_value=2)
 
     # Execute
-    macro = ProbeAccuracyMacro(probe, toolhead)
+    macro = ProbeAccuracyMacro(probe, toolhead, lift_speed=5.0)
     with caplog.at_level(logging.INFO):
         macro.run(params)
 
@@ -72,7 +72,7 @@ def test_probe_accuracy_logs_statistics(
     probe.scan.perform_probe = mocker.Mock(side_effect=itertools.cycle([10.0, 20.0]))
 
     # Execute
-    macro = ProbeAccuracyMacro(probe, toolhead)
+    macro = ProbeAccuracyMacro(probe, toolhead, lift_speed=5.0)
     with caplog.at_level(logging.INFO):
         macro.run(params)
 

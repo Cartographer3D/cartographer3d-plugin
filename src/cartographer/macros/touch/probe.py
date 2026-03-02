@@ -1,17 +1,24 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams, Position, Toolhead
+from cartographer.macros.fields import parse
 
 if TYPE_CHECKING:
     from cartographer.probe.touch_mode import TouchMode
 
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TouchProbeMacroParams:
+    """Parameters for CARTOGRAPHER_TOUCH."""
 
 
 @final
@@ -26,6 +33,7 @@ class TouchProbeMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
+        _ = parse(TouchProbeMacroParams, params)
         trigger_pos = self._probe.perform_probe()
         self.last_trigger_position = trigger_pos
         offset = self._probe.offset

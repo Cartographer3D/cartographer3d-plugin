@@ -1,14 +1,28 @@
+from __future__ import annotations
+
 import logging
-from typing import final
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
-from cartographer.interfaces.configuration import Configuration
 from cartographer.interfaces.printer import Macro, MacroParams
-from cartographer.probe.scan_mode import ScanMode
-from cartographer.probe.touch_mode import TouchMode
+from cartographer.macros.fields import param, parse
+
+if TYPE_CHECKING:
+    from cartographer.interfaces.configuration import Configuration
+    from cartographer.probe.scan_mode import ScanMode
+    from cartographer.probe.touch_mode import TouchMode
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ModelManagerParams:
+    """Parameters for model manager macros."""
+
+    load: str | None = param("Model name to load", default=None)
+    remove: str | None = param("Model name to remove", default=None)
 
 
 @final
@@ -21,16 +35,15 @@ class TouchModelManager(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        load = params.get("LOAD", None)
-        if load is not None:
-            load = load.lower()
+        p = parse(ModelManagerParams, params)
+        if p.load is not None:
+            load = p.load.lower()
             logger.info("Loading touch model: %s", load)
             self._mode.load_model(load)
             return
 
-        remove = params.get("REMOVE", None)
-        if remove is not None:
-            remove = remove.lower()
+        if p.remove is not None:
+            remove = p.remove.lower()
             logger.info("Removing touch model: %s", remove)
             self._config.remove_touch_model(remove)
             return
@@ -48,16 +61,15 @@ class ScanModelManager(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        load = params.get("LOAD", None)
-        if load is not None:
-            load = load.lower()
+        p = parse(ModelManagerParams, params)
+        if p.load is not None:
+            load = p.load.lower()
             logger.info("Loading scan model: %s", load)
             self._mode.load_model(load)
             return
 
-        remove = params.get("REMOVE", None)
-        if remove is not None:
-            remove = remove.lower()
+        if p.remove is not None:
+            remove = p.remove.lower()
             logger.info("Removing scan model: %s", remove)
             self._config.remove_scan_model(remove)
             return

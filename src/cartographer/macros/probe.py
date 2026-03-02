@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, final
 
 import numpy as np
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams, Position
+from cartographer.macros.fields import param, parse
 
 if TYPE_CHECKING:
     from cartographer.interfaces.configuration import Configuration
@@ -15,6 +16,30 @@ if TYPE_CHECKING:
     from cartographer.probe import Probe
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class ProbeMacroParams:
+    """Parameters for PROBE."""
+
+
+@dataclass(frozen=True)
+class ProbeAccuracyParams:
+    """Parameters for PROBE_ACCURACY."""
+
+    lift_speed: float = param("Lift speed in mm/s", min=1)
+    sample_retract_dist: float = param("Retract distance between samples", default=1.0, min=1.0)
+    samples: int = param("Number of probe samples", default=10, min=3)
+
+
+@dataclass(frozen=True)
+class QueryProbeMacroParams:
+    """Parameters for QUERY_PROBE."""
+
+
+@dataclass(frozen=True)
+class ZOffsetApplyProbeMacroParams:
+    """Parameters for Z_OFFSET_APPLY_PROBE."""
 
 
 @final
@@ -29,6 +54,7 @@ class ProbeMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
+        _ = parse(ProbeMacroParams, params)
         trigger_pos = self._probe.perform_scan()
         self.last_trigger_position = trigger_pos
         offset = self._probe.scan.offset
@@ -46,15 +72,14 @@ class ProbeMacro(Macro):
 class ProbeAccuracyMacro(Macro):
     description = "Probe the bed multiple times to measure the accuracy of the probe."
 
-    def __init__(self, probe: Probe, toolhead: Toolhead) -> None:
+    def __init__(self, probe: Probe, toolhead: Toolhead, *, lift_speed: float) -> None:
         self._probe = probe
         self._toolhead = toolhead
+        self._lift_speed = lift_speed
 
     @override
     def run(self, params: MacroParams) -> None:
-        lift_speed = params.get_float("LIFT_SPEED", 5.0, above=0)
-        retract = params.get_float("SAMPLE_RETRACT_DIST", default=1.0, minval=1.0)
-        sample_count = params.get_int("SAMPLES", default=10, minval=3)
+        p = parse(ProbeAccuracyParams, params, lift_speed=self._lift_speed)
         position = self._toolhead.get_position()
 
         logger.info(
@@ -62,18 +87,18 @@ class ProbeAccuracyMacro(Macro):
             position.x,
             position.y,
             position.z,
-            sample_count,
-            retract,
-            lift_speed,
+            p.samples,
+            p.sample_retract_dist,
+            p.lift_speed,
         )
 
-        self._toolhead.move(z=position.z + retract, speed=lift_speed)
+        self._toolhead.move(z=position.z + p.sample_retract_dist, speed=p.lift_speed)
         measurements: list[float] = []
-        while len(measurements) < sample_count:
+        while len(measurements) < p.samples:
             trigger_pos = self._probe.perform_scan()
             measurements.append(trigger_pos)
             pos = self._toolhead.get_position()
-            self._toolhead.move(z=pos.z + retract, speed=lift_speed)
+            self._toolhead.move(z=pos.z + p.sample_retract_dist, speed=p.lift_speed)
         logger.debug("Measurements gathered: %s", measurements)
 
         max_value = max(measurements)
@@ -105,6 +130,7 @@ class QueryProbeMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
+        _ = parse(QueryProbeMacroParams, params)
         triggered = self._probe.query_is_triggered()
         logger.info("probe: %s", "TRIGGERED" if triggered else "open")
         self.last_triggered = triggered
@@ -121,6 +147,7 @@ class ZOffsetApplyProbeMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
+        _ = parse(ZOffsetApplyProbeMacroParams, params)
         additional_offset = self._toolhead.get_gcode_z_offset()
 
         if self._probe.touch.last_homing_time > self._probe.scan.last_homing_time:

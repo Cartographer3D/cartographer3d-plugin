@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, final
 
@@ -8,7 +9,7 @@ from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams, Mcu, Sample
 from cartographer.lib.csv import generate_filepath, resolve_filepath, validate_output_path, write_samples_to_csv
-from cartographer.macros.utils import get_enum_choice
+from cartographer.macros.fields import param, parse
 
 if TYPE_CHECKING:
     from cartographer.stream import Session
@@ -23,6 +24,14 @@ class StreamAction(Enum):
     STATUS = "status"
 
 
+@dataclass(frozen=True)
+class StreamParams:
+    """Parameters for CARTOGRAPHER_STREAM."""
+
+    action: StreamAction = param("Stream action", default=StreamAction.STATUS)
+    file: str | None = param("Output file path", default=None)
+
+
 @final
 class StreamMacro(Macro):
     description = "Controls a data stream of the cartographer readings to a file."
@@ -34,24 +43,24 @@ class StreamMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        action = get_enum_choice(params, "ACTION", StreamAction, default=StreamAction.STATUS)
+        p = parse(StreamParams, params)
 
-        if action is StreamAction.START:
-            self._start_streaming(params)
-        elif action is StreamAction.STOP:
-            self._stop_streaming(params)
-        elif action is StreamAction.CANCEL:
+        if p.action is StreamAction.START:
+            self._start_streaming(p)
+        elif p.action is StreamAction.STOP:
+            self._stop_streaming(p)
+        elif p.action is StreamAction.CANCEL:
             self._cancel_streaming()
-        elif action is StreamAction.STATUS:
+        elif p.action is StreamAction.STATUS:
             self._show_status()
 
-    def _start_streaming(self, params: MacroParams) -> None:
+    def _start_streaming(self, p: StreamParams) -> None:
         if self._active_session is not None:
             msg = "Stream is already active. Use CARTOGRAPHER_STREAM ACTION=STOP to stop current stream."
             raise RuntimeError(msg)
 
         # Generate and validate output file path
-        output_file = params.get("FILE", None) or generate_filepath("stream")
+        output_file = p.file or generate_filepath("stream")
 
         validate_output_path(output_file)
         self._output_file = output_file
@@ -61,12 +70,12 @@ class StreamMacro(Macro):
 
         logger.info("Started data streaming session, will save to: %s", self._output_file)
 
-    def _stop_streaming(self, params: MacroParams) -> None:
+    def _stop_streaming(self, p: StreamParams) -> None:
         if self._active_session is None:
             msg = "No active stream to stop."
             raise RuntimeError(msg)
 
-        output_file = params.get("FILE", self._output_file)
+        output_file = p.file or self._output_file
         if output_file is None:
             msg = "Output file path is not set. Please specify FILE parameter."
             raise RuntimeError(msg)

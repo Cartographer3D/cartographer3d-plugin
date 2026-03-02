@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
@@ -11,6 +12,7 @@ from cartographer.interfaces.printer import GCodeDispatch, Macro, MacroParams, M
 from cartographer.lib import scipy_helpers
 from cartographer.lib.csv import generate_filepath, write_samples_to_csv
 from cartographer.lib.log import log_duration
+from cartographer.macros.fields import param, parse
 
 if TYPE_CHECKING:
     from cartographer.interfaces.configuration import Configuration
@@ -28,6 +30,16 @@ MAX_PHASE_TIME = 5400.0  #  Abort after 90 minutes for any single phase
 
 class TemperatureStallError(RuntimeError):
     """Raised when temperature stops making progress toward the target."""
+
+
+@dataclass(frozen=True)
+class TemperatureCalibrateParams:
+    """Parameters for CARTOGRAPHER_CALIBRATE_TEMPERATURE."""
+
+    min_temp: int = param("Minimum coil temperature", default=40, min=40, max=50)
+    max_temp: int = param("Maximum coil temperature", default=60, min=60, max=90)
+    bed_temp: int = param("Bed temperature target", default=90, min=90, max=120)
+    z_speed: int = param("Z movement speed", default=5, min=1)
 
 
 @final
@@ -56,10 +68,14 @@ class TemperatureCalibrateMacro(Macro):
             msg = "scipy is required for temperature calibration, but is not installed"
             raise RuntimeError(msg)
 
-        min_temp = params.get_int("MIN_TEMP", default=40, minval=40, maxval=50)
-        max_temp = params.get_int("MAX_TEMP", default=60, minval=min_temp + 20, maxval=90)
-        bed_temp = params.get_int("BED_TEMP", default=90, minval=max_temp + 30, maxval=120)
-        z_speed = params.get_int("Z_SPEED", default=5, minval=1)
+        p = parse(TemperatureCalibrateParams, params)
+
+        if p.max_temp < p.min_temp + 20:
+            msg = f"MAX_TEMP ({p.max_temp}) must be at least MIN_TEMP + 20 ({p.min_temp + 20})"
+            raise RuntimeError(msg)
+        if p.bed_temp < p.max_temp + 30:
+            msg = f"BED_TEMP ({p.bed_temp}) must be at least MAX_TEMP + 30 ({p.max_temp + 30})"
+            raise RuntimeError(msg)
 
         if not self.toolhead.is_homed("x") or not self.toolhead.is_homed("y") or not self.toolhead.is_homed("z"):
             msg = "Must home axes before temperature calibration"
@@ -69,12 +85,12 @@ class TemperatureCalibrateMacro(Macro):
         cooling_height = max_z * 2 / 3
         logger.info(
             "Starting temperature calibration sequence... (bed=%d°C range=%d-%d°C, cooling height=%.1fmm)",
-            bed_temp,
-            min_temp,
-            max_temp,
+            p.bed_temp,
+            p.min_temp,
+            p.max_temp,
             cooling_height,
         )
-        self.toolhead.move(z=cooling_height, speed=z_speed)
+        self.toolhead.move(z=cooling_height, speed=p.z_speed)
         self.toolhead.move(
             x=self.config.bed_mesh.zero_reference_position[0],
             y=self.config.bed_mesh.zero_reference_position[1],
@@ -88,8 +104,8 @@ class TemperatureCalibrateMacro(Macro):
 
         for phase, height in enumerate(heights, 1):
             logger.info("Starting Phase %d of %d (height=%.1fmm)", phase, len(heights), height)
-            self._cool_down_phase(cooling_height, min_temp, z_speed)
-            samples = self._heat_up_phase(height, bed_temp, min_temp, max_temp, z_speed)
+            self._cool_down_phase(cooling_height, p.min_temp, p.z_speed)
+            samples = self._heat_up_phase(height, p.bed_temp, p.min_temp, p.max_temp, p.z_speed)
             data_per_height[height] = samples
 
             logger.info("Phase %d complete: collected %d samples", phase, len(samples))
@@ -102,7 +118,7 @@ class TemperatureCalibrateMacro(Macro):
                 logger.warning("Failed to write samples to CSV: %s", e)
 
         self.gcode.run_gcode("M140 S0")
-        self.toolhead.move(z=cooling_height, speed=z_speed)
+        self.toolhead.move(z=cooling_height, speed=p.z_speed)
 
         model = self.task_executor.run(fit_coil_temperature_model, data_per_height, self.mcu.get_coil_reference())
 
