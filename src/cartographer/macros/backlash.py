@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 class EstimateBacklashParams:
     """Parameters for CARTOGRAPHER_ESTIMATE_BACKLASH."""
 
-    calibrate: bool = param("Run calibration and save result")
+    calibrate: bool = param("Run calibration and save result", default=False)
     iterations: int = param("Number of measurement iterations", default=10, min=1)
     delta: float = param("Movement delta in mm", default=0.2, min=0.2, max=1)
 
