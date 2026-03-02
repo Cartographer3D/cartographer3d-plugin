@@ -21,6 +21,7 @@ from cartographer.probe.touch_mode import (
     TouchModeConfiguration,
     compute_range,
     find_best_subset,
+    run_probe_sequence,
 )
 
 if TYPE_CHECKING:
@@ -104,7 +105,7 @@ class CalibrationProbe(Protocol):
         ...
 
     def perform_touch_probe(self) -> float:
-        """Perform one complete touch probe sequence, returning the median."""
+        """Perform one complete touch probe sequence."""
         ...
 
 
@@ -153,7 +154,7 @@ class ThresholdVerifier:
         self,
         threshold: int,
         max_verify_range: float,
-        probe_count: int,
+        sample_count: int,
     ) -> VerificationResult | None:
         """
         Verify threshold by running actual touch probe sequences.
@@ -165,56 +166,57 @@ class ThresholdVerifier:
         Returns None if probe triggered due to noise.
         """
         logger.info(
-            "Threshold %d looks promising, verifying with %d touch probes...",
+            "Threshold %d looks promising, verifying with %d touch samples...",
             threshold,
-            probe_count,
+            sample_count,
         )
 
         self._probe.set_threshold(threshold)
-        probe_medians: list[float] = []
+        medians: list[float] = []
 
-        for attempt in range(probe_count):
+        for attempt in range(sample_count):
             try:
                 median = self._probe.perform_touch_probe()
-                probe_medians.append(median)
+                medians.append(median)
                 logger.debug(
-                    "Verification probe %d/%d: median=%.4fmm",
+                    "Verification sample %d/%d: median=%.4fmm",
                     attempt + 1,
-                    probe_count,
+                    sample_count,
                     median,
                 )
             except ProbeTriggerError:
                 logger.warning(
-                    "Threshold %d triggered prior to movement on probe %d.",
+                    "Threshold %d triggered prior to movement on sample %d.",
                     threshold,
                     attempt + 1,
                 )
                 return None
             except TouchError:
                 logger.warning(
-                    "Threshold %d failed to find consistent samples on probe %d.",
+                    "Threshold %d failed to find consistent samples on sample %d.",
                     threshold,
                     attempt + 1,
                 )
                 return None
 
             # Early exit: no point continuing if already inconsistent
-            if len(probe_medians) >= 2:
-                current_range = float(np.max(probe_medians) - np.min(probe_medians))
+            # Early exit: no point continuing if already inconsistent
+            if len(medians) >= 2:
+                current_range = float(np.max(medians) - np.min(medians))
                 if current_range > max_verify_range:
                     logger.debug(
-                        "Early exit: median range %smm > %smm after %d probes",
+                        "Early exit: median range %smm > %smm after %d samples",
                         format_distance(current_range),
                         format_distance(max_verify_range),
-                        len(probe_medians),
+                        len(medians),
                     )
                     break
 
-        median_range = float(np.max(probe_medians) - np.min(probe_medians))
+        median_range = float(np.max(medians) - np.min(medians))
 
         return VerificationResult(
             threshold=threshold,
-            probe_medians=probe_medians,
+            probe_medians=medians,
             median_range=median_range,
         )
 
@@ -253,10 +255,10 @@ class TouchCalibrateMacro(Macro):
             minval=self._config.touch.sample_range,
             maxval=self._config.touch.sample_range * 4,
         )
-        verification_probes = params.get_int(
-            "VERIFICATION_PROBES",
-            default=5,
-            minval=2,
+        verification_samples = params.get_int(
+            "VERIFICATION_SAMPLES",
+            default=10,
+            minval=3,
             maxval=20,
         )
 
@@ -276,10 +278,10 @@ class TouchCalibrateMacro(Macro):
             threshold_max,
         )
         logger.info(
-            "Screening: %d samples within %smm range. Verification: %d probes within %smm range",
+            "Screening: %d samples within %smm range. Verification: %d samples within %smm range",
             required_samples,
             format_distance(sample_range),
-            verification_probes,
+            verification_samples,
             format_distance(max_verify_range),
         )
 
@@ -302,7 +304,7 @@ class TouchCalibrateMacro(Macro):
                 threshold_max,
                 sample_range,
                 max_verify_range,
-                verification_probes,
+                verification_samples,
             )
 
         if threshold is None:
@@ -328,7 +330,7 @@ class TouchCalibrateMacro(Macro):
         threshold_max: int,
         sample_range: float,
         max_verify_range: float,
-        verification_probes: int,
+        verification_samples: int,
     ) -> int | None:
         """
         Find the minimum threshold that produces consistent results.
@@ -356,7 +358,7 @@ class TouchCalibrateMacro(Macro):
                 continue
 
             # Phase 2: Actual touch probe verification
-            verification = verifier.verify(threshold, max_verify_range, verification_probes)
+            verification = verifier.verify(threshold, max_verify_range, verification_samples)
 
             if verification is None:
                 threshold += calculate_step(threshold, None, sample_range)
@@ -366,7 +368,7 @@ class TouchCalibrateMacro(Macro):
 
             if verification.passed(max_verify_range):
                 logger.info(
-                    "Threshold %d verified: %smm median range across %d probes",
+                    "Threshold %d verified: %smm median range across %d samples",
                     threshold,
                     format_distance(verification.median_range),
                     len(verification.probe_medians),
@@ -452,25 +454,32 @@ class TouchCalibrateMacro(Macro):
         result: VerificationResult,
         max_verify_range: float,
     ) -> None:
-        """Log a verification result."""
+        """Log a verification result with touch-accuracy-style report."""
         status = "✓" if result.passed(max_verify_range) else "✗"
+        medians = result.probe_medians
+
+        max_value = max(medians)
+        min_value = min(medians)
+        range_value = max_value - min_value
+        avg_value = float(np.mean(medians))
+        median_value = float(np.median(medians))
+        std_dev = float(np.std(medians))
+
         logger.info(
-            "Verification %d: %s median_range=%smm (%d probes)",
+            "Verification %d: %s (%d samples)\n"
+            "  maximum %.6f, minimum %.6f, range %.6f,\n"
+            "  average %.6f, median %.6f,\n"
+            "  standard deviation %.6f",
             result.threshold,
             status,
-            format_distance(result.median_range),
-            len(result.probe_medians),
+            len(medians),
+            max_value,
+            min_value,
+            range_value,
+            avg_value,
+            median_value,
+            std_dev,
         )
-
-        if logger.isEnabledFor(logging.DEBUG):
-            medians_str = ", ".join(f"{m:.4f}" for m in result.probe_medians)
-            logger.debug(
-                "Verification %d details:\n  probe medians: [%s]\n  median range: %s mm\n  max verify range: %s mm",
-                result.threshold,
-                medians_str,
-                format_distance(result.median_range),
-                format_distance(max_verify_range),
-            )
 
 
 @final
@@ -521,7 +530,13 @@ class CalibrationTouchMode(TouchMode):
         """
         Perform one complete touch probe sequence.
 
-        This simulates exactly what happens at runtime: collect up to
-        max_samples, find the best subset, return the median.
+        Uses the shared run_probe_sequence to ensure parity with
+        the runtime TouchMode._run_probe() logic.
         """
-        return self._run_probe()
+        return run_probe_sequence(
+            self._perform_single_probe,
+            samples=self._config.samples,
+            max_samples=self._config.max_samples,
+            max_window=self._config.max_window,
+            sample_range=self._config.sample_range,
+        )

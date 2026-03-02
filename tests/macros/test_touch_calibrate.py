@@ -175,7 +175,7 @@ class TestThresholdVerifier:
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, probe_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
 
         assert result is not None
         assert result.passed(max_verify_range=0.020)
@@ -187,7 +187,7 @@ class TestThresholdVerifier:
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, probe_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
 
         assert result is not None
         assert not result.passed(max_verify_range=0.020)
@@ -199,7 +199,7 @@ class TestThresholdVerifier:
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, probe_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
 
         assert result is not None
         # Should have stopped before running all 5 probes
@@ -212,7 +212,7 @@ class TestThresholdVerifier:
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, probe_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
 
         assert result is None
 
@@ -222,7 +222,7 @@ class TestThresholdVerifier:
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, probe_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
 
         assert result is None
 
@@ -233,7 +233,7 @@ class TestThresholdVerifier:
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, probe_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
 
         assert result is None
 
@@ -243,7 +243,7 @@ class TestThresholdVerifier:
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, probe_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
 
         assert result is None
 
@@ -253,7 +253,7 @@ class TestThresholdVerifier:
         )
         verifier = ThresholdVerifier(probe)
 
-        _ = verifier.verify(threshold=2500, max_verify_range=0.020, probe_count=3)
+        _ = verifier.verify(threshold=2500, max_verify_range=0.020, sample_count=3)
 
         assert probe.thresholds_set == [2500]
 
@@ -263,7 +263,7 @@ class TestThresholdVerifier:
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, probe_count=3)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=3)
 
         assert result is not None
         assert result.median_range == pytest.approx(0.010)  # pyright: ignore[reportUnknownMemberType]
