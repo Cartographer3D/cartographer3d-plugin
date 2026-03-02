@@ -111,6 +111,19 @@ def _format_param(p: ParamInfo) -> str:
     return "\n".join(parts)
 
 
+def _format_example_value(p: ParamInfo) -> str:
+    """Format a parameter value for the example line."""
+    if p.required:
+        return f"<{p.name.lower()}>"
+    if isinstance(p.default, bool):
+        return "yes" if p.default else "no"
+    if isinstance(p.default, Enum):
+        return str(p.default.value)
+    if p.default is None:
+        return ""
+    return str(p.default)
+
+
 def generate_docs() -> str:
     """Generate full macro parameter reference as a markdown string."""
     parts: list[str] = []
@@ -134,6 +147,16 @@ def generate_docs() -> str:
         for p in params:
             parts.append(_format_param(p))
         parts.append("```\n")
+
+        # Example usage — include required params and optional params with meaningful defaults
+        example_parts: list[str] = []
+        for p in params:
+            value = _format_example_value(p)
+            if value:
+                example_parts.append(f"{p.name}={value}")
+        example = f"{macro_name} {' '.join(example_parts)}".rstrip()
+        parts.append("**Example:**")
+        parts.append(f"```\n{example}\n```\n")
 
     return "\n".join(parts)
 
