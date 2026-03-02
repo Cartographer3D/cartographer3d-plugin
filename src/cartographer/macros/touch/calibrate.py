@@ -14,6 +14,7 @@ from cartographer.interfaces.configuration import (
 )
 from cartographer.interfaces.errors import ProbeTriggerError
 from cartographer.interfaces.printer import Macro, MacroParams, Mcu
+from cartographer.macros.fields import param, parse
 from cartographer.macros.utils import force_home_z
 from cartographer.probe.touch_mode import (
     TouchError,
@@ -222,6 +223,18 @@ class ThresholdVerifier:
         )
 
 
+@dataclass(frozen=True)
+class TouchCalibrateParams:
+    """Parameters for CARTOGRAPHER_TOUCH_CALIBRATE."""
+
+    max_verify_range: float = param("Maximum verification range")
+    model: str = param("Model name", default=DEFAULT_TOUCH_MODEL_NAME)
+    speed: int = param("Probing speed", default=2, min=1, max=5)
+    threshold_start: int = param("Starting threshold", default=500, min=100, key="START")
+    threshold_max: int = param("Maximum threshold", default=5000, min=100, key="MAX")
+    verification_samples: int = param("Verification sample count", default=10, min=3, max=20)
+
+
 @final
 class TouchCalibrateMacro(Macro):
     description = "Run the touch calibration"
@@ -242,26 +255,23 @@ class TouchCalibrateMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        name = params.get("MODEL", DEFAULT_TOUCH_MODEL_NAME).lower()
-        speed = params.get_int("SPEED", default=2, minval=1, maxval=5)
-        threshold_start = params.get_int("START", default=500, minval=100)
-        threshold_max = params.get_int(
-            "MAX",
-            default=5000,
-            minval=threshold_start,
+        sample_range = self._config.touch.sample_range
+        p = parse(
+            TouchCalibrateParams,
+            params,
+            max_verify_range=self._config.touch.sample_range * 2,
         )
-        max_verify_range = params.get_float(
-            "MAX_VERIFY_RANGE",
-            default=self._config.touch.sample_range * 2,
-            minval=self._config.touch.sample_range,
-            maxval=self._config.touch.sample_range * 4,
-        )
-        verification_samples = params.get_int(
-            "VERIFICATION_SAMPLES",
-            default=10,
-            minval=3,
-            maxval=20,
-        )
+        name = p.model.lower()
+
+        if p.threshold_max < p.threshold_start:
+            msg = f"MAX ({p.threshold_max}) must be >= START ({p.threshold_start})"
+            raise RuntimeError(msg)
+        if p.max_verify_range < sample_range:
+            msg = f"MAX_VERIFY_RANGE ({p.max_verify_range}) must be >= sample_range ({sample_range})"
+            raise RuntimeError(msg)
+        if p.max_verify_range > sample_range * 4:
+            msg = f"MAX_VERIFY_RANGE ({p.max_verify_range}) must be <= sample_range * 4 ({sample_range * 4})"
+            raise RuntimeError(msg)
 
         if not self._toolhead.is_homed("x") or not self._toolhead.is_homed("y"):
             msg = "Must home x and y before calibration"
@@ -270,28 +280,27 @@ class TouchCalibrateMacro(Macro):
         self._move_to_calibration_position()
 
         required_samples = self._config.touch.samples
-        sample_range = self._config.touch.sample_range
 
         logger.info(
             "Starting touch calibration (speed=%d, range=%d-%d)",
-            speed,
-            threshold_start,
-            threshold_max,
+            p.speed,
+            p.threshold_start,
+            p.threshold_max,
         )
         logger.info(
             "Screening: %d samples within %smm range. Verification: %d samples within %smm range",
             required_samples,
             format_distance(sample_range),
-            verification_samples,
-            format_distance(max_verify_range),
+            p.verification_samples,
+            format_distance(p.max_verify_range),
         )
 
         calibration_mode = CalibrationTouchMode(
             self._mcu,
             self._toolhead,
             TouchModeConfiguration.from_config(self._config),
-            threshold=threshold_start,
-            speed=speed,
+            threshold=p.threshold_start,
+            speed=p.speed,
         )
 
         screener = ThresholdScreener(calibration_mode, required_samples)
@@ -301,18 +310,18 @@ class TouchCalibrateMacro(Macro):
             threshold = self._find_threshold(
                 screener,
                 verifier,
-                threshold_start,
-                threshold_max,
+                p.threshold_start,
+                p.threshold_max,
                 sample_range,
-                max_verify_range,
-                verification_samples,
+                p.max_verify_range,
+                p.verification_samples,
             )
 
         if threshold is None:
-            self._log_calibration_failure(threshold_start, threshold_max)
+            self._log_calibration_failure(p.threshold_start, p.threshold_max)
             return
 
-        self._save_calibration_result(name, threshold, speed)
+        self._save_calibration_result(name, threshold, p.speed)
 
     def _move_to_calibration_position(self) -> None:
         """Move to the zero reference position for calibration."""

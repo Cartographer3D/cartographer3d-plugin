@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from dataclasses import dataclass
 from math import isfinite
 from typing import TYPE_CHECKING, final
 
@@ -9,6 +10,7 @@ import numpy as np
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams, Mcu
+from cartographer.macros.fields import param, parse
 
 if TYPE_CHECKING:
     from cartographer.interfaces.printer import Toolhead
@@ -22,6 +24,14 @@ EARLY_CHECK_SAMPLE_COUNT = 3
 PROGRESS_REPORT_INTERVAL = 15.0
 
 
+@dataclass(frozen=True)
+class ScanAccuracyParams:
+    """Parameters for CARTOGRAPHER_SCAN_ACCURACY."""
+
+    readings: int = param("Readings per sample", default=20, min=1)
+    samples: int = param("Number of samples to collect", default=100, min=10)
+
+
 @final
 class ScanAccuracyMacro(Macro):
     description = "Collect samples from the probe and calculate statistics on the results."
@@ -33,9 +43,9 @@ class ScanAccuracyMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        readings = params.get_int("READINGS", 20, minval=1)
-        sample_count = params.get_int("SAMPLES", 100, minval=10)
-        early_check_count = min(EARLY_CHECK_SAMPLE_COUNT, sample_count)
+        p = parse(ScanAccuracyParams, params)
+        early_check_count = min(EARLY_CHECK_SAMPLE_COUNT, p.samples)
+        position = self._toolhead.get_position()
         position = self._toolhead.get_position()
 
         logger.info(
@@ -43,14 +53,14 @@ class ScanAccuracyMacro(Macro):
             position.x,
             position.y,
             position.z,
-            readings,
-            sample_count,
+            p.readings,
+            p.samples,
         )
 
         last_report_time = time.time() - (PROGRESS_REPORT_INTERVAL * 0.5)
         measurements: list[float] = []
-        while len(measurements) < sample_count:
-            dist = self._scan.measure_distance(min_sample_count=readings)
+        while len(measurements) < p.samples:
+            dist = self._scan.measure_distance(min_sample_count=p.readings)
             measurements.append(dist)
 
             # Early abort if first N samples are all infinite
@@ -68,7 +78,7 @@ class ScanAccuracyMacro(Macro):
                 logger.info(
                     "Progress: %d/%d samples collected",
                     len(measurements),
-                    sample_count,
+                    p.samples,
                 )
                 last_report_time = current_time
 

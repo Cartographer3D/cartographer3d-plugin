@@ -97,6 +97,7 @@ class MacroParams(Protocol):
     def get_float(
         self, name: str, default: None, *, above: float = ..., minval: float = ..., maxval: float = ...
     ) -> float | None: ...
+    @overload
     def get_int(
         self,
         name: str,
@@ -105,6 +106,16 @@ class MacroParams(Protocol):
         minval: int = ...,
         maxval: int = ...,
     ) -> int: ...
+    @overload
+    def get_int(
+        self,
+        name: str,
+        default: None,
+        *,
+        minval: int = ...,
+        maxval: int = ...,
+    ) -> int | None: ...
+    def get_command_parameters(self) -> dict[str, str]: ...
 
 
 @runtime_checkable

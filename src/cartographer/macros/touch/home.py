@@ -2,12 +2,14 @@ from __future__ import annotations
 
 import logging
 import math
+from dataclasses import dataclass
 from random import random
 from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams
+from cartographer.macros.fields import param, parse
 from cartographer.macros.utils import force_home_z
 
 if TYPE_CHECKING:
@@ -18,6 +20,13 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 Z_HOP = 2
+
+
+@dataclass(frozen=True)
+class TouchHomeParams:
+    """Parameters for CARTOGRAPHER_TOUCH_HOME."""
+
+    random_radius: float = param("Random homing radius", min=0, key="EXPERIMENTAL_RANDOM_RADIUS")
 
 
 @final
@@ -43,7 +52,7 @@ class TouchHomeMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        random_radius = params.get_float("EXPERIMENTAL_RANDOM_RADIUS", default=self._random_radius, minval=0)
+        p = parse(TouchHomeParams, params, random_radius=self._random_radius)
         if not self._toolhead.is_homed("x") or not self._toolhead.is_homed("y"):
             msg = "Must home x and y before touch homing"
             raise RuntimeError(msg)
@@ -57,7 +66,7 @@ class TouchHomeMacro(Macro):
                 z=pos.z + Z_HOP,
                 speed=self._lift_speed,
             )
-            home_x, home_y = self._get_homing_position(random_radius)
+            home_x, home_y = self._get_homing_position(p.random_radius)
             self._toolhead.move(
                 x=home_x,
                 y=home_y,

@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from enum import Enum
 from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams, Mcu
-from cartographer.macros.utils import get_enum_choice
+from cartographer.macros.fields import param, parse
 
 if TYPE_CHECKING:
     from cartographer.probe.scan_mode import ScanMode
@@ -23,6 +24,13 @@ class QueryField(Enum):
     ALL = "all"
 
 
+@dataclass(frozen=True)
+class QueryParams:
+    """Parameters for CARTOGRAPHER_QUERY."""
+
+    field: QueryField = param("Field to query", default=QueryField.ALL)
+
+
 @final
 class QueryMacro(Macro):
     description: str = "Query current cartographer state"
@@ -34,13 +42,13 @@ class QueryMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        field = get_enum_choice(params, "FIELD", QueryField, default=QueryField.ALL)
+        p = parse(QueryParams, params)
         time = self._mcu.get_current_time()
-        if field == QueryField.MCU or field == QueryField.ALL:
+        if p.field == QueryField.MCU or p.field == QueryField.ALL:
             logger.info(_format_status(self._mcu.get_status(time), "Cartographer Mcu Status"))
-        if field == QueryField.SCAN or field == QueryField.ALL:
+        if p.field == QueryField.SCAN or p.field == QueryField.ALL:
             logger.info(_format_status(self._scan.get_status(time), "Cartographer Scan Mode Status"))
-        if field == QueryField.TOUCH or field == QueryField.ALL:
+        if p.field == QueryField.TOUCH or p.field == QueryField.ALL:
             logger.info(_format_status(self._touch.get_status(time), "Cartographer Touch Mode Status"))
 
 

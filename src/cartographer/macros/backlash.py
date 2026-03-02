@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, final
 
 import numpy as np
 from typing_extensions import override
 
 from cartographer.interfaces.printer import Macro, MacroParams, Toolhead
+from cartographer.macros.fields import param, parse
 from cartographer.toolhead import BacklashCompensatingToolhead
 
 if TYPE_CHECKING:
@@ -16,6 +18,15 @@ if TYPE_CHECKING:
     from cartographer.probe.scan_mode import ScanMode
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class EstimateBacklashParams:
+    """Parameters for CARTOGRAPHER_ESTIMATE_BACKLASH."""
+
+    calibrate: bool = param("Run calibration and save result")
+    iterations: int = param("Number of measurement iterations", default=10, min=1)
+    delta: float = param("Movement delta in mm", default=0.2, min=0.2, max=1)
 
 
 @final
@@ -29,14 +40,12 @@ class EstimateBacklashMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        calibrate = params.get("CALIBRATE", None) is not None
-        iterations = params.get_int("ITERATIONS", default=10, minval=1)
-        delta = params.get_float("DELTA", default=0.2, minval=0.2, maxval=1)
+        p = parse(EstimateBacklashParams, params)
         speed = 5
         height = 2
 
         self._toolhead.move(z=height, speed=speed)
-        if calibrate:
+        if p.calibrate:
             x, y = self._config.bed_mesh.zero_reference_position
             self._toolhead.move(x=x, y=y, speed=self._config.general.travel_speed)
         self._toolhead.wait_moves()
@@ -44,11 +53,11 @@ class EstimateBacklashMacro(Macro):
         samples: dict[Literal["up", "down"], list[float]] = {"up": [], "down": []}
 
         with self._scan.start_session():
-            for _ in range(iterations):
+            for _ in range(p.iterations):
                 for direction in samples:
                     # When moving up, approach from below
                     dir = -1 if direction == "up" else 1
-                    self._toolhead.move(z=height + delta * dir, speed=speed)
+                    self._toolhead.move(z=height + p.delta * dir, speed=speed)
                     self._toolhead.move(z=height, speed=speed)
                     self._toolhead.wait_moves()
                     dist = self._scan.measure_distance()
@@ -71,7 +80,7 @@ class EstimateBacklashMacro(Macro):
             "Std dev (down):           %.5f mm\n"
             "Estimated raw backlash:   %.5f mm\n"
             "Welch's t-test: t=%.5f, df=%.2f",
-            iterations,
+            p.iterations,
             mean_up,
             mean_down,
             std_up,
@@ -85,13 +94,13 @@ class EstimateBacklashMacro(Macro):
             backlash = 0.0
             logger.info(
                 "Backlash test over %d samples found no significant difference (|t|=%.2f).",
-                iterations,
+                p.iterations,
                 abs(t_stat),
             )
         else:
             logger.info(
                 "Backlash test over %d samples detected a consistent %.3f mm difference.",
-                iterations,
+                p.iterations,
                 backlash,
             )
 
@@ -104,7 +113,7 @@ class EstimateBacklashMacro(Macro):
             )
             return
 
-        if calibrate:
+        if p.calibrate:
             self._config.save_z_backlash(backlash)
             if backlash == 0.0:
                 logger.info(

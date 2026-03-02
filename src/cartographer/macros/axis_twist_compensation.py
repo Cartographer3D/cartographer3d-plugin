@@ -9,6 +9,7 @@ import numpy as np
 from typing_extensions import override
 
 from cartographer.interfaces.printer import AxisTwistCompensation, Macro, MacroParams, Toolhead
+from cartographer.macros.fields import param, parse
 
 if TYPE_CHECKING:
     from cartographer.interfaces.configuration import Configuration
@@ -73,16 +74,12 @@ def _resolve_options(options: CalibrationOptions, fallback: ResolvedCalibrationO
     )
 
 
-def _apply_overrides(params: MacroParams, options: ResolvedCalibrationOptions) -> ResolvedCalibrationOptions:
+def _apply_overrides(params: AxisTwistParams, options: ResolvedCalibrationOptions) -> ResolvedCalibrationOptions:
     """Apply macro parameter overrides to resolved options."""
-    start = params.get_float("START", default=None)
-    end = params.get_float("END", default=None)
-    line = params.get_float("LINE", default=None)
-
     return ResolvedCalibrationOptions(
-        start=start if start is not None else options.start,
-        end=end if end is not None else options.end,
-        line=line if line is not None else options.line,
+        start=params.start if params.start is not None else options.start,
+        end=params.end if params.end is not None else options.end,
+        line=params.line if params.line is not None else options.line,
     )
 
 
@@ -113,6 +110,18 @@ def _validate_point(boundaries: TouchBoundaries, *, x: float, y: float, label: s
     raise RuntimeError(msg)
 
 
+@dataclass(frozen=True)
+class AxisTwistParams:
+    """Parameters for CARTOGRAPHER_AXIS_TWIST_COMPENSATION."""
+
+    use_touch_boundaries: bool = param("Use touch boundaries for calibration range")
+    axis: str = param("Axis to compensate (x or y)", default="x")
+    sample_count: int = param("Number of sample points", default=5)
+    start: float | None = param("Override start position", default=None)
+    end: float | None = param("Override end position", default=None)
+    line: float | None = param("Override line position", default=None)
+
+
 @final
 class AxisTwistCompensationMacro(Macro):
     description = "Scan and touch to calculate axis twist compensation values."
@@ -131,28 +140,27 @@ class AxisTwistCompensationMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        axis = params.get("AXIS", default="x").lower()
+        p = parse(AxisTwistParams, params)
+        axis = p.axis.lower()
         if axis not in ("x", "y"):
             msg = f"Invalid axis '{axis}'"
             raise RuntimeError(msg)
-        sample_count = params.get_int("SAMPLE_COUNT", default=5)
-        use_touch_boundaries = params.get_int("USE_TOUCH_BOUNDARIES", default=0) != 0
 
         boundaries = self.probe.touch.boundaries
         boundary_options = _options_from_boundaries(boundaries, axis)
 
-        if use_touch_boundaries:
+        if p.use_touch_boundaries:
             base_options = boundary_options
         else:
             adapter_options = self.adapter.get_calibration_options(axis)
             base_options = _resolve_options(adapter_options, boundary_options)
 
-        options = _apply_overrides(params, base_options)
+        options = _apply_overrides(p, base_options)
         _validate_options(options, boundaries, axis)
 
         self.adapter.clear_compensations(axis)
         try:
-            self._calibrate(axis, sample_count, options)
+            self._calibrate(axis, p.sample_count, options)
         except RuntimeError:
             logger.info(
                 "Error during axis twist compensation calibration, "

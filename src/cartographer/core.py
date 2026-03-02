@@ -168,7 +168,7 @@ class PrinterCartographer:
                     self._register_macro("PROBE", self.probe_macro, use_prefix=False),
                     self._register_macro(
                         "PROBE_ACCURACY",
-                        ProbeAccuracyMacro(probe, toolhead),
+                        ProbeAccuracyMacro(probe, toolhead, lift_speed=self.config.general.lift_speed),
                         use_prefix=False,
                     ),
                     self._register_macro(
