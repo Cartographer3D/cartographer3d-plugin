@@ -131,6 +131,10 @@ def _get_param_meta(f: dataclasses.Field[Any]) -> _ParamMeta | None:
 # ---------------------------------------------------------------------------
 
 
+_TRUTHY = {"1", "yes", "true"}
+_FALSY = {"0", "no", "false"}
+
+
 class _MacroBackend:
     """Wraps MacroParams to satisfy the ParseBackend protocol."""
 
@@ -178,10 +182,24 @@ class _MacroBackend:
         return self._params.get(name, **kwargs)
 
     def get_bool(self, name: str, *, default: Any = MISSING) -> Any:
-        # Macro bools are presence-based flags: param present → True, param absent → False
-        # default is unused but required by ParseBackend protocol
-        _ = default
-        return self._params.get(name, default=None) is not None
+        if default is MISSING:
+            raw = self._params.get(name, default=None)
+            if raw is None:
+                msg = f"Error on '{name}': must provide a value (1/0, yes/no, true/false)"
+                raise RuntimeError(msg)
+        else:
+            raw = self._params.get(name, default=None)
+            if raw is None:
+                return default
+
+        lower = str(raw).lower()
+        if lower in _TRUTHY:
+            return True
+        if lower in _FALSY:
+            return False
+
+        msg = f"Invalid boolean value '{raw}' for parameter '{name}'. Use 1/0, yes/no, or true/false."
+        raise RuntimeError(msg)
 
     def get_enum(self, name: str, enum_type: type[Enum], *, default: Any = MISSING) -> Any:
         # Case-insensitive enum matching

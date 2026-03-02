@@ -67,7 +67,7 @@ MACROS: list[tuple[str, type[Macro], type]] = [
 def _format_default(value: object) -> str:
     """Format a default value for display in docs."""
     if isinstance(value, bool):
-        return "True" if value else "False"
+        return "Yes" if value else "No"
     if isinstance(value, Enum):
         return f"'{value.value}'"
     if isinstance(value, str):

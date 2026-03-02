@@ -114,7 +114,7 @@ def _validate_point(boundaries: TouchBoundaries, *, x: float, y: float, label: s
 class AxisTwistParams:
     """Parameters for CARTOGRAPHER_AXIS_TWIST_COMPENSATION."""
 
-    use_touch_boundaries: bool = param("Use touch boundaries for calibration range")
+    use_touch_boundaries: bool = param("Use touch boundaries for calibration range", default=False)
     axis: str = param("Axis to compensate (x or y)", default="x")
     sample_count: int = param("Number of sample points", default=5)
     start: float | None = param("Override start position", default=None)
