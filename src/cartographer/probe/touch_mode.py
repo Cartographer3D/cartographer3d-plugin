@@ -20,7 +20,7 @@ from cartographer.interfaces.printer import (
 from cartographer.probe.touch_model import TouchModelSelectorMixin
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from cartographer.interfaces.configuration import (
         Configuration,
@@ -38,6 +38,7 @@ MAX_TOUCH_TEMPERATURE_EPSILON = 2
 class TouchModeConfiguration:
     samples: int
     max_samples: int
+    max_window: int
 
     x_offset: float
     y_offset: float
@@ -55,6 +56,7 @@ class TouchModeConfiguration:
         return TouchModeConfiguration(
             samples=config.touch.samples,
             max_samples=config.touch.max_samples,
+            max_window=config.touch.samples + config.touch.max_noisy_samples,
             models=config.touch.models,
             x_offset=config.general.x_offset,
             y_offset=config.general.y_offset,
@@ -69,6 +71,70 @@ class TouchModeConfiguration:
 
 class TouchError(RuntimeError):
     pass
+
+
+def run_probe_sequence(
+    probe_fn: Callable[[], float],
+    *,
+    samples: int,
+    max_samples: int,
+    max_window: int,
+    sample_range: float,
+) -> float:
+    """
+    Collect touch samples and find a consistent subset.
+
+    Uses a sliding window of the most recent max_window samples
+    to prevent cherry-picking good samples from across a noisy
+    sequence. Exits early as soon as a valid subset is found.
+    """
+    collected: list[float] = []
+
+    logger.debug(
+        "Starting touch sequence for %d samples within %d touches (window=%d)...",
+        samples,
+        max_samples,
+        max_window,
+    )
+
+    for i in range(max_samples):
+        trigger_pos = probe_fn()
+        collected.append(trigger_pos)
+        logger.debug("Touch %d: %.4f", i + 1, trigger_pos)
+
+        if len(collected) < samples:
+            continue
+
+        window = collected[-max_window:]
+        best = find_best_subset(window, samples)
+        if best is None:
+            continue
+
+        best_range = compute_range(best)
+        if best_range > sample_range:
+            continue
+
+        median = float(np.median(best))
+
+        logger.debug(
+            "Acceptable samples found: (%s)\nrange %.4f (limit %.4f), min %.4f, max %.4f,\nmean %.4f, median %.4f",
+            ", ".join(f"{s:.4f}" for s in best),
+            best_range,
+            sample_range,
+            min(best),
+            max(best),
+            float(np.mean(best)),
+            median,
+        )
+
+        return median
+
+    msg = (
+        f"Unable to find {samples:d} samples within "
+        f"{sample_range:.3f}mm in a window of {max_window:d} "
+        f"after {max_samples:d} touches"
+    )
+    raise TouchError(msg)
 
 
 @dataclass(frozen=True)
@@ -179,53 +245,13 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         return self.last_z_result
 
     def _run_probe(self) -> float:
-        """
-        Collect touch samples and find a consistent subset.
-
-        Collects samples one at a time, checking after each if there's
-        a subset of the required size where all samples are within
-        the acceptable range.
-        """
-        collected: list[float] = []
-        required_samples = self._config.samples
-        max_samples = self._config.max_samples
-
-        logger.debug(
-            "Starting touch sequence for %d samples within %d touches...",
-            required_samples,
-            max_samples,
+        return run_probe_sequence(
+            self._perform_single_probe,
+            samples=self._config.samples,
+            max_samples=self._config.max_samples,
+            max_window=self._config.max_window,
+            sample_range=self._config.sample_range,
         )
-
-        for i in range(max_samples):
-            trigger_pos = self._perform_single_probe()
-            collected.append(trigger_pos)
-            logger.debug("Touch %d: %.4f", i + 1, trigger_pos)
-
-            if len(collected) < required_samples:
-                continue
-
-            best = find_best_subset(collected, required_samples)
-            if best is None:
-                continue
-
-            sample_range = compute_range(best)
-            if sample_range > self._config.sample_range:
-                continue
-
-            self._log_sample_stats("Acceptable samples found", best)
-            return float(np.median(best))
-
-        # Failed - log what we had
-        self._log_sample_stats("No acceptable samples found", collected)
-        best = find_best_subset(collected, required_samples)
-        if best:
-            self._log_sample_stats("Best subset was", best)
-
-        msg = (
-            f"Unable to find {required_samples:d} samples within "
-            f"{self._config.sample_range:.3f}mm after {max_samples:d} touches"
-        )
-        raise TouchError(msg)
 
     def _perform_single_probe(self) -> float:
         model = self.get_model()
@@ -294,30 +320,3 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
     @override
     def get_endstop_position(self) -> float:
         return self.offset.z
-
-    def _log_sample_stats(
-        self,
-        message: str,
-        samples: Sequence[float],
-    ) -> None:
-        if not samples:
-            logger.debug("%s: (no samples)", message)
-            return
-
-        max_v = max(samples)
-        min_v = min(samples)
-        range_v = max_v - min_v
-        mean = float(np.mean(samples))
-        median = float(np.median(samples))
-
-        logger.debug(
-            "%s: (%s)\nrange %.4f (limit %.4f), min %.4f, max %.4f,\nmean %.4f, median %.4f",
-            message,
-            ", ".join(f"{s:.4f}" for s in samples),
-            range_v,
-            self._config.sample_range,
-            min_v,
-            max_v,
-            mean,
-            median,
-        )

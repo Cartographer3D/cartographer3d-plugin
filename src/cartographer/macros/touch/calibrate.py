@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import logging
-import random
 from dataclasses import dataclass, replace
-from math import ceil
+from math import ceil, inf, isfinite
 from typing import TYPE_CHECKING, final
 
-from typing_extensions import override
+import numpy as np
+from typing_extensions import Protocol, override, runtime_checkable
 
 from cartographer.interfaces.configuration import (
     Configuration,
@@ -16,10 +16,12 @@ from cartographer.interfaces.errors import ProbeTriggerError
 from cartographer.interfaces.printer import Macro, MacroParams, Mcu
 from cartographer.macros.utils import force_home_z
 from cartographer.probe.touch_mode import (
+    TouchError,
     TouchMode,
     TouchModeConfiguration,
     compute_range,
     find_best_subset,
+    run_probe_sequence,
 )
 
 if TYPE_CHECKING:
@@ -37,9 +39,6 @@ MIN_STEP = 50
 MAX_STEP = 1000
 DEFAULT_TOUCH_MODEL_NAME = "default"
 DEFAULT_Z_OFFSET = -0.05
-
-DEFAULT_SUCCESS_RATE = 0.95
-SIMULATION_COUNT = 1000
 
 
 @dataclass(frozen=True)
@@ -61,80 +60,166 @@ class VerificationResult:
     """Result from extended verification of a threshold."""
 
     threshold: int
-    samples: tuple[float, ...]
-    best_subset: Sequence[float] | None
-    best_range: float
-    success_rate: float
+    probe_medians: list[float]
+    median_range: float
 
-    def passed(self, required_rate: float) -> bool:
-        """Check if the threshold meets the required success rate."""
-        return self.success_rate >= required_rate
+    def passed(self, max_verify_range: float) -> bool:
+        """Check if threshold meets consistency requirements."""
+        return self.median_range <= max_verify_range
 
 
-def would_probing_pass(
-    samples: Sequence[float],
-    required_samples: int,
-    sample_range: float,
-) -> bool:
+def format_distance(distance_mm: float) -> str:
     """
-    Check if a set of samples would pass at runtime.
+    Format distance with appropriate precision.
 
-    Simulates _run_probe logic: pass if any subset of required_samples
-    has range <= sample_range.
+    Uses ceiling rounding to ensure non-zero values never display
+    as 0.000.
     """
-    if len(samples) < required_samples:
-        return False
-    sorted_samples = sorted(samples)
-    for i in range(len(sorted_samples) - required_samples + 1):
-        window = sorted_samples[i : i + required_samples]
-        if window[-1] - window[0] <= sample_range:
-            return True
-    return False
+    if not isfinite(distance_mm):
+        return "inf" if distance_mm == inf else str(distance_mm)
+    rounded = ceil(distance_mm * 1000) / 1000
+    return f"{rounded:.3f}"
 
 
-def estimate_success_rate(
-    samples: Sequence[float],
-    max_probed_samples: int,
-    required_samples: int,
-    sample_range: float,
-    simulation_count: int = SIMULATION_COUNT,
-) -> float:
+def calculate_step(threshold: int, range_value: float | None, sample_range: float) -> int:
     """
-    Estimate success rate by Monte Carlo simulation.
+    Calculate step size based on how far from target we are.
 
-    Simulates runtime behavior by randomly selecting max_probed_samples
-    samples from the pool, then checking if that set would pass
-    (i.e., contains at least one valid required_samples subset).
-
-    Parameters
-    ----------
-    samples
-        The pool of collected samples to draw from.
-    max_probed_samples
-        Number of samples collected during a probe sequence.
-    required_samples
-        Number of samples needed to form a valid subset.
-    sample_range
-        Maximum range allowed for a valid subset.
-    simulation_count
-        Number of Monte Carlo simulations to run.
-
-    Returns
-    -------
-        Estimated probability that a runtime probe sequence will succeed.
+    Larger steps when range is very bad, smaller steps when close.
     """
-    if len(samples) < max_probed_samples:
-        return 0.0
+    if range_value is None:
+        return min(MAX_STEP, max(MIN_STEP, int(threshold * 0.20)))
+    if range_value > sample_range * 10:
+        return min(MAX_STEP, max(MIN_STEP, int(threshold * 0.20)))
+    return min(MAX_STEP, max(MIN_STEP, int(threshold * 0.10)))
 
-    samples_list = list(samples)
-    passing = 0
 
-    for _ in range(simulation_count):
-        runtime_set = random.sample(samples_list, max_probed_samples)
-        if would_probing_pass(runtime_set, required_samples, sample_range):
-            passing += 1
+@runtime_checkable
+class CalibrationProbe(Protocol):
+    """Protocol for probe operations needed during calibration."""
 
-    return passing / simulation_count
+    def collect_samples(self, threshold: int, sample_count: int) -> tuple[float, ...]:
+        """Collect raw samples at the given threshold."""
+        ...
+
+    def set_threshold(self, threshold: int) -> None:
+        """Update the active threshold."""
+        ...
+
+    def perform_touch_probe(self) -> float:
+        """Perform one complete touch probe sequence."""
+        ...
+
+
+@final
+class ThresholdScreener:
+    """Quick-screens a threshold by collecting samples and finding a valid subset."""
+
+    def __init__(self, probe: CalibrationProbe, required_samples: int) -> None:
+        self._probe = probe
+        self._required_samples = required_samples
+
+    def screen(self, threshold: int, sample_count: int) -> ScreeningResult | None:
+        """
+        Quick screen: can we find any valid subset?
+
+        Returns None if probe triggered due to noise.
+        """
+        try:
+            samples = self._probe.collect_samples(threshold, sample_count)
+        except ProbeTriggerError:
+            logger.warning(
+                "Threshold %d triggered prior to movement.",
+                threshold,
+            )
+            return None
+
+        best = find_best_subset(samples, self._required_samples)
+        best_range = compute_range(best) if best else float("inf")
+
+        return ScreeningResult(
+            threshold=threshold,
+            samples=samples,
+            best_subset=best,
+            best_range=best_range,
+        )
+
+
+@final
+class ThresholdVerifier:
+    """Verifies a threshold by running multiple full probe sequences."""
+
+    def __init__(self, probe: CalibrationProbe) -> None:
+        self._probe = probe
+
+    def verify(
+        self,
+        threshold: int,
+        max_verify_range: float,
+        sample_count: int,
+    ) -> VerificationResult | None:
+        """
+        Verify threshold by running actual touch probe sequences.
+
+        Performs multiple complete touch probe attempts and checks that
+        the resulting medians are consistent. Exits early if the median
+        range already exceeds the limit.
+
+        Returns None if probe triggered due to noise.
+        """
+        logger.info(
+            "Threshold %d looks promising, verifying with %d touch samples...",
+            threshold,
+            sample_count,
+        )
+
+        self._probe.set_threshold(threshold)
+        medians: list[float] = []
+
+        for attempt in range(sample_count):
+            try:
+                median = self._probe.perform_touch_probe()
+                medians.append(median)
+                logger.debug(
+                    "Verification sample %d/%d: median=%.4fmm",
+                    attempt + 1,
+                    sample_count,
+                    median,
+                )
+            except ProbeTriggerError:
+                logger.warning(
+                    "Threshold %d triggered prior to movement on sample %d.",
+                    threshold,
+                    attempt + 1,
+                )
+                return None
+            except TouchError:
+                logger.warning(
+                    "Threshold %d failed to find consistent samples on sample %d.",
+                    threshold,
+                    attempt + 1,
+                )
+                return None
+
+            # Early exit: no point continuing if already inconsistent
+            if len(medians) >= 2:
+                current_range = float(np.max(medians) - np.min(medians))
+                if current_range > max_verify_range:
+                    logger.debug(
+                        "Early exit: median range %smm > %smm after %d samples",
+                        format_distance(current_range),
+                        format_distance(max_verify_range),
+                        len(medians),
+                    )
+                    break
+
+        median_range = float(np.max(medians) - np.min(medians))
+
+        return VerificationResult(
+            threshold=threshold,
+            probe_medians=medians,
+            median_range=median_range,
+        )
 
 
 @final
@@ -165,11 +250,17 @@ class TouchCalibrateMacro(Macro):
             default=5000,
             minval=threshold_start,
         )
-        required_success_rate = params.get_float(
-            "SUCCESS_RATE",
-            default=DEFAULT_SUCCESS_RATE,
-            minval=0.1,
-            maxval=0.99,
+        max_verify_range = params.get_float(
+            "MAX_VERIFY_RANGE",
+            default=self._config.touch.sample_range * 2,
+            minval=self._config.touch.sample_range,
+            maxval=self._config.touch.sample_range * 4,
+        )
+        verification_samples = params.get_int(
+            "VERIFICATION_SAMPLES",
+            default=10,
+            minval=3,
+            maxval=20,
         )
 
         if not self._toolhead.is_homed("x") or not self._toolhead.is_homed("y"):
@@ -179,7 +270,7 @@ class TouchCalibrateMacro(Macro):
         self._move_to_calibration_position()
 
         required_samples = self._config.touch.samples
-        max_samples = self._config.touch.max_samples
+        sample_range = self._config.touch.sample_range
 
         logger.info(
             "Starting touch calibration (speed=%d, range=%d-%d)",
@@ -188,11 +279,11 @@ class TouchCalibrateMacro(Macro):
             threshold_max,
         )
         logger.info(
-            "Looking for %d samples within %.3fmm range (max %d attempts, %.0f%% success rate required)",
+            "Screening: %d samples within %smm range. Verification: %d samples within %smm range",
             required_samples,
-            self._config.touch.sample_range,
-            max_samples,
-            required_success_rate * 100,
+            format_distance(sample_range),
+            verification_samples,
+            format_distance(max_verify_range),
         )
 
         calibration_mode = CalibrationTouchMode(
@@ -203,12 +294,18 @@ class TouchCalibrateMacro(Macro):
             speed=speed,
         )
 
+        screener = ThresholdScreener(calibration_mode, required_samples)
+        verifier = ThresholdVerifier(calibration_mode)
+
         with force_home_z(self._toolhead):
             threshold = self._find_threshold(
-                calibration_mode,
+                screener,
+                verifier,
                 threshold_start,
                 threshold_max,
-                required_success_rate,
+                sample_range,
+                max_verify_range,
+                verification_samples,
             )
 
         if threshold is None:
@@ -228,165 +325,66 @@ class TouchCalibrateMacro(Macro):
 
     def _find_threshold(
         self,
-        calibration_mode: CalibrationTouchMode,
+        screener: ThresholdScreener,
+        verifier: ThresholdVerifier,
         threshold_start: int,
         threshold_max: int,
-        required_success_rate: float,
+        sample_range: float,
+        max_verify_range: float,
+        verification_samples: int,
     ) -> int | None:
         """
         Find the minimum threshold that produces consistent results.
 
         Strategy:
         1. Screen with few samples - pass if any valid subset found
-        2. If screening passes, verify with many samples
-        3. Require high success rate for verification to pass
+        2. If screening passes, verify with multiple actual touch probes
+        3. Accept if probe results are consistent
         """
         threshold = threshold_start
-        required_samples = self._config.touch.samples
-        screening_samples = ceil(required_samples * 1.5)
+        screening_samples = self._config.touch.samples + self._config.touch.max_noisy_samples
 
         while threshold <= threshold_max:
             # Phase 1: Quick screening
-            screening = self._screen_threshold(
-                calibration_mode,
-                threshold,
-                screening_samples,
-            )
+            screening = screener.screen(threshold, screening_samples)
 
             if screening is None:
-                threshold += self._calculate_step(threshold, None)
+                threshold += calculate_step(threshold, None, sample_range)
                 continue
 
-            self._log_screening_result(screening, self._config.touch.sample_range)
+            self._log_screening_result(screening, sample_range)
 
-            if not screening.passed(self._config.touch.sample_range):
-                threshold += self._calculate_step(threshold, screening.best_range)
+            if not screening.passed(sample_range):
+                threshold += calculate_step(threshold, screening.best_range, sample_range)
                 continue
 
-            # Phase 2: Extended verification
-            verification = self._verify_threshold(
-                calibration_mode,
-                threshold,
-                required_success_rate,
-            )
+            # Phase 2: Actual touch probe verification
+            verification = verifier.verify(threshold, max_verify_range, verification_samples)
 
             if verification is None:
-                threshold += self._calculate_step(threshold, None)
+                threshold += calculate_step(threshold, None, sample_range)
                 continue
 
-            if verification.passed(required_success_rate):
+            self._log_verification_result(verification, max_verify_range)
+
+            if verification.passed(max_verify_range):
                 logger.info(
-                    "Threshold %d verified: %.0f%% success rate",
+                    "Threshold %d verified: %smm median range across %d samples",
                     threshold,
-                    verification.success_rate * 100,
+                    format_distance(verification.median_range),
+                    len(verification.probe_medians),
                 )
                 return threshold
 
+            # Consistency check failed - increase threshold
             logger.debug(
-                "Verification failed (%.0f%% < %.0f%%), stepping up",
-                verification.success_rate * 100,
-                required_success_rate * 100,
+                "Verification failed: median range %smm > %smm, increasing threshold",
+                format_distance(verification.median_range),
+                format_distance(max_verify_range),
             )
-            threshold += MIN_STEP
+            threshold += calculate_step(threshold, verification.median_range, sample_range)
 
         return None
-
-    def _screen_threshold(
-        self,
-        calibration_mode: CalibrationTouchMode,
-        threshold: int,
-        sample_count: int,
-    ) -> ScreeningResult | None:
-        """
-        Quick screen: can we find any valid subset?
-
-        Returns None if probe triggered due to noise.
-        """
-        try:
-            samples = calibration_mode.collect_samples(threshold, sample_count)
-        except ProbeTriggerError:
-            logger.warning(
-                "Threshold %d triggered prior to movement.",
-                threshold,
-            )
-            return None
-
-        required = self._config.touch.samples
-        best = find_best_subset(samples, required)
-        best_range = compute_range(best) if best else float("inf")
-
-        return ScreeningResult(
-            threshold=threshold,
-            samples=samples,
-            best_subset=best,
-            best_range=best_range,
-        )
-
-    def _verify_threshold(
-        self,
-        calibration_mode: CalibrationTouchMode,
-        threshold: int,
-        required_success_rate: float,
-    ) -> VerificationResult | None:
-        """
-        Extended verification with success rate estimation.
-
-        Uses max_samples from config for runtime simulation and
-        collects 2.5x max_samples for statistical confidence.
-
-        Returns None if probe triggered due to noise.
-        """
-        logger.info("Threshold %d looks promising, verifying...", threshold)
-
-        required_samples = self._config.touch.samples
-        max_samples = self._config.touch.max_samples
-        verification_samples = ceil(max_samples * 2.5)
-
-        try:
-            samples = calibration_mode.collect_samples(
-                threshold,
-                verification_samples,
-            )
-        except ProbeTriggerError:
-            logger.warning(
-                "Threshold %d triggered prior to movement.",
-                threshold,
-            )
-            return None
-
-        best = find_best_subset(samples, required_samples)
-        best_range = compute_range(best) if best else float("inf")
-
-        success_rate = self._task_executor.run(
-            estimate_success_rate,
-            samples,
-            max_probed_samples=max_samples,
-            required_samples=required_samples,
-            sample_range=self._config.touch.sample_range,
-        )
-
-        result = VerificationResult(
-            threshold=threshold,
-            samples=samples,
-            best_subset=best,
-            best_range=best_range,
-            success_rate=success_rate,
-        )
-
-        self._log_verification_result(result, required_success_rate)
-        return result
-
-    def _calculate_step(self, threshold: int, range_value: float | None) -> int:
-        """
-        Calculate step size based on how far from target we are.
-
-        Larger steps when range is very bad, smaller steps when close.
-        """
-        if range_value is None:
-            return min(MAX_STEP, max(MIN_STEP, int(threshold * 0.20)))
-        if range_value > self._config.touch.sample_range * 10:
-            return min(MAX_STEP, max(MIN_STEP, int(threshold * 0.20)))
-        return min(MAX_STEP, max(MIN_STEP, int(threshold * 0.10)))
 
     def _log_calibration_failure(
         self,
@@ -426,14 +424,18 @@ class TouchCalibrateMacro(Macro):
             name,
         )
 
-    def _log_screening_result(self, result: ScreeningResult, sample_range: float) -> None:
+    def _log_screening_result(
+        self,
+        result: ScreeningResult,
+        sample_range: float,
+    ) -> None:
         """Log a screening result."""
         status = "✓" if result.passed(sample_range) else "✗"
         logger.info(
-            "Screening %d: %s best=%.4fmm (%d samples)",
+            "Screening %d: %s best=%smm (%d samples)",
             result.threshold,
             status,
-            result.best_range,
+            format_distance(result.best_range),
             len(result.samples),
         )
 
@@ -441,46 +443,44 @@ class TouchCalibrateMacro(Macro):
             samples_str = ", ".join(f"{s:.4f}" for s in result.samples)
             best_str = ", ".join(f"{s:.4f}" for s in result.best_subset) if result.best_subset else "none"
             logger.debug(
-                "Screening %d details:\n  samples: [%s]\n  best subset: [%s]\n  best range: %.4f mm",
+                "Screening %d details:\n  samples: [%s]\n  best subset: [%s]\n  best range: %s mm",
                 result.threshold,
                 samples_str,
                 best_str,
-                result.best_range,
+                format_distance(result.best_range),
             )
 
     def _log_verification_result(
         self,
         result: VerificationResult,
-        required_success_rate: float,
+        max_verify_range: float,
     ) -> None:
-        """Log a verification result."""
-        status = "✓" if result.passed(required_success_rate) else "✗"
+        """Log a verification result with touch-accuracy-style report."""
+        status = "✓" if result.passed(max_verify_range) else "✗"
+        medians = result.probe_medians
+
+        max_value = max(medians)
+        min_value = min(medians)
+        range_value = max_value - min_value
+        avg_value = float(np.mean(medians))
+        median_value = float(np.median(medians))
+        std_dev = float(np.std(medians))
+
         logger.info(
-            "Verification %d: %s best=%.4fmm, success_rate=%.0f%% (%d samples)",
+            "Verification %d: %s (%d samples)\n"
+            "  maximum %.6f, minimum %.6f, range %.6f,\n"
+            "  average %.6f, median %.6f,\n"
+            "  standard deviation %.6f",
             result.threshold,
             status,
-            result.best_range,
-            result.success_rate * 100,
-            len(result.samples),
+            len(medians),
+            max_value,
+            min_value,
+            range_value,
+            avg_value,
+            median_value,
+            std_dev,
         )
-
-        if logger.isEnabledFor(logging.DEBUG):
-            samples_str = ", ".join(f"{s:.4f}" for s in result.samples)
-            best_str = ", ".join(f"{s:.4f}" for s in result.best_subset) if result.best_subset else "none"
-            logger.debug(
-                "Verification %d details:\n"
-                "  samples: [%s]\n"
-                "  best subset: [%s]\n"
-                "  best range: %.4f mm\n"
-                "  success rate: %.1f%%\n"
-                "  required rate: %.1f%%",
-                result.threshold,
-                samples_str,
-                best_str,
-                result.best_range,
-                result.success_rate * 100,
-                required_success_rate * 100,
-            )
 
 
 @final
@@ -526,3 +526,18 @@ class CalibrationTouchMode(TouchMode):
             samples.append(pos)
 
         return tuple(sorted(samples))
+
+    def perform_touch_probe(self) -> float:
+        """
+        Perform one complete touch probe sequence.
+
+        Uses the shared run_probe_sequence to ensure parity with
+        the runtime TouchMode._run_probe() logic.
+        """
+        return run_probe_sequence(
+            self._perform_single_probe,
+            samples=self._config.samples,
+            max_samples=self._config.max_samples,
+            max_window=self._config.max_window,
+            sample_range=self._config.sample_range,
+        )
