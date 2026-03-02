@@ -1,4 +1,4 @@
-name: Update Configuration Docs
+name: Update Docs
 
 on:
   release:
@@ -18,7 +18,9 @@ jobs:
           enable-cache: true
 
       - name: Generate docs
-        run: uv run python -m cartographer.config.docs > configuration-reference.md
+        run: |
+          uv run python -m cartographer.config.docs > configuration-reference.md
+          uv run python -m cartographer.macros.docs > macros-overview.md
 
       - name: Generate GitHub App token
         id: app-token
@@ -39,6 +41,7 @@ jobs:
       - name: Update docs
         run: |
           cp configuration-reference.md docs-repo/cartographer-probe/reference/configuration-reference.md
+          cp macros-overview.md docs-repo/cartographer-probe/reference/macros-overview.md
 
       - name: Commit and push
         working-directory: docs-repo
@@ -46,6 +49,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git add cartographer-probe/reference/configuration-reference.md
+          git add cartographer-probe/reference/macros-overview.md
           git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "docs: update configuration reference for ${{ github.event.release.tag_name }}"
+          git commit -m "docs: update reference docs for ${{ github.event.release.tag_name }}"
           git push
