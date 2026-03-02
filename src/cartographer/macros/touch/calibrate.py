@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, replace
-from math import ceil
+from math import ceil, inf, isfinite
 from typing import TYPE_CHECKING, final
 
 import numpy as np
@@ -75,6 +75,8 @@ def format_distance(distance_mm: float) -> str:
     Uses ceiling rounding to ensure non-zero values never display
     as 0.000.
     """
+    if not isfinite(distance_mm):
+        return "inf" if distance_mm == inf else str(distance_mm)
     rounded = ceil(distance_mm * 1000) / 1000
     return f"{rounded:.3f}"
 
@@ -199,7 +201,6 @@ class ThresholdVerifier:
                 )
                 return None
 
-            # Early exit: no point continuing if already inconsistent
             # Early exit: no point continuing if already inconsistent
             if len(medians) >= 2:
                 current_range = float(np.max(medians) - np.min(medians))

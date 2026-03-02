@@ -98,7 +98,7 @@ def test_probe_spread_samples_rejected_by_window(mocker: MockerFixture, toolhead
 
 def test_probe_succeeds_within_window(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
     # First 3 are noisy, then 5 consistent samples within the window.
-    # samples=5, max_noisy_samples=0: window=5, so the last 5 samples [0.5, 0.5, 0.5, 0.5, 0.5] all agree.
+    # samples=5, max_noisy_samples=2: window=7, so the last 5 samples [0.5, 0.5, 0.5, 0.5, 0.5] all agree.
     toolhead.z_probing_move = mocker.Mock(side_effect=[1.0, 2.0, 3.0, 0.5, 0.5, 0.5, 0.5, 0.5])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 

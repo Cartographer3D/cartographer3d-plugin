@@ -117,6 +117,15 @@ class TestFormatDistance:
     def test_zero(self):
         assert format_distance(0.0) == "0.000"
 
+    def test_infinity(self):
+        assert format_distance(float("inf")) == "inf"
+
+    def test_negative_infinity(self):
+        assert format_distance(float("-inf")) == "-inf"
+
+    def test_nan(self):
+        assert format_distance(float("nan")) == "nan"
+
 
 # --- ThresholdScreener ---
 
