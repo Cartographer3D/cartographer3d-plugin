@@ -7,8 +7,9 @@ from typing import TYPE_CHECKING, final
 import numpy as np
 from typing_extensions import override
 
+from cartographer.interfaces.configuration import GeneralConfig
 from cartographer.interfaces.printer import Macro, MacroParams
-from cartographer.macros.fields import param, parse
+from cartographer.macros.fields import config_ref, param, parse
 
 if TYPE_CHECKING:
     from cartographer.interfaces.printer import Toolhead
@@ -22,7 +23,7 @@ logger = logging.getLogger(__name__)
 class TouchAccuracyParams:
     """Parameters for CARTOGRAPHER_TOUCH_ACCURACY."""
 
-    lift_speed: float = param("Lift speed in mm/s", min=1)
+    lift_speed: float = param("Lift speed in mm/s", default=config_ref(GeneralConfig, "lift_speed"), min=1)
     sample_retract_dist: float = param("Retract distance between samples", default=1.0, min=1.0)
     samples: int = param("Number of probe samples", default=5, min=3)
 

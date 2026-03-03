@@ -1,4 +1,4 @@
-# pyright: reportExplicitAny=false, reportUnknownMemberType=false
+# pyright: reportExplicitAny=false, reportUnknownMemberType=false, reportUnknownVariableType=false
 # Any is unavoidable in this module due to dataclass field metadata and dynamic type resolution.
 from __future__ import annotations
 
@@ -12,6 +12,7 @@ from typing import (
     overload,
 )
 
+from cartographer.config.fields import get_option_name
 from cartographer.lib.fields import MISSING, FieldInfo, FieldMeta, get_all_fields, parse_value
 
 if TYPE_CHECKING:
@@ -22,6 +23,54 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 _PARAM_METADATA_KEY = "_macro_param"
+
+
+@dataclass(frozen=True)
+class ConfigRef:
+    """Sentinel marking a macro param default as derived from a config option.
+
+    At parse time the actual value is supplied via ``**defaults``; this sentinel
+    carries provenance so docs can render ``config 'section.option_name'`` with
+    a link to the relevant configuration reference section.
+    """
+
+    config_class: type
+    field_name: str
+
+    @property
+    def _section_key(self) -> str:
+        """Short config section key, e.g. ``'scan'`` or ``'bed_mesh'``."""
+        key: str = self.config_class.config_section_key  # type: ignore[attr-defined]
+        return key.split()[-1]
+
+    @property
+    def option_name(self) -> str:
+        """Qualified config option name, e.g. ``'scan.mesh_height'``."""
+        return f"{self._section_key}.{get_option_name(self.config_class, self.field_name)}"
+
+    @property
+    def section_header(self) -> str:
+        """Human-readable config section name, e.g. ``'Cartographer'`` or ``'Bed Mesh'``."""
+        return self._section_key.replace("_", " ").title()
+
+    @property
+    def doc_anchor(self) -> str:
+        """Markdown anchor for the config section, e.g. ``'cartographer'`` or ``'bed-mesh'``."""
+        return self.section_header.lower().replace(" ", "-")
+
+
+def config_ref(config_class: type, field_name: str) -> ConfigRef:
+    """Create a config-referenced default for a macro param.
+
+    The returned sentinel carries ``(config_class, field_name)`` so that:
+    - Docs can render ``config 'section.option_name'`` with a link to the config reference.
+    - The actual runtime default is still provided via ``parse(**defaults)``.
+
+    Args:
+        config_class: The config dataclass (e.g. ``GeneralConfig``).
+        field_name: The field name on the config dataclass (e.g. ``"lift_speed"``).
+    """
+    return ConfigRef(config_class=config_class, field_name=field_name)
 
 
 @dataclass(frozen=True)
@@ -45,6 +94,17 @@ class _ParamMeta:
             max=self.max,
             key=self.key,
         )
+
+
+@overload
+def param(
+    description: str | None = ...,
+    *,
+    default: ConfigRef,
+    key: str | None = ...,
+    min: float | None = ...,
+    max: float | None = ...,
+) -> Any: ...
 
 
 @overload
@@ -95,7 +155,8 @@ def param(
 
     Args:
         description: Human-readable description. Omit for internal fields.
-        default: Default value. Omit for required fields. Type-checked against the field type.
+        default: Default value. Omit for required fields. May be a ``config_ref()`` sentinel
+            to indicate the default comes from a config option at runtime.
         key: Macro parameter name override. Defaults to field name uppercased.
         min: Minimum value constraint (for numeric types, passed as minval).
         max: Maximum value constraint (for numeric types, passed as maxval).
@@ -115,6 +176,9 @@ def param(
         "metadata": {_PARAM_METADATA_KEY: meta},
     }
 
+    # ConfigRef sentinels are stored as the dataclass field default so that field
+    # ordering is not constrained.  At runtime, parse() supplies the real value
+    # via **defaults; the sentinel is never used as an actual value.
     if default is not MISSING:
         field_kwargs["default"] = default
 
@@ -277,6 +341,10 @@ def parse(cls: type[T], params: MacroParams, **defaults: Any) -> T:
         effective_meta = meta.field_meta
         if f.name in defaults:
             effective_meta = dataclasses.replace(effective_meta, default=defaults[f.name])
+        elif isinstance(meta.default, ConfigRef):
+            # ConfigRef is a docs sentinel — at runtime the caller MUST supply the
+            # actual config value via **defaults.  Treat as required if missing.
+            effective_meta = dataclasses.replace(effective_meta, default=MISSING)
 
         type_hint = hints[f.name]
         kwargs[f.name] = parse_value(backend, param_key, type_hint, effective_meta, cls.__module__)

@@ -8,8 +8,9 @@ from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
+from cartographer.interfaces.configuration import TouchConfig
 from cartographer.interfaces.printer import Macro, MacroParams
-from cartographer.macros.fields import param, parse
+from cartographer.macros.fields import config_ref, param, parse
 from cartographer.macros.utils import force_home_z
 
 if TYPE_CHECKING:
@@ -26,7 +27,12 @@ Z_HOP = 2
 class TouchHomeParams:
     """Parameters for CARTOGRAPHER_TOUCH_HOME."""
 
-    random_radius: float = param("Random homing radius", min=0, key="EXPERIMENTAL_RANDOM_RADIUS")
+    random_radius: float = param(
+        "Random homing radius",
+        default=config_ref(TouchConfig, "home_random_radius"),
+        min=0,
+        key="EXPERIMENTAL_RANDOM_RADIUS",
+    )
 
 
 @final
