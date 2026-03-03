@@ -224,42 +224,6 @@ class _MacroBackend:
 
 
 # ---------------------------------------------------------------------------
-# Unknown-param validation
-# ---------------------------------------------------------------------------
-
-
-def _validate_unknown_params(cls: type, params: MacroParams) -> None:
-    """Raise RuntimeError if the user passed any unknown macro parameters."""
-    known: set[str] = set()
-    for f in fields(cls):
-        meta = _get_param_meta(f)
-        if meta is not None:
-            key = meta.key if meta.key is not None else f.name.upper()
-            known.add(key.upper())
-
-    # get_command_parameters() returns {"PARAM": "value", ...} for extended gcode commands.
-    # Keys are already uppercased by Klipper.
-    supplied = params.get_command_parameters()
-    unknown_params = [k for k in supplied if k not in known]
-
-    if unknown_params:
-        valid = ", ".join(sorted(known)) if known else "(none)"
-        unknown_list = ", ".join(sorted(unknown_params))
-        msg = f"Unknown parameter(s): {unknown_list}. Valid parameters are: {valid}"
-        raise RuntimeError(msg)
-
-
-def validate_unknown_params(cls: type, params: MacroParams) -> None:
-    """Raise RuntimeError if the user passed any unknown macro parameters.
-
-    Public version of the validation used internally by parse().
-    Useful when parsing is handled separately (e.g. complex classmethod factories)
-    but you still want unknown-param validation.
-    """
-    _validate_unknown_params(cls, params)
-
-
-# ---------------------------------------------------------------------------
 # parse()
 # ---------------------------------------------------------------------------
 
@@ -275,8 +239,6 @@ def parse(cls: type[T], params: MacroParams, **defaults: Any) -> T:
     priority if the user supplies it, but the default value is used when the
     parameter is absent.
 
-    Unknown parameters (not declared as param() fields) raise RuntimeError.
-
     Args:
         cls: The dataclass type to parse into.
         params: Klipper macro parameters.
@@ -289,8 +251,6 @@ def parse(cls: type[T], params: MacroParams, **defaults: Any) -> T:
     if not dataclasses.is_dataclass(cls):
         msg = f"{cls.__name__} is not a dataclass"
         raise TypeError(msg)
-
-    _validate_unknown_params(cls, params)
 
     # Get type hints — with from __future__ annotations, these are strings
     hints = {f.name: f.type for f in fields(cls)}
