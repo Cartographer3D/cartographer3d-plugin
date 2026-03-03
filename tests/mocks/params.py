@@ -46,7 +46,3 @@ class MockParams(MacroParams):
     def get_int(self, name: str, default: int | None = ..., *, minval: int = ..., maxval: int = ...) -> int | None:
         opt = self.params.get(name, default)
         return int(opt) if opt is not None else None
-
-    @override
-    def get_command_parameters(self) -> dict[str, str]:
-        return dict(self.params)

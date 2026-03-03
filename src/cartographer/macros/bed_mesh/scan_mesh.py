@@ -32,7 +32,7 @@ from cartographer.macros.bed_mesh.paths.alternating_snake import AlternatingSnak
 from cartographer.macros.bed_mesh.paths.random_path import RandomPathGenerator
 from cartographer.macros.bed_mesh.paths.snake_path import SnakePathGenerator
 from cartographer.macros.bed_mesh.paths.spiral_path import SpiralPathGenerator
-from cartographer.macros.fields import param, validate_unknown_params
+from cartographer.macros.fields import param
 from cartographer.macros.utils import get_choice, get_float_tuple, get_int_tuple
 
 if TYPE_CHECKING:
@@ -203,9 +203,6 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
                 msg = f"Bed mesh calibration method '{method}' not supported"
                 raise RuntimeError(msg)
             return self._fallback.run(params)
-
-        # Validate unknown parameters
-        validate_unknown_params(BedMeshScanAllParams, params)
 
         # Parse parameters and validate
         scan_params = MeshScanParams.from_macro_params(params, self.config, self.adapter)

@@ -115,7 +115,6 @@ class MacroParams(Protocol):
         minval: int = ...,
         maxval: int = ...,
     ) -> int | None: ...
-    def get_command_parameters(self) -> dict[str, str]: ...
 
 
 @runtime_checkable
