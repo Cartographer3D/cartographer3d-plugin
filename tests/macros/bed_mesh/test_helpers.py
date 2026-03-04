@@ -303,9 +303,10 @@ class TestCircularSampleProcessor:
         height_calc = Mock(return_value=2.5)
         results = circ_processor.assign_samples_to_grid(samples, height_calc)
 
-        # Should have fewer results than rectangular grid (fewer valid grid points)
-        # Circular mesh filters out corners
+        # Should return only points inside the circular boundary (sparse grid)
+        # Corners outside the circle are not included
         assert len(results) < 9
+        assert len(results) > 0
 
         # All result points should be inside circular boundary
         for result in results:
@@ -368,46 +369,6 @@ class TestCircularSampleProcessor:
                 assert np.isnan(result.z), f"Point {point} should have NaN (not sampled)"
                 assert result.sample_count == 0, f"Point {point} should have 0 samples"
 
-    def test_circular_mesh_sparse_grid_normalization(self):
-        """Test that normalize_to_zero_reference_point handles sparse circular grids."""
-        circ_grid = MeshGrid(
-            min_point=(0.0, 0.0),
-            max_point=(10.0, 10.0),
-            x_resolution=3,
-            y_resolution=3,
-            mesh_radius=5.0,
-            mesh_origin=(5.0, 5.0),
-        )
-        circ_processor = SampleProcessor(circ_grid, max_distance=1.0)
-        circ_transformer = CoordinateTransformer(probe_offset=Position(0.0, 0.0, 0))
-
-        # Create sparse position list (not all grid points)
-        positions = [
-            Position(5.0, 5.0, 1.0),  # Center
-            Position(5.0, 0.0, 1.5),  # Bottom
-            Position(5.0, 10.0, 2.0),  # Top
-            Position(0.0, 5.0, 2.5),  # Left
-            Position(10.0, 5.0, 1.8),  # Right
-        ]
-
-        # Should not crash on sparse grid (circular mesh with fewer positions than full grid)
-        # The method only normalizes heights, does not fill missing grid points
-        normalized = circ_transformer.normalize_to_zero_reference_point(
-            positions, zero_height=1.0
-        )
-
-        # Should return same number of positions, just with normalized heights
-        assert len(normalized) == 5
-
-        # Check that provided positions have their heights adjusted
-        norm_dict = {(p.x, p.y): p.z for p in normalized}
-
-        # Center position should be normalized relative to 1.0
-        assert norm_dict.get((5.0, 5.0)) == 0.0  # Was 1.0, now 0.0 after subtracting reference
-
-        # Other positions should also be adjusted
-        assert norm_dict.get((5.0, 0.0)) == 0.5  # Was 1.5, now 0.5
-        assert norm_dict.get((5.0, 10.0)) == 1.0  # Was 2.0, now 1.0
 
 
 transformer = CoordinateTransformer(probe_offset=Position(2.0, 1.0, 0))

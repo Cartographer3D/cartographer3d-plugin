@@ -173,18 +173,16 @@ class SampleProcessor:
 
         results: list[GridPointResult] = []
         
-        # Process only grid indices that have samples or are valid mesh points
         for j in range(self.grid.y_resolution):
             for i in range(self.grid.x_resolution):
                 grid_point = self.grid.grid_index_to_point(j, i)
-                
-                # Skipping points outside of circular mesh area if they don't have any samples.
+
+                # Skip points outside of circular mesh area if they don't have any samples
                 values = accumulator.get((j, i), [])
                 if not values and not self.grid.contains_point(grid_point):
                     continue
-                    
-                count = len(values)
 
+                count = len(values)
                 z = float(np.median(values)) if values else np.nan
                 results.append(GridPointResult(point=grid_point, z=z, sample_count=count))
 
@@ -219,9 +217,7 @@ class CoordinateTransformer:
         zero_ref: Point | None = None,
         zero_height: float | None = None,
     ) -> list[Position]:
-        """Normalize positions to a zero reference point using bilinear interpolation
-        for rectangular grids or scipy griddata for sparse circular meshes.
-        """
+        """Normalize positions to a zero reference point using bilinear interpolation."""
         if not positions:
             return []
         # Convert to NumPy array (shape: (N, 3))
@@ -231,51 +227,28 @@ class CoordinateTransformer:
         xs = np.unique(arr[:, 0])
         ys = np.unique(arr[:, 1])
 
-
-        # TODO: Review if immediate rectangular conversion is strictly necessary here or if it can be optimized.
-        # Check if rectangular grid is complete or if we have an sparse (circular) grid.
-        if len(xs) * len(ys) == len(positions):
-            # Sort positions in matching y-major order and reshape z
-            # This works if positions form a complete rectangular grid
-            # and can be sorted by (y, x)
-            sort_idx = np.lexsort((arr[:, 0], arr[:, 1]))
-            z_grid = arr[sort_idx, 2].reshape(len(ys), len(xs))
-        else:
-            #Irregular grid, don't attempt to reshape it to rectangular shape.
-            z_grid = None  # Will handle interpolation differently for irregular grids
+        # Sort positions in matching y-major order and reshape z
+        # This works if positions form a complete rectangular grid
+        # and can be sorted by (y, x)
+        sort_idx = np.lexsort((arr[:, 0], arr[:, 1]))
+        z_grid = arr[sort_idx, 2].reshape(len(ys), len(xs))
 
         # Determine zero reference height
         if zero_height is not None:
             z_ref = zero_height
         elif zero_ref is not None:
-            if z_grid is not None:
-                # Rectangular grid: use bilinear interpolation
-                z_ref = self._bilinear_interpolate(xs, ys, z_grid, zero_ref)
-            else:
-                # Irregular grid (circular mesh): use scipy griddata interpolation
-                if not scipy_helpers.is_available():
-                    msg = "scipy is required for interpolation with irregular circular meshes"
-                    raise RuntimeError(msg)
-                from scipy.interpolate import griddata
-                points = arr[:, :2]  # (x, y) coordinates
-                values = arr[:, 2]   # z heights
-                z_ref = float(griddata(points, values, [zero_ref], method='linear')[0])
+            z_ref = self._bilinear_interpolate(xs, ys, z_grid, zero_ref)
         else:
             msg = "Either zero_ref or zero_height must be provided."
             raise ValueError(msg)
 
-        # Normalize heights
-        if z_grid is not None:
-            # Rectangular grid: subtract from grid and rebuild
-            z_grid -= z_ref
-            normalized_positions = [
-                Position(x=float(x), y=float(y), z=float(z)) for y, row in zip(ys, z_grid) for x, z in zip(xs, row)
-            ]
-        else:
-            # Irregular grid: subtract from original positions directly
-            normalized_positions = [
-                Position(x=p.x, y=p.y, z=p.z - z_ref) for p in positions
-            ]
+        # Normalize
+        z_grid -= z_ref
+
+        # Rebuild output in y-major order
+        normalized_positions = [
+            Position(x=float(x), y=float(y), z=float(z)) for y, row in zip(ys, z_grid) for x, z in zip(xs, row)
+        ]
         return normalized_positions
 
     def _bilinear_interpolate(
@@ -328,39 +301,16 @@ class CoordinateTransformer:
         xs = np.unique(arr[:, 0])
         ys = np.unique(arr[:, 1])
 
-        # For complete rectangular grids, sort and reshape directly
-        # For sparse grids (circular), fill missing points with NaN first
-        if len(xs) * len(ys) == len(positions):
-            # Complete rectangular grid - use original approach
-            sort_idx = np.lexsort((arr[:, 0], arr[:, 1]))
-            z_grid = arr[sort_idx, 2].reshape(len(ys), len(xs))
-        else:
-            # Sparse grid (circular) - fill missing corners with NaN to make it complete
-            z_grid = np.full((len(ys), len(xs)), np.nan)
-            
-            # Create lookup maps for efficient coordinate → index conversion
-            x_index_map = {x: i for i, x in enumerate(xs)}
-            y_index_map = {y: i for i, y in enumerate(ys)}
-            
-            # Populate z values at their corresponding grid positions
-            for i in range(len(positions)):
-                x_coord = arr[i, 0]
-                y_coord = arr[i, 1]
-                z_value = arr[i, 2]
-                
-                x_grid_idx = x_index_map.get(x_coord)
-                y_grid_idx = y_index_map.get(y_coord)
-                
-                if x_grid_idx is not None and y_grid_idx is not None:
-                    z_grid[y_grid_idx, x_grid_idx] = z_value
+        # Sort into y-major order and reshape
+        sort_idx = np.lexsort((arr[:, 0], arr[:, 1]))
+        z_grid = arr[sort_idx, 2].reshape(len(ys), len(xs))
 
         # Build mask (ys major, xs minor)
         mask: NDArray[np.bool_] = np.zeros_like(z_grid, dtype=bool)
         for i in range(len(ys)):
             for j in range(len(xs)):
                 point = (xs[j], ys[i])
-                # Only mark as faulty if it's in a faulty region AND not already NaN (outside mesh radius)
-                if not np.isnan(z_grid[i, j]) and any(region.contains_point(point) for region in faulty_regions):
+                if any(region.contains_point(point) for region in faulty_regions):
                     mask[i, j] = True
 
         z_grid_masked = np.where(mask, np.nan, z_grid)
@@ -376,28 +326,18 @@ class CoordinateTransformer:
             X, Y = np.meshgrid(xs, ys)  # noqa: N806
             points_grid = np.column_stack([X.ravel(), Y.ravel()])
 
-            # For circular mesh we should also mask NaN values, this can happen if faulty region
-            # overlaps with points outside of sparse mesh radius. 
-            # This ensures we only interpolate based on valid points.
-            nan_mask = np.isnan(z_grid_masked.ravel())
-            combined_mask = mask.ravel() | nan_mask
-            
-            valid_points = points_grid[~combined_mask]
-            valid_values = z_grid_masked.ravel()[~combined_mask]
+            valid_points = points_grid[~mask.ravel()]
+            valid_values = z_grid_masked[~mask]
 
-            rbf = rbf_interpolator(valid_points, valid_values, neighbors=min(64, len(valid_points)), smoothing=0.0)
+            rbf = rbf_interpolator(valid_points, valid_values, neighbors=64, smoothing=0.0)
 
             missing_points = points_grid[mask.ravel()]
             interpolated = rbf(missing_points)  # pyright: ignore[reportUnknownVariableType]
 
             z_grid_masked[mask] = interpolated
 
-        # We are now filtering out any remaining NaN values which is caused by rectangular zgrid
-        # being filled with NaN for points outside of circular mesh radius.
         new_positions = [
-            Position(x=float(x), y=float(y), z=float(z))
-            for y, row in zip(ys, z_grid_masked)
-            for x, z in zip(xs, row)
+            Position(x=float(x), y=float(y), z=float(z)) for y, row in zip(ys, z_grid_masked) for x, z in zip(xs, row)
         ]
         return new_positions
 

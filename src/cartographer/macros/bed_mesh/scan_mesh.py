@@ -8,8 +8,6 @@ from typing import TYPE_CHECKING, Literal, final
 
 import numpy as np
 from typing_extensions import override
-from scipy.interpolate import griddata
-
 
 from cartographer.interfaces.printer import (
     AxisTwistCompensation,
@@ -249,10 +247,11 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
 
         # Fill gaps in circular mesh if needed
         if scan_params.mesh_radius is not None and scan_params.mesh_radius > 0:
-            self._log_positions_debug("Circular mesh positions before gap fill", positions)
-            positions = self._fill_circular_mesh_gaps(positions, grid) #As this now converts positions to rectangular mesh we can get
-                                                                        #rid of changes in apply_zero_reference_height and apply_mesh
-            self._log_positions_debug("Circular mesh positions after gap fill", positions)
+            positions = self._fill_circular_mesh_gaps(positions, grid)
+        
+        # Apply faulty regions (requires complete rectangular mesh)
+        positions = self.coordinate_transformer.apply_faulty_regions(positions, self.config.faulty_regions)
+        
         positions = self._apply_zero_reference_height(positions, scan_params, grid)
 
         # Apply mesh to adapter
@@ -343,8 +342,7 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         results = sample_processor.assign_samples_to_grid(samples, self.probe.scan.calculate_sample_distance)
 
         # Convert results to positions
-        positions = self._results_to_positions(results, height)
-        return self.coordinate_transformer.apply_faulty_regions(positions, self.config.faulty_regions)
+        return self._results_to_positions(results, height)
 
     def _results_to_positions(self, results: list[GridPointResult], height: float) -> list[Position]:
         """Convert grid results to Position objects."""
@@ -367,20 +365,6 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
 
         return positions
 
-    def _log_positions_debug(self, message: str, positions: list[Position]) -> None:
-        if not logger.isEnabledFor(logging.DEBUG):
-            return
-
-        formatted_positions = [
-            (
-                round(position.x, 4),
-                round(position.y, 4),
-                "nan" if np.isnan(position.z) else round(position.z, 6),
-            )
-            for position in positions
-        ]
-        logger.debug("%s (%d points): %s", message, len(positions), formatted_positions)
-
     def _fill_circular_mesh_gaps(self, positions: list[Position], grid: MeshGrid) -> list[Position]:
         """Fill NaN gaps in circular mesh iteratively from known samples outward.
         
@@ -392,13 +376,7 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         if not positions:
             return positions
 
-        # Check if there are any NaN values to fill
-        has_nan = any(np.isnan(p.z) for p in positions)
-        if not has_nan:
-            # No gaps to fill
-            return positions
-
-        # Convert positions to a matrix
+        # Convert sparse circular positions to a complete rectangular matrix
         arr = np.asarray([(p.x, p.y, p.z) for p in positions])
         xs = np.unique(arr[:, 0])
         ys = np.unique(arr[:, 1])
