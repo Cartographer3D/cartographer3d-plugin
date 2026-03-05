@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
-from cartographer.interfaces.configuration import MeshDirection, MeshPath
+from cartographer.interfaces.configuration import BedMeshConfig, MeshDirection, MeshPath, ScanConfig
 from cartographer.interfaces.printer import (
     AxisTwistCompensation,
     Macro,
@@ -32,7 +32,7 @@ from cartographer.macros.bed_mesh.paths.alternating_snake import AlternatingSnak
 from cartographer.macros.bed_mesh.paths.random_path import RandomPathGenerator
 from cartographer.macros.bed_mesh.paths.snake_path import SnakePathGenerator
 from cartographer.macros.bed_mesh.paths.spiral_path import SpiralPathGenerator
-from cartographer.macros.fields import param
+from cartographer.macros.fields import config_ref, param
 from cartographer.macros.utils import get_choice, get_float_tuple, get_int_tuple
 
 if TYPE_CHECKING:
@@ -102,13 +102,17 @@ class BedMeshScanAllParams:
     mesh_max: str | None = param("Maximum mesh coordinate (x,y)", default=None)
     probe_count: str | None = param("Number of probe points (x,y)", default=None)
     adaptive: int = param("Enable adaptive meshing (0 or 1)", default=0)
-    adaptive_margin: float = param("Margin for adaptive mesh", default=0.0, min=0)
+    adaptive_margin: float = param(
+        "Margin for adaptive mesh",
+        default=config_ref(BedMeshConfig, "adaptive_margin"),
+        min=0,
+    )
     profile: str = param("Mesh profile name", default="default")
-    direction: MeshDirection = param("Primary scan direction", default=MeshDirection.X)
-    path: MeshPath = param("Scan path pattern", default=MeshPath.SNAKE)
-    speed: float = param("Scan speed", default=50.0, min=50)
-    height: float = param("Scan height", default=5.0, min=0.5, max=5)
-    runs: int = param("Number of scan passes", default=1, min=1)
+    direction: MeshDirection = param("Primary scan direction", default=config_ref(ScanConfig, "mesh_direction"))
+    path: MeshPath = param("Scan path pattern", default=config_ref(ScanConfig, "mesh_path"))
+    speed: float = param("Scan speed", default=config_ref(BedMeshConfig, "speed"), min=50)
+    height: float = param("Scan height", default=config_ref(ScanConfig, "mesh_height"), min=0.5, max=5)
+    runs: int = param("Number of scan passes", default=config_ref(ScanConfig, "mesh_runs"), min=1)
 
 
 @dataclass

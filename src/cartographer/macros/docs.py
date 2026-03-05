@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING
 from cartographer.macros.axis_twist_compensation import AxisTwistCompensationMacro, AxisTwistParams
 from cartographer.macros.backlash import EstimateBacklashMacro, EstimateBacklashParams
 from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateMacro, BedMeshScanAllParams
-from cartographer.macros.fields import ParamInfo, get_all_params
+from cartographer.macros.fields import ConfigRef, ParamInfo, get_all_params
 from cartographer.macros.model_manager import ModelManagerParams, ScanModelManager, TouchModelManager
 from cartographer.macros.probe import (
     ProbeAccuracyMacro,
@@ -66,6 +66,8 @@ MACROS: list[tuple[str, type[Macro], type]] = [
 
 def _format_default(value: object) -> str:
     """Format a default value for display in docs."""
+    if isinstance(value, ConfigRef):
+        return f"config '{value.option_name}'"
     if isinstance(value, bool):
         return "Yes" if value else "No"
     if isinstance(value, Enum):
@@ -114,6 +116,8 @@ def _format_param(p: ParamInfo) -> str:
 def _format_example_value(p: ParamInfo) -> str:
     """Format a parameter value for the example line."""
     if p.required:
+        return f"<{p.name.lower()}>"
+    if isinstance(p.default, ConfigRef):
         return f"<{p.name.lower()}>"
     if isinstance(p.default, bool):
         return "yes" if p.default else "no"

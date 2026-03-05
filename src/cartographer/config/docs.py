@@ -3,6 +3,7 @@
 Usage:
     python -m cartographer.config.docs > configuration-reference.md
 """
+# pyright: reportUnknownMemberType=false, reportUnknownVariableType=false
 
 from __future__ import annotations
 
@@ -21,15 +22,15 @@ from cartographer.interfaces.configuration import (
 )
 
 # Config sections in the order they should appear in docs.
-# (section_header, klipper_section_name, dataclass)
-SECTIONS: list[tuple[str, str, type]] = [
-    ("General", "cartographer", GeneralConfig),
-    ("Scan", "cartographer scan", ScanConfig),
-    ("Touch", "cartographer touch", TouchConfig),
-    ("Bed Mesh", "bed_mesh", BedMeshConfig),
-    ("Coil", "cartographer coil", CoilConfiguration),
-    ("Scan Model", "cartographer scan_model <name>", ScanModelConfiguration),
-    ("Touch Model", "cartographer touch_model <name>", TouchModelConfiguration),
+# Each class must define a ``config_section_key`` ClassVar.
+SECTIONS: list[type] = [
+    GeneralConfig,
+    ScanConfig,
+    TouchConfig,
+    BedMeshConfig,
+    CoilConfiguration,
+    ScanModelConfiguration,
+    TouchModelConfiguration,
 ]
 
 
@@ -85,13 +86,17 @@ def generate_docs() -> str:
     parts.append("---\n")
     parts.append("# Configuration Reference\n")
 
-    for section_header, section_name, cls in SECTIONS:
+    for cls in SECTIONS:
         options = get_all_options(cls)
         if not options:
             continue
 
+        key: str = cls.config_section_key  # type: ignore[attr-defined]  # ClassVar on dataclass
+        section_header = key.split()[-1].replace("_", " ").title()
+        klipper_section = key
+
         parts.append(f"## {section_header}\n")
-        parts.append(f"```ini\n[{section_name}]")
+        parts.append(f"```ini\n[{klipper_section}]")
 
         for opt in options:
             parts.append(_format_option(opt))

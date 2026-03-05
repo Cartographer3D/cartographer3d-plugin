@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Protocol, Tuple
+from typing import TYPE_CHECKING, ClassVar, Protocol, Tuple
 
 from typing_extensions import override
 
@@ -134,6 +134,8 @@ def _parse_scan_domain(config: ConfigWrapper) -> tuple[float, float]:
 
 @dataclass(frozen=True)
 class GeneralConfig:
+    config_section_key: ClassVar[str] = "cartographer"
+
     mcu: str = option("The name of the Cartographer MCU, as defined by your [mcu cartographer] section.")
     x_offset: float = option("The distance (in mm) between the probe and the nozzle along the x-axis.")
     y_offset: float = option("The distance (in mm) between the probe and the nozzle along the y-axis.")
@@ -150,6 +152,8 @@ class GeneralConfig:
 
 @dataclass(frozen=True)
 class ScanConfig:
+    config_section_key: ClassVar[str] = "cartographer scan"
+
     samples: int = option(default=20)
     probe_speed: float = option("Speed (in mm/s) of the Z axis when probing.", default=5, min=0.1)
     mesh_runs: int = option(
@@ -170,6 +174,8 @@ class ScanConfig:
 
 @dataclass(frozen=True)
 class TouchConfig:
+    config_section_key: ClassVar[str] = "cartographer touch"
+
     samples: int = option("The number of samples to use when doing a touch.", default=3, min=3)
     max_samples: int = option(
         "The maximum number of samples to do before giving up.",
@@ -202,6 +208,8 @@ class TouchConfig:
 
 @dataclass(frozen=True)
 class BedMeshConfig:
+    config_section_key: ClassVar[str] = "bed_mesh"
+
     mesh_min: tuple[float, float] = option(
         "Minimum coordinates of the mesh area.",
         parse_fn=_parse_mesh_min,
@@ -237,6 +245,8 @@ class ModelVersionInfo:
 
 @dataclass(frozen=True)
 class ScanModelConfiguration:
+    config_section_key: ClassVar[str] = "cartographer scan_model <name>"
+
     name: str = option(parse_fn=_parse_model_name)
     coefficients: list[float] = option(
         parse_fn=lambda config: config.getfloatlist("coefficients"),
@@ -252,6 +262,8 @@ class ScanModelConfiguration:
 
 @dataclass(frozen=True)
 class TouchModelConfiguration:
+    config_section_key: ClassVar[str] = "cartographer touch_model <name>"
+
     name: str = option(parse_fn=_parse_model_name)
     speed: float = option(min=1)
     z_offset: float = option(max=0)
@@ -272,6 +284,8 @@ class CoilCalibrationConfiguration:
 
 @dataclass(frozen=True)
 class CoilConfiguration:
+    config_section_key: ClassVar[str] = "cartographer coil"
+
     name: str = option("The name of the coil temperature sensor.", default="cartographer_coil")
     min_temp: float = option(
         "The minimum temperature of the coil, below this will trigger a warning.",
