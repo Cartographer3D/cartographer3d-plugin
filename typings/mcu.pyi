@@ -23,7 +23,18 @@ class MCU:
 
     def alloc_command_queue(self) -> _CommandQueue: ...
     def register_config_callback(self, callback: Callable[[], None]) -> None: ...
-    def register_response(self, callback: Callable[[_T], None], message: str, oid: int | None = None) -> None: ...
+    def register_response(
+        self,
+        callback: Callable[[_T], None] | None,
+        message: str,
+        oid: int | None = None,
+    ) -> None: ...
+    def register_serial_response(
+        self,
+        callback: Callable[[_T], None],
+        message: str,
+        oid: int | None = None,
+    ) -> object: ...
     def lookup_command(self, msgformat: str, cq: _CommandQueue | None = None) -> CommandWrapper: ...
     def lookup_query_command(
         self,

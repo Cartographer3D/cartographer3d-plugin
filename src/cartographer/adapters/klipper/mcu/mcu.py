@@ -115,8 +115,23 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     def _initialize(self) -> None:
         self._constants = KlipperCartographerConstants(self.klipper_mcu)
         self._commands = KlipperCartographerCommands(self.klipper_mcu)
-        self.klipper_mcu.register_response(self._handle_data, "cartographer_data")
+        self._register_data_response()
         logger.info("Initialized %s MCU", self.klipper_mcu.get_status()["mcu_version"])
+
+    _DATA_MSG_FORMAT = "cartographer_data clock=%u data=%u temp=%u"
+    _DATA_MSG_NAME = "cartographer_data"
+
+    def _register_data_response(self) -> None:
+        """Register the cartographer_data response handler.
+
+        Uses register_serial_response (Klipper c89393c+) when available,
+        falling back to register_response for older Klipper versions.
+        """
+        mcu = self.klipper_mcu
+        if hasattr(mcu, "register_serial_response"):
+            _ = mcu.register_serial_response(self._handle_data, self._DATA_MSG_FORMAT)
+        else:
+            mcu.register_response(self._handle_data, self._DATA_MSG_NAME)
 
     @override
     def get_mcu_version(self) -> str:
