@@ -8,11 +8,13 @@ from cartographer.macros.touch.calibrate import (
     ScreeningResult,
     ThresholdScreener,
     ThresholdVerifier,
+    TouchCalibrateMacro,
     VerificationResult,
     calculate_step,
     format_distance,
 )
 from cartographer.probe.touch_mode import TouchError
+from tests.mocks.config import MockConfiguration
 
 # --- Fake probe for testing ---
 
@@ -46,7 +48,7 @@ class FakeCalibrationProbe:
     def set_threshold(self, threshold: int) -> None:
         self.thresholds_set.append(threshold)
 
-    def perform_touch_probe(self) -> float:
+    def perform_touch_probe(self, *, z_limit: float | None = None) -> float:  # noqa: ARG002
         result = self._probe_results.pop(0)
         if isinstance(result, RuntimeError):
             raise result
@@ -317,3 +319,334 @@ class TestCalculateStep:
         """Range just above 10x uses large step."""
         step = calculate_step(threshold=1000, range_value=0.101, sample_range=0.010)
         assert step == 200  # 0.101 > 10 * 0.010, uses 20%
+
+
+# --- Helpers for _find_threshold / _optimize_threshold tests ---
+
+
+def _make_macro() -> TouchCalibrateMacro:
+    """Create a TouchCalibrateMacro with only _config set (for testing private methods)."""
+    macro = object.__new__(TouchCalibrateMacro)
+    macro._config = MockConfiguration()  # pyright: ignore[reportPrivateUsage]  # samples=5, max_noisy_samples=2
+    return macro
+
+
+@final
+class FakeScreener:
+    """Fake ThresholdScreener that returns predetermined results.
+
+    Results are returned in order. If exhausted, returns a passing ScreeningResult.
+    """
+
+    def __init__(self, results: list[ScreeningResult | None]) -> None:
+        self._results = list(results)
+
+    def screen(self, threshold: int, sample_count: int) -> ScreeningResult | None:  # noqa: ARG002
+        if self._results:
+            return self._results.pop(0)
+        # Default: passes screening
+        return ScreeningResult(
+            threshold=threshold,
+            samples=(1.000,) * sample_count,
+            best_subset=[1.000] * sample_count,
+            best_range=0.001,
+        )
+
+
+@final
+class FakeVerifier:
+    """Fake ThresholdVerifier that returns predetermined results.
+
+    Results are returned in order. Tracks z_limit values passed.
+    """
+
+    def __init__(self, results: list[VerificationResult | None]) -> None:
+        self._results = list(results)
+        self.z_limits: list[float | None] = []
+
+    def verify(
+        self,
+        threshold: int,  # noqa: ARG002
+        max_verify_range: float,  # noqa: ARG002
+        sample_count: int,  # noqa: ARG002
+        *,
+        z_limit: float | None = None,
+    ) -> VerificationResult | None:
+        self.z_limits.append(z_limit)
+        return self._results.pop(0)
+
+
+# --- _find_threshold with optimization ---
+
+
+class TestFindThreshold:
+    def test_returns_first_threshold_when_already_optimal(self):
+        """When first verification median_range <= sample_range, skip optimization."""
+        macro = _make_macro()
+
+        screener = FakeScreener(
+            [
+                ScreeningResult(threshold=1000, samples=(1.0,), best_subset=[1.0], best_range=0.005),
+            ]
+        )
+        verifier = FakeVerifier(
+            [
+                VerificationResult(threshold=1000, probe_medians=[1.000, 1.005, 1.003], median_range=0.005),
+            ]
+        )
+
+        result = macro._find_threshold(  # pyright: ignore[reportPrivateUsage]
+            screener,
+            verifier,
+            threshold_start=1000,
+            threshold_max=5000,
+            sample_range=0.010,
+            max_verify_range=0.020,
+            verification_samples=3,
+        )
+
+        assert result == 1000
+        # Verifier should not have been called with z_limit (no optimization)
+        assert verifier.z_limits == [None]
+
+    def test_optimization_finds_better_threshold(self):
+        """Optimization finds a higher threshold with better accuracy."""
+        macro = _make_macro()
+
+        # First pass: threshold 1000 passes verification with 0.015mm range
+        # Optimization: threshold 1100 passes with 0.008mm range
+        screener = FakeScreener(
+            [
+                # Initial screening at 1000
+                ScreeningResult(threshold=1000, samples=(1.0,), best_subset=[1.0], best_range=0.005),
+                # Optimization screening at 1100
+                ScreeningResult(threshold=1100, samples=(1.0,), best_subset=[1.0], best_range=0.005),
+            ]
+        )
+        verifier = FakeVerifier(
+            [
+                # Initial verification at 1000
+                VerificationResult(threshold=1000, probe_medians=[1.000, 1.010, 1.015], median_range=0.015),
+                # Optimization verification at 1100 — better!
+                VerificationResult(threshold=1100, probe_medians=[1.000, 1.004, 1.008], median_range=0.008),
+            ]
+        )
+
+        result = macro._find_threshold(  # pyright: ignore[reportPrivateUsage]
+            screener,
+            verifier,
+            threshold_start=1000,
+            threshold_max=5000,
+            sample_range=0.010,
+            max_verify_range=0.020,
+            verification_samples=3,
+        )
+
+        assert result == 1100
+        # First verify: no z_limit; optimization verify: with z_limit
+        assert verifier.z_limits[0] is None
+        assert verifier.z_limits[1] is not None
+        assert verifier.z_limits[1] == pytest.approx(1.000 - 0.020)  # pyright: ignore[reportUnknownMemberType]
+
+    def test_optimization_keeps_first_when_no_improvement(self):
+        """If optimization candidates don't improve, keep first threshold."""
+        macro = _make_macro()
+
+        screener = FakeScreener(
+            [
+                # Initial screening at 1000
+                ScreeningResult(threshold=1000, samples=(1.0,), best_subset=[1.0], best_range=0.005),
+                # Optimization screening at 1100
+                ScreeningResult(threshold=1100, samples=(1.0,), best_subset=[1.0], best_range=0.005),
+            ]
+        )
+        verifier = FakeVerifier(
+            [
+                # Initial verification at 1000 — 0.015mm
+                VerificationResult(threshold=1000, probe_medians=[1.000, 1.010, 1.015], median_range=0.015),
+                # Optimization verification at 1100 — worse (0.018mm)
+                VerificationResult(threshold=1100, probe_medians=[1.000, 1.010, 1.018], median_range=0.018),
+            ]
+        )
+
+        result = macro._find_threshold(  # pyright: ignore[reportPrivateUsage]
+            screener,
+            verifier,
+            threshold_start=1000,
+            threshold_max=5000,
+            sample_range=0.010,
+            max_verify_range=0.020,
+            verification_samples=3,
+        )
+
+        assert result == 1000
+
+    def test_optimization_stops_early_when_definitely_satisfied(self):
+        """Optimization exits early when median_range <= sample_range."""
+        macro = _make_macro()
+
+        screener = FakeScreener(
+            [
+                # Initial screening at 1000
+                ScreeningResult(threshold=1000, samples=(1.0,), best_subset=[1.0], best_range=0.005),
+                # Optimization screening at 1100 — first opt candidate
+                ScreeningResult(threshold=1100, samples=(1.0,), best_subset=[1.0], best_range=0.005),
+                # This should NOT be reached due to early exit
+                ScreeningResult(threshold=1200, samples=(1.0,), best_subset=[1.0], best_range=0.005),
+            ]
+        )
+        verifier = FakeVerifier(
+            [
+                # Initial verification at 1000 — 0.015mm (not optimal)
+                VerificationResult(threshold=1000, probe_medians=[1.000, 1.010, 1.015], median_range=0.015),
+                # Optimization at 1100 — 0.008mm (<= 0.010 sample_range → definitely satisfied)
+                VerificationResult(threshold=1100, probe_medians=[1.000, 1.004, 1.008], median_range=0.008),
+            ]
+        )
+
+        result = macro._find_threshold(  # pyright: ignore[reportPrivateUsage]
+            screener,
+            verifier,
+            threshold_start=1000,
+            threshold_max=5000,
+            sample_range=0.010,
+            max_verify_range=0.020,
+            verification_samples=3,
+        )
+
+        assert result == 1100
+        # Only 2 verify calls — didn't continue after definitely satisfied
+        assert len(verifier.z_limits) == 2
+
+    def test_optimization_bounded_by_threshold_max(self):
+        """Optimization doesn't exceed threshold_max even if 20% would go higher."""
+        macro = _make_macro()
+
+        # threshold 4500, step = 450, first opt at 4950
+        # optimization_max = min(int(4500 * 1.2), 5000) = 5000
+        # 4950 <= 5000, so one optimization candidate is tried
+        screener = FakeScreener(
+            [
+                ScreeningResult(threshold=4500, samples=(1.0,), best_subset=[1.0], best_range=0.005),
+                # Optimization at 4950 passes screening
+                ScreeningResult(threshold=4950, samples=(1.0,), best_subset=[1.0], best_range=0.005),
+            ]
+        )
+        verifier = FakeVerifier(
+            [
+                # Initial at 4500
+                VerificationResult(threshold=4500, probe_medians=[1.000, 1.010, 1.015], median_range=0.015),
+                # Optimization at 4950 — slightly worse, so first stays best
+                VerificationResult(threshold=4950, probe_medians=[1.000, 1.010, 1.018], median_range=0.018),
+            ]
+        )
+
+        result = macro._find_threshold(  # pyright: ignore[reportPrivateUsage]
+            screener,
+            verifier,
+            threshold_start=4500,
+            threshold_max=5000,
+            sample_range=0.010,
+            max_verify_range=0.020,
+            verification_samples=3,
+        )
+
+        assert result == 4500  # No improvement found, original stays
+
+    def test_returns_none_when_no_threshold_passes(self):
+        """Returns None when all thresholds fail screening."""
+        macro = _make_macro()
+
+        # All screenings fail
+        screener = FakeScreener(
+            [
+                ScreeningResult(threshold=500, samples=(1.0,), best_subset=None, best_range=float("inf")),
+                ScreeningResult(threshold=600, samples=(1.0,), best_subset=None, best_range=float("inf")),
+                ScreeningResult(threshold=700, samples=(1.0,), best_subset=None, best_range=float("inf")),
+                ScreeningResult(threshold=800, samples=(1.0,), best_subset=None, best_range=float("inf")),
+                ScreeningResult(threshold=900, samples=(1.0,), best_subset=None, best_range=float("inf")),
+                ScreeningResult(threshold=1000, samples=(1.0,), best_subset=None, best_range=float("inf")),
+            ]
+        )
+        verifier = FakeVerifier([])
+
+        result = macro._find_threshold(  # pyright: ignore[reportPrivateUsage]
+            screener,
+            verifier,
+            threshold_start=500,
+            threshold_max=1000,
+            sample_range=0.010,
+            max_verify_range=0.020,
+            verification_samples=3,
+        )
+
+        assert result is None
+
+    def test_optimization_z_limit_computed_correctly(self):
+        """z_limit is min(probe_medians) - max_verify_range from first verification."""
+        macro = _make_macro()
+
+        screener = FakeScreener(
+            [
+                ScreeningResult(threshold=1000, samples=(1.0,), best_subset=[1.0], best_range=0.005),
+            ]
+        )
+
+        probe_medians = [5.100, 5.110, 5.105]  # min = 5.100
+        max_verify_range = 0.020
+        expected_z_limit = 5.100 - 0.020  # = 5.080
+
+        verifier = FakeVerifier(
+            [
+                VerificationResult(threshold=1000, probe_medians=probe_medians, median_range=0.015),
+                # Optimization candidate — just needs to exist to check z_limit
+                VerificationResult(threshold=1100, probe_medians=[5.100, 5.105, 5.108], median_range=0.008),
+            ]
+        )
+
+        _ = macro._find_threshold(  # pyright: ignore[reportPrivateUsage]
+            screener,
+            verifier,
+            threshold_start=1000,
+            threshold_max=5000,
+            sample_range=0.010,
+            max_verify_range=max_verify_range,
+            verification_samples=3,
+        )
+
+        # First verify has no z_limit, optimization verify has computed z_limit
+        assert verifier.z_limits[0] is None
+        assert verifier.z_limits[1] == pytest.approx(expected_z_limit)  # pyright: ignore[reportUnknownMemberType]
+
+    def test_screening_failure_during_optimization_does_not_crash(self):
+        """Screening returning None during optimization is handled gracefully."""
+        macro = _make_macro()
+
+        # threshold 1000, step 100, first opt at 1100
+        # optimization_max = min(int(1000 * 1.2), 5000) = 1200
+        # At 1100: None. Step from None = max(50, int(1100*0.20)) = 220
+        # 1100 + 220 = 1320 > 1200, so optimization ends
+        screener = FakeScreener(
+            [
+                ScreeningResult(threshold=1000, samples=(1.0,), best_subset=[1.0], best_range=0.005),
+                None,  # Trigger error at 1100 during optimization
+            ]
+        )
+        verifier = FakeVerifier(
+            [
+                VerificationResult(threshold=1000, probe_medians=[1.000, 1.010, 1.015], median_range=0.015),
+            ]
+        )
+
+        result = macro._find_threshold(  # pyright: ignore[reportPrivateUsage]
+            screener,
+            verifier,
+            threshold_start=1000,
+            threshold_max=5000,
+            sample_range=0.010,
+            max_verify_range=0.020,
+            verification_samples=3,
+        )
+
+        # Falls back to first threshold since no improvement was found
+        assert result == 1000
