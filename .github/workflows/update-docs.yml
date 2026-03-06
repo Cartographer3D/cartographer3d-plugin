@@ -1,12 +1,13 @@
 name: Update Docs
 
 on:
+  workflow_dispatch:
   release:
     types: [published]
 
 jobs:
   update-docs:
-    if: ${{ !github.event.release.prerelease }}
+    if: ${{ github.event_name == 'workflow_dispatch' || !github.event.release.prerelease }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout plugin
@@ -26,7 +27,7 @@ jobs:
         id: app-token
         uses: actions/create-github-app-token@v1
         with:
-          app-id: ${{ secrets.DOCS_APP_ID }}
+          app-id: ${{ vars.DOCS_APP_ID }}
           private-key: ${{ secrets.DOCS_APP_PRIVATE_KEY }}
           owner: Cartographer3D
           repositories: docs
@@ -51,5 +52,5 @@ jobs:
           git add cartographer-probe/reference/configuration-reference.md
           git add cartographer-probe/reference/macro-reference.md
           git diff --cached --quiet && echo "No changes to commit" && exit 0
-          git commit -m "docs: update reference docs for ${{ github.event.release.tag_name }}"
+          git commit -m "docs: update reference docs for ${{ github.event.release.tag_name || 'manual' }}"
           git push
