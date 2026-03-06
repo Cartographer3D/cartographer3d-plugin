@@ -8,8 +8,9 @@ if TYPE_CHECKING:
     from gcode import GCodeCommand
 
     from cartographer.interfaces.configuration import GeneralConfig
-    from cartographer.interfaces.printer import ProbeMode, Toolhead
+    from cartographer.interfaces.printer import Toolhead
     from cartographer.macros.probe import ProbeMacro, QueryProbeMacro
+    from cartographer.probe import Probe
 
 
 @final
@@ -17,7 +18,7 @@ class KalicoCartographerProbe:
     def __init__(
         self,
         toolhead: Toolhead,
-        probe: ProbeMode,
+        probe: Probe,
         probe_macro: ProbeMacro,
         query_probe_macro: QueryProbeMacro,
         config: GeneralConfig,
@@ -33,7 +34,7 @@ class KalicoCartographerProbe:
         self.samples_retries = 0
 
     def get_offsets(self) -> tuple[float, float, float]:
-        return self.probe.offset.as_tuple()
+        return self.probe.current_mode.offset.as_tuple()
 
     def get_status(self, eventtime: float):
         del eventtime
