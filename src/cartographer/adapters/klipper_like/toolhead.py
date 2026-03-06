@@ -36,8 +36,17 @@ def axis_to_index(axis: HomingAxis) -> int:
 
 @final
 class FakeRail:
-    def __init__(self, endstop: MCU_endstop) -> None:
+    def __init__(self, endstop: MCU_endstop, axis_range: tuple[float, float]) -> None:
         self.endstop = endstop
+        self.axis_range = axis_range
+
+    def get_range(self) -> tuple[float, float]:
+        return self.axis_range
+
+    def get_name(self, short: bool = False) -> str:
+        if short:
+            return "carto"
+        return "cartographer"
 
     def get_steppers(self) -> list[MCU_stepper]:
         return self.endstop.get_steppers()
@@ -115,7 +124,7 @@ class KlipperLikeToolhead(Toolhead, ABC):
         homing.set_axes([axis_to_index("z")])
         homing.trigger_mcu_pos = {sp.get_name(): sp.get_mcu_position() for sp in klipper_endstop.get_steppers()}
 
-        self.printer.send_event("homing:home_rails_end", homing, [FakeRail(klipper_endstop)])
+        self.printer.send_event("homing:home_rails_end", homing, [FakeRail(klipper_endstop, self.get_axis_limits("z"))])
 
     @override
     def set_z_position(self, z: float) -> None:
