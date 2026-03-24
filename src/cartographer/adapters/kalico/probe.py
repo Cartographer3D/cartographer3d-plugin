@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, final
 
+from gcode import Coord as GCodeCoord
+
 from cartographer.adapters.klipper_like.utils import reraise_for_klipper
 
 if TYPE_CHECKING:
@@ -41,9 +43,11 @@ class KalicoCartographerProbe:
             "name": "cartographer",
             "last_query": 1 if self.query_probe_macro.last_triggered else 0,
             "last_z_result": round(self.probe_macro.last_trigger_position or 0, 6),
-            "last_probe_position": tuple(round(c, 6) for c in self.probe_macro.last_probe_position.as_tuple())
+            "last_probe_position": GCodeCoord(
+                tuple(round(c, 6) for c in self.probe_macro.last_probe_position.as_tuple())
+            )
             if self.probe_macro.last_probe_position is not None
-            else (0, 0, 0),
+            else GCodeCoord((0, 0, 0)),
         }
 
     def get_lift_speed(self, gcmd: GCodeCommand | None = None):
