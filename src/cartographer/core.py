@@ -25,6 +25,7 @@ from cartographer.macros.probe import (
     QueryProbeMacro,
     ZOffsetApplyProbeMacro,
 )
+from cartographer.macros.probe_method_wrapper import ProbeMethodWrapperMacro
 from cartographer.macros.query import QueryMacro
 from cartographer.macros.scan import ScanAccuracyMacro
 from cartographer.macros.scan_calibrate import (
@@ -75,14 +76,14 @@ class PrinterCartographer:
         self.touch_mode = TouchMode(self.mcu, toolhead, TouchModeConfiguration.from_config(self.config))
 
         # Create probe
-        probe = Probe(self.scan_mode, self.touch_mode)
+        self.probe = Probe(self.scan_mode, self.touch_mode)
 
         # Store specific macros needed by integrators
-        self.probe_macro = ProbeMacro(probe, toolhead)
-        self.query_probe_macro = QueryProbeMacro(probe)
+        self.probe_macro = ProbeMacro(self.probe, toolhead)
+        self.query_probe_macro = QueryProbeMacro(self.probe)
 
         # Register all macros
-        self.macros = self._create_macro_registrations(probe, toolhead, adapters)
+        self.macros = self._create_macro_registrations(self.probe, toolhead, adapters)
 
     def ready_callback(self) -> None:
         validate_and_remove_incompatible_models(self.config, self.mcu.get_mcu_version())
@@ -157,6 +158,13 @@ class PrinterCartographer:
 
         # Legacy macro aliases
         registrations.extend(self._create_legacy_macro_registrations())
+
+        registrations.extend(
+            chain.from_iterable(
+                self._register_macro(macro, ProbeMethodWrapperMacro(probe, adapters.gcode), use_prefix=False)
+                for macro in adapters.probe_method_macros
+            )
+        )
 
         return registrations
 
