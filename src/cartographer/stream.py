@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Callable, Generic, Protocol, TypeVar
 
 T = TypeVar("T")
+
+logger = logging.getLogger(__name__)
 
 
 class Condition(Protocol):
@@ -72,6 +75,10 @@ class Stream(ABC, Generic[T]):
 
     @abstractmethod
     def condition(self) -> Condition: ...
+    @abstractmethod
+    def start_streaming(self) -> None: ...
+    @abstractmethod
+    def stop_streaming(self) -> None: ...
 
     def start_session(self, start_condition: Callable[[T], bool] | None = None) -> Session[T]:
         """Starts a session with an optional start condition.
@@ -79,12 +86,16 @@ class Stream(ABC, Generic[T]):
         All items before the start condition will be skipped.
         """
         session = Session(self, self.condition(), start_condition)
+        if len(self.sessions) == 0:
+            self.start_streaming()
         self.sessions.add(session)
         return session
 
     def end_session(self, session: Session[T]):
         """Ends a session and removes it from active sessions."""
         self.sessions.discard(session)
+        if len(self.sessions) == 0:
+            self.stop_streaming()
 
     def register_callback(self, callback: Callable[[T], None]):
         """Registers a callback to the stream."""
@@ -101,5 +112,8 @@ class Stream(ABC, Generic[T]):
         for session in self.sessions:
             session.add_item(item)
 
-        for callback in self.callbacks:
-            callback(item)
+        for callback in self.callbacks.copy():
+            try:
+                callback(item)
+            except Exception as e:
+                logger.error("Error in stream callback: %s", e)
