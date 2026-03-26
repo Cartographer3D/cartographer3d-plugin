@@ -63,7 +63,7 @@ class StreamMacro(Macro):
         output_file = p.file or generate_filepath("stream")
 
         validate_output_path(output_file)
-        self._output_file = output_file
+        self._output_file = resolve_filepath(output_file)
 
         # Start the streaming session
         self._active_session = self._mcu.start_session()

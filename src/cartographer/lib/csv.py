@@ -36,6 +36,10 @@ def generate_filepath(label: str) -> str:
 
 def validate_output_path(output_file: str) -> None:
     """Validate that we can write to the output path."""
+    if not output_file.endswith(".csv"):
+        msg = f"Output file must have a .csv extension, got: {output_file}"
+        raise RuntimeError(msg)
+
     # Check if parent directory exists and is writable
     output_file = resolve_filepath(output_file)
     parent_dir = os.path.dirname(output_file)
@@ -57,5 +61,12 @@ def validate_output_path(output_file: str) -> None:
 
 
 def resolve_filepath(path: str) -> str:
-    """Expand ~ and environment variables in a file path."""
-    return os.path.expandvars(os.path.expanduser(path))
+    """Expand ~ and environment variables in a file path.
+
+    If the resulting path is relative (no directory component like ``/`` or ``~``),
+    it is placed in the system temp directory so the file is easy to find.
+    """
+    expanded = os.path.expandvars(os.path.expanduser(path))
+    if not os.path.isabs(expanded):
+        expanded = os.path.join(tempfile.gettempdir(), expanded)
+    return expanded
