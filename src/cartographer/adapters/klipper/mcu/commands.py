@@ -52,6 +52,10 @@ class KlipperCartographerCommands:
         self._stop_home_command = self._mcu.lookup_command("cartographer_stop_home", cq=command_queue)
         self._command_queue = command_queue
 
+    @property
+    def is_initialized(self) -> bool:
+        return self._command_queue is not None
+
     def _ensure_initialized(self, command: CommandWrapper | None, name: str) -> CommandWrapper:
         if command is None:
             msg = f"{name} has not been initialized"
