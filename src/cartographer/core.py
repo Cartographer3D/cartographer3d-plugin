@@ -90,7 +90,8 @@ class PrinterCartographer:
             validate_and_remove_incompatible_models(self.config, mcu_version)
         else:
             logger.warning(
-                "Cartographer MCU not connected. Skipping model validation. Probe operations will be unavailable."
+                "Cartographer MCU not connected. "
+                "Models loaded without version validation - recalibrate if MCU firmware was updated."
             )
 
         if DEFAULT_SCAN_MODEL_NAME in self.config.scan.models:
