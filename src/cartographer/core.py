@@ -89,8 +89,8 @@ class PrinterCartographer:
         if mcu_version is not None:
             validate_and_remove_incompatible_models(self.config, mcu_version)
         else:
-            logger.warning(
-                "Cartographer MCU not connected. "
+            self.config.log_runtime_warning(
+                "[cartographer] MCU not connected. "
                 "Models loaded without version validation - recalibrate if MCU firmware was updated."
             )
 
