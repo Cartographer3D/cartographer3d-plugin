@@ -116,7 +116,7 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         self._constants = KlipperCartographerConstants(self.klipper_mcu)
         self._commands = KlipperCartographerCommands(self.klipper_mcu)
         self._register_data_response()
-        logger.info("Initialized %s MCU", self.klipper_mcu.get_status()["mcu_version"])
+        logger.info("Initialized %s MCU", self.get_mcu_version() or "unknown")
 
     _DATA_MSG_FORMAT = "cartographer_data clock=%u data=%u temp=%u"
     _DATA_MSG_NAME = "cartographer_data"
@@ -134,8 +134,8 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
             mcu.register_response(self._handle_data, self._DATA_MSG_NAME)
 
     @override
-    def get_mcu_version(self) -> str:
-        return self.klipper_mcu.get_status()["mcu_version"]
+    def get_mcu_version(self) -> str | None:
+        return self.klipper_mcu.get_status().get("mcu_version")
 
     @override
     def start_homing_scan(self, print_time: float, frequency: float) -> ReactorCompletion:
@@ -222,10 +222,12 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
                 self.dispatch.add_stepper(stepper)
 
     def _handle_connect(self) -> None:
-        self.stop_streaming()
+        if self._commands is not None:
+            self.stop_streaming()
 
     def _handle_shutdown(self) -> None:
-        self.stop_streaming()
+        if self._commands is not None:
+            self.stop_streaming()
 
     def _handle_data(self, data: _RawData) -> None:
         """

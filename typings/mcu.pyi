@@ -13,7 +13,7 @@ _T = TypeVar("_T")
 
 class error(Exception): ...
 
-class _MCUStatus(TypedDict):
+class _MCUStatus(TypedDict, total=False):
     mcu_version: str
 
 class _CommandQueue: ...

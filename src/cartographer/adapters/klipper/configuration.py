@@ -69,6 +69,9 @@ class KlipperConfiguration(Configuration):
         # Version info fields are part of ModelVersionInfo, not individual option() fields
         sw_version = __version__
         mcu_version = self._mcu.get_mcu_version()
+        if mcu_version is None:
+            msg = "Cannot save model: Cartographer MCU is not connected"
+            raise RuntimeError(msg)
         save("software_version", sw_version)
         save("mcu_version", mcu_version)
 
@@ -97,6 +100,9 @@ class KlipperConfiguration(Configuration):
         # Version info fields are part of ModelVersionInfo, not individual option() fields
         sw_version = __version__
         mcu_version = self._mcu.get_mcu_version()
+        if mcu_version is None:
+            msg = "Cannot save model: Cartographer MCU is not connected"
+            raise RuntimeError(msg)
         save("software_version", sw_version)
         save("mcu_version", mcu_version)
 
