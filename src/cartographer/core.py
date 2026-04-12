@@ -85,7 +85,13 @@ class PrinterCartographer:
         self.macros = self._create_macro_registrations(probe, toolhead, adapters)
 
     def ready_callback(self) -> None:
-        validate_and_remove_incompatible_models(self.config, self.mcu.get_mcu_version())
+        mcu_version = self.mcu.get_mcu_version()
+        if mcu_version is not None:
+            validate_and_remove_incompatible_models(self.config, mcu_version)
+        else:
+            logger.warning(
+                "Cartographer MCU not connected. Skipping model validation. Probe operations will be unavailable."
+            )
 
         if DEFAULT_SCAN_MODEL_NAME in self.config.scan.models:
             self.scan_mode.load_model(DEFAULT_SCAN_MODEL_NAME)
