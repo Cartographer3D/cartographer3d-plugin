@@ -222,10 +222,12 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
                 self.dispatch.add_stepper(stepper)
 
     def _handle_connect(self) -> None:
-        self.stop_streaming()
+        if self._commands is not None:
+            self.stop_streaming()
 
     def _handle_shutdown(self) -> None:
-        self.stop_streaming()
+        if self._commands is not None:
+            self.stop_streaming()
 
     def _handle_data(self, data: _RawData) -> None:
         """
