@@ -37,13 +37,14 @@ class KlipperCartographerConstants:
 
     def __init__(self, mcu: MCU):
         self._mcu = mcu
-        self._command_queue = self._mcu.alloc_command_queue()
-        self._mcu.register_config_callback(self._initialize_constants)
+        self._command_queue = None
 
         self.thermistor = Thermistor(10000.0, 0.0)
         self.thermistor.setup_coefficients_beta(25.0, 47000.0, 4041.0)
 
-    def _initialize_constants(self):
+    def build_config(self):
+        command_queue = self._mcu.alloc_command_queue()
+
         constants = self._mcu.get_constants()
         self._sensor_frequency = self._clock_to_sensor_frequency(float(constants["CLOCK_FREQ"]))
         self._inverse_adc_max = 1.0 / int(constants["ADC_MAX"])
@@ -53,9 +54,10 @@ class KlipperCartographerConstants:
         base_read_command = self._mcu.lookup_query_command(
             "cartographer_base_read len=%c offset=%hu",
             "cartographer_base_data bytes=%*s offset=%hu",
-            cq=self._command_queue,
+            cq=command_queue,
         )
         self._read_base(base_read_command)
+        self._command_queue = command_queue
 
     def _read_base(self, cmd: CommandQueryWrapper[_BaseData]) -> None:
         fixed_length = 6
