@@ -31,16 +31,24 @@ class ThresholdCommand(NamedTuple):
 @final
 class KlipperCartographerCommands:
     def __init__(self, mcu: MCU):
+        self._mcu = mcu
         self._command_queue = mcu.alloc_command_queue()
-        self._stream_command = mcu.lookup_command("cartographer_stream en=%u", cq=self._command_queue)
-        self._set_threshold_command = mcu.lookup_command(
-            "cartographer_set_threshold trigger=%u untrigger=%u", cq=self._command_queue
+        self._stream_command: CommandWrapper | None = None
+        self._set_threshold_command: CommandWrapper | None = None
+        self._start_home_command: CommandWrapper | None = None
+        self._stop_home_command: CommandWrapper | None = None
+
+    def initialize(self) -> None:
+        cq = self._command_queue
+        self._stream_command = self._mcu.lookup_command("cartographer_stream en=%u", cq=cq)
+        self._set_threshold_command = self._mcu.lookup_command(
+            "cartographer_set_threshold trigger=%u untrigger=%u", cq=cq
         )
-        self._start_home_command = mcu.lookup_command(
+        self._start_home_command = self._mcu.lookup_command(
             "cartographer_home trsync_oid=%c trigger_reason=%c trigger_invert=%c threshold=%u trigger_method=%u",
-            cq=self._command_queue,
+            cq=cq,
         )
-        self._stop_home_command = mcu.lookup_command("cartographer_stop_home", cq=self._command_queue)
+        self._stop_home_command = self._mcu.lookup_command("cartographer_stop_home", cq=cq)
 
     def _ensure_initialized(self, command: CommandWrapper | None, name: str) -> CommandWrapper:
         if command is None:

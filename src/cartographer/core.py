@@ -85,6 +85,9 @@ class PrinterCartographer:
         self.macros = self._create_macro_registrations(probe, toolhead, adapters)
 
     def ready_callback(self) -> None:
+        self.validate_and_load_models()
+
+    def validate_and_load_models(self) -> None:
         mcu_version = self.mcu.get_mcu_version()
         if mcu_version is not None:
             validate_and_remove_incompatible_models(self.config, mcu_version)
