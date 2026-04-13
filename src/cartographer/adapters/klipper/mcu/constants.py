@@ -38,12 +38,11 @@ class KlipperCartographerConstants:
     def __init__(self, mcu: MCU):
         self._mcu = mcu
         self._command_queue = self._mcu.alloc_command_queue()
-        self._mcu.register_config_callback(self._initialize_constants)
 
         self.thermistor = Thermistor(10000.0, 0.0)
         self.thermistor.setup_coefficients_beta(25.0, 47000.0, 4041.0)
 
-    def _initialize_constants(self):
+    def initialize(self):
         constants = self._mcu.get_constants()
         self._sensor_frequency = self._clock_to_sensor_frequency(float(constants["CLOCK_FREQ"]))
         self._inverse_adc_max = 1.0 / int(constants["ADC_MAX"])
