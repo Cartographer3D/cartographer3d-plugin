@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import asdict
 from functools import cached_property
-from typing import TYPE_CHECKING, Callable, TypedDict, final
+from typing import TYPE_CHECKING, TypedDict, final
 
 import mcu
 from mcu import MCU_trsync
@@ -29,6 +29,8 @@ from cartographer.adapters.klipper.mcu.stream import KlipperStream, KlipperStrea
 from cartographer.interfaces.printer import CoilCalibrationReference, Mcu, Position, Sample
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from configfile import ConfigWrapper
     from reactor import Reactor, ReactorCompletion
 
@@ -81,6 +83,7 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         mcu_name: str,
     ):
         self._sensor_ready = False
+        self._reconnect_callbacks: list[Callable[[], None]] = []
         self.printer = config.get_printer()
         self.klipper_mcu = mcu.get_printer_mcu(self.printer, mcu_name)
         self._reactor: Reactor = self.klipper_mcu.get_printer().get_reactor()
@@ -100,6 +103,18 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         self.printer.register_event_handler("klippy:connect", self._handle_connect)
         self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
         self.klipper_mcu.register_config_callback(self._initialize)
+
+        get_reconnect_event: Callable[[], str] | None = getattr(
+            self.klipper_mcu, "get_non_critical_reconnect_event_name", None
+        )
+        get_disconnect_event: Callable[[], str] | None = getattr(
+            self.klipper_mcu, "get_non_critical_disconnect_event_name", None
+        )
+        if get_reconnect_event is not None and get_disconnect_event is not None:
+            reconnect_event = get_reconnect_event()
+            disconnect_event = get_disconnect_event()
+            self.printer.register_event_handler(reconnect_event, self._handle_reconnect)  # pyright: ignore [reportCallIssue, reportArgumentType]
+            self.printer.register_event_handler(disconnect_event, self._handle_disconnect)  # pyright: ignore [reportCallIssue, reportArgumentType]
 
     @override
     def get_status(self, eventtime: float) -> dict[str, object]:
@@ -233,6 +248,24 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     def _handle_shutdown(self) -> None:
         if self._commands is not None:
             self.stop_streaming()
+
+    def register_reconnect_callback(self, callback: Callable[[], None]) -> None:
+        self._reconnect_callbacks.append(callback)
+
+    def _handle_reconnect(self) -> None:
+        logger.info("Cartographer MCU reconnected")
+        for callback in self._reconnect_callbacks:
+            try:
+                callback()
+            except Exception as e:
+                logger.exception("Error in reconnect callback")
+                self.printer.invoke_shutdown(f"Cartographer MCU reconnect failed: {e}")
+                return
+
+    def _handle_disconnect(self) -> None:
+        logger.warning("Cartographer MCU disconnected")
+        self._sensor_ready = False
+        self._stream.abort_all_sessions()
 
     def _handle_data(self, data: _RawData) -> None:
         """
