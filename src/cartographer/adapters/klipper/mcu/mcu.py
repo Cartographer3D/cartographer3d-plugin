@@ -113,9 +113,14 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         return self._stream.last_item
 
     def _initialize(self) -> None:
-        self._constants = KlipperCartographerConstants(self.klipper_mcu)
-        self._commands = KlipperCartographerCommands(self.klipper_mcu)
+        if self._constants is None:
+            self._constants = KlipperCartographerConstants(self.klipper_mcu)
+        self._constants.initialize()
+        if self._commands is None:
+            self._commands = KlipperCartographerCommands(self.klipper_mcu)
+        self._commands.initialize()
         self._register_data_response()
+        self._sensor_ready = False
         logger.info("Initialized %s MCU", self.get_mcu_version() or "unknown")
 
     _DATA_MSG_FORMAT = "cartographer_data clock=%u data=%u temp=%u"
