@@ -19,7 +19,10 @@ homepage = "https://cartographer3d.com/"
 repository = "https://github.com/Cartographer3D/cartographer3d-plugin"
 
 [project.optional-dependencies]
-scipy = ["scipy~=1.9"]
+scipy = [
+  "scipy>=1.12; python_version>='3.9'",
+  "scipy>=1.9; python_version<'3.9'",
+]
 
 [dependency-groups]
 test = [

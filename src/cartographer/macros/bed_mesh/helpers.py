@@ -278,9 +278,7 @@ class CoordinateTransformer:
 
         # Interpolate missing values if scipy is available
         if np.any(mask):
-            if not scipy_helpers.is_available():
-                msg = "scipy is required for interpolation of faulty regions"
-                raise RuntimeError(msg)
+            scipy_helpers.raise_if_rbf_interpolator_unavailable()
             logger.info("Interpolating %d faulty points", np.sum(mask))
 
             # Use the same order as flattening the mask/grid

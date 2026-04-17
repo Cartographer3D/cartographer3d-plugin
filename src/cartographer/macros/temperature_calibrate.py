@@ -64,9 +64,7 @@ class TemperatureCalibrateMacro(Macro):
 
     @override
     def run(self, params: MacroParams) -> None:
-        if not scipy_helpers.is_available():
-            msg = "scipy is required for temperature calibration, but is not installed"
-            raise RuntimeError(msg)
+        scipy_helpers.raise_if_curve_fit_unavailable()
 
         p = parse(TemperatureCalibrateParams, params)
 
