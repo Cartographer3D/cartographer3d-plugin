@@ -64,7 +64,8 @@ typecheck = [
 
 [package.metadata]
 requires-dist = [
-    { name = "scipy", marker = "extra == 'scipy'", specifier = "~=1.9" },
+    { name = "scipy", marker = "python_full_version >= '3.9' and extra == 'scipy'", specifier = ">=1.12" },
+    { name = "scipy", marker = "python_full_version < '3.9' and extra == 'scipy'", specifier = ">=1.9" },
     { name = "typing-extensions", specifier = "~=4.12" },
 ]
 provides-extras = ["scipy"]
