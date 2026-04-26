@@ -69,3 +69,48 @@ class TestStream:
 
         stream.end_session(session)
         worker.join()  # Ensure thread has finished before exiting
+
+
+class TestSessionAbort:
+    def test_session_abort_wakes_waiter_with_runtime_error(self, stream: Stream[object]) -> None:
+        """Aborting a session causes wait_for to raise RuntimeError."""
+        session = stream.start_session()
+
+        def abort_soon() -> None:
+            time.sleep(0.05)
+            session.abort()
+
+        worker = threading.Thread(target=abort_soon)
+        worker.start()
+
+        with pytest.raises(RuntimeError, match="disconnected"):
+            session.wait_for(lambda items: len(items) >= 100)  # never-true condition
+
+        worker.join()
+
+    def test_abort_already_set_raises_immediately(self, stream: Stream[object]) -> None:
+        """If abort() was called before wait_for, wait_for raises without blocking."""
+        session = stream.start_session()
+        session.abort()
+
+        with pytest.raises(RuntimeError, match="disconnected"):
+            session.wait_for(lambda items: False)
+
+
+class TestAbortAllSessions:
+    def test_stream_abort_all_sessions_aborts_each(self, stream: Stream[object]) -> None:
+        """abort_all_sessions aborts every active session."""
+        session_a = stream.start_session()
+        session_b = stream.start_session()
+
+        stream.abort_all_sessions()
+
+        with pytest.raises(RuntimeError):
+            session_a.wait_for(lambda items: False)
+
+        with pytest.raises(RuntimeError):
+            session_b.wait_for(lambda items: False)
+
+    def test_stream_abort_all_sessions_empty(self, stream: Stream[object]) -> None:
+        """abort_all_sessions on a stream with no sessions does not raise."""
+        stream.abort_all_sessions()  # Should not raise
