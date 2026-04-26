@@ -54,7 +54,7 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     @property
     def constants(self) -> KlipperCartographerConstants:
         if self._constants is None:
-            msg = "Mcu not initialized"
+            msg = "Cartographer MCU not initialized"
             raise RuntimeError(msg)
         return self._constants
 
@@ -68,7 +68,10 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     @property
     def commands(self) -> KlipperCartographerCommands:
         if self._commands is None:
-            msg = "Mcu not initialized"
+            msg = "Cartographer MCU not initialized"
+            raise RuntimeError(msg)
+        if getattr(self.klipper_mcu, "non_critical_disconnected", False):
+            msg = "Cartographer MCU is disconnected"
             raise RuntimeError(msg)
         return self._commands
 

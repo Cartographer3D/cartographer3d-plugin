@@ -50,11 +50,6 @@ class KlipperCartographerCommands:
         )
         self._stop_home_command = self._mcu.lookup_command("cartographer_stop_home", cq=cq)
 
-    def _check_connected(self) -> None:
-        if getattr(self._mcu, "non_critical_disconnected", False):
-            msg = "Cartographer MCU is disconnected"
-            raise RuntimeError(msg)
-
     def _ensure_initialized(self, command: CommandWrapper | None, name: str) -> CommandWrapper:
         if command is None:
             msg = f"Command {name} has not been initialized"
@@ -62,25 +57,21 @@ class KlipperCartographerCommands:
         return command
 
     def send_stream_state(self, *, enable: bool) -> None:
-        self._check_connected()
         command = self._ensure_initialized(self._stream_command, "stream command")
         logger.debug("%s stream", "Starting" if enable else "Stopping")
         command.send([1 if enable else 0])
 
     def send_threshold(self, command: ThresholdCommand) -> None:
-        self._check_connected()
         cmd = self._ensure_initialized(self._set_threshold_command, "set threshold command")
         logger.debug("Sending trigger frequency threshold command %s", list(command))
         cmd.send(list(command))
 
     def send_home(self, command: HomeCommand) -> None:
-        self._check_connected()
         cmd = self._ensure_initialized(self._start_home_command, "start home command")
         logger.debug("Sending home command %s", list(command))
         cmd.send(list(command))
 
     def send_stop_home(self) -> None:
-        self._check_connected()
         cmd = self._ensure_initialized(self._stop_home_command, "stop home command")
         logger.debug("Sending stop home command")
         cmd.send()
