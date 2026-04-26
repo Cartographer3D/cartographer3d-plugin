@@ -16,6 +16,8 @@ class Condition(Protocol):
 
 
 class Session(Generic[T]):
+    _aborted: bool = False
+
     def __init__(
         self,
         stream: Stream[T],
@@ -38,12 +40,23 @@ class Session(Generic[T]):
         self._condition.notify_all()
 
     def wait_for(self, condition: Callable[[list[T]], bool]):
-        """Waits until the given condition function returns True."""
-        self._condition.wait_for(lambda: condition(self.items))
+        """Waits until the given condition function returns True.
+
+        Raises RuntimeError if the session was aborted (e.g. MCU disconnect).
+        """
+        self._condition.wait_for(lambda: self._aborted or condition(self.items))
+        if self._aborted:
+            msg = "Cartographer MCU disconnected during session"
+            raise RuntimeError(msg)
 
     def get_items(self) -> list[T]:
         """Returns collected items after session ends."""
         return self.items
+
+    def abort(self) -> None:
+        """Abort this session; any waiter will wake and raise RuntimeError."""
+        self._aborted = True
+        self._condition.notify_all()
 
     def __enter__(self):
         return self  # Allows using `with session:`
@@ -85,6 +98,11 @@ class Stream(ABC, Generic[T]):
     def end_session(self, session: Session[T]):
         """Ends a session and removes it from active sessions."""
         self.sessions.discard(session)
+
+    def abort_all_sessions(self) -> None:
+        """Wake all waiting sessions so they detect abort and raise."""
+        for session in list(self.sessions):
+            session.abort()
 
     def register_callback(self, callback: Callable[[T], None]):
         """Registers a callback to the stream."""

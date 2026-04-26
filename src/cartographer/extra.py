@@ -27,6 +27,10 @@ def load_config(config: object) -> object:
 
     integrator.register_ready_callback(cartographer.ready_callback)
 
+    register_reconnect = getattr(adapters.mcu, "register_reconnect_callback", None)
+    if register_reconnect is not None:
+        register_reconnect(cartographer.validate_and_load_models)
+
     integrator_name = integrator.__class__.__name__
     logger.info("Loaded Cartographer3D Plugin version %s using %s", __version__, integrator_name)
 
