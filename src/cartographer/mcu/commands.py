@@ -31,7 +31,7 @@ class ThresholdCommand(NamedTuple):
 
 
 @final
-class KlipperCartographerCommands:
+class CartographerCommands:
     def __init__(self, platform: McuPlatform):
         self._platform = platform
         self._command_queue = platform.alloc_command_queue()

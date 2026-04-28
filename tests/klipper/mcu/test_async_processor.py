@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cartographer.adapters.klipper.mcu.async_processor import BATCH_INTERVAL, AsyncProcessor
+from cartographer.mcu.async_processor import BATCH_INTERVAL, AsyncProcessor
 
 if TYPE_CHECKING:
     from collections.abc import Callable

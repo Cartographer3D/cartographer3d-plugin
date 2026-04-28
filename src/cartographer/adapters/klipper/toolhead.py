@@ -4,6 +4,7 @@ from configfile import ConfigWrapper
 from typing_extensions import override
 
 from cartographer.adapters.klipper_like.toolhead import KlipperLikeToolhead
+from cartographer.mcu.mcu import CartographerMcu
 
 if TYPE_CHECKING:
     from gcode import GCodeDispatch

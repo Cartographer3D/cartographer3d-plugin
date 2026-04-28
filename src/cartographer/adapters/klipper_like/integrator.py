@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from cartographer.adapters.klipper.configuration import KlipperConfiguration
     from cartographer.core import MacroRegistration
     from cartographer.interfaces.printer import Endstop
+    from cartographer.mcu.mcu import CartographerMcu
 
 logger = logging.getLogger(__name__)
 

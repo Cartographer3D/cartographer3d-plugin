@@ -40,7 +40,7 @@ class AsyncProcessor(Generic[T]):
     Parameters:
     -----------
     reactor : Reactor
-        The Klipper reactor instance.
+        The reactor instance.
     process_fn : Callable[[T], None]
         Function to process each item on main thread.
     """

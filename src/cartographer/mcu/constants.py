@@ -29,7 +29,7 @@ SENSOR_READY_TIMEOUT = 5.0
 
 
 @final
-class KlipperCartographerConstants:
+class CartographerConstants:
     _sensor_frequency: float = 1
     _inverse_adc_max: float = 0.0
     _adc_smooth_count: int = 1

@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, final
 if TYPE_CHECKING:
     from cartographer.interfaces.configuration import CoilConfiguration
     from cartographer.interfaces.printer import Sample
+    from cartographer.mcu.mcu import CartographerMcu
 
 logger = logging.getLogger(__name__)
 

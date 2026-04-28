@@ -7,6 +7,7 @@ from typing_extensions import override
 
 from cartographer.adapters.kalico.probe import KalicoCartographerProbe
 from cartographer.adapters.klipper_like.integrator import KlipperLikeIntegrator
+from cartographer.mcu.mcu import CartographerMcu
 
 if TYPE_CHECKING:
     from cartographer.adapters.kalico.adapters import KalicoAdapters

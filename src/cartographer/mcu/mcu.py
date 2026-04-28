@@ -7,28 +7,27 @@ from typing import TYPE_CHECKING, TypedDict, final
 from mcu import MCU_trsync
 from typing_extensions import override
 
-from cartographer.adapters.klipper.mcu.async_processor import AsyncProcessor
-from cartographer.adapters.klipper.mcu.commands import (
+from cartographer.interfaces.printer import CoilCalibrationReference, Mcu, Sample
+from cartographer.mcu.async_processor import AsyncProcessor
+from cartographer.mcu.commands import (
+    CartographerCommands,
     HomeCommand,
-    KlipperCartographerCommands,
     ThresholdCommand,
     TriggerMethod,
 )
-from cartographer.adapters.klipper.mcu.constants import (
+from cartographer.mcu.constants import (
     FREQUENCY_RANGE_PERCENT,
     INVALID_FREQUENCY_COUNTS,
     SENSOR_READY_TIMEOUT,
     SHORTED_FREQUENCY_VALUE,
     TRIGGER_HYSTERESIS,
-    KlipperCartographerConstants,
+    CartographerConstants,
 )
-from cartographer.adapters.klipper.mcu.stream import KlipperStream, KlipperStreamMcu
-from cartographer.interfaces.printer import CoilCalibrationReference, Mcu, Sample
+from cartographer.mcu.stream import CartographerStream, CartographerStreamMcu
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from klippy import Printer
     from mcu import MCU, TriggerDispatch
     from reactor import Reactor, ReactorCompletion
 
@@ -46,12 +45,12 @@ class _RawData(TypedDict):
 
 
 @final
-class CartographerMcu(Mcu, KlipperStreamMcu):
-    _constants: KlipperCartographerConstants | None = None
-    _commands: KlipperCartographerCommands | None = None
+class CartographerMcu(Mcu, CartographerStreamMcu):
+    _constants: CartographerConstants | None = None
+    _commands: CartographerCommands | None = None
 
     @property
-    def constants(self) -> KlipperCartographerConstants:
+    def constants(self) -> CartographerConstants:
         if self._constants is None:
             msg = "Cartographer MCU not initialized"
             raise RuntimeError(msg)
@@ -65,7 +64,7 @@ class CartographerMcu(Mcu, KlipperStreamMcu):
         )
 
     @property
-    def commands(self) -> KlipperCartographerCommands:
+    def commands(self) -> CartographerCommands:
         if self._commands is None:
             msg = "Cartographer MCU not initialized"
             raise RuntimeError(msg)
@@ -77,17 +76,15 @@ class CartographerMcu(Mcu, KlipperStreamMcu):
     def __init__(
         self,
         platform: McuPlatform,
-        config: object,
         scheduler: Scheduler,
     ) -> None:
         self._platform: McuPlatform = platform
         self._sensor_ready: bool = False
         self._reconnect_callbacks: list[Callable[[], None]] = []
         reactor: Reactor = platform.get_reactor()
-        self._stream: KlipperStream[Sample] = KlipperStream[Sample](self, reactor)
+        self._stream: CartographerStream[Sample] = CartographerStream[Sample](self, reactor)
         self.dispatch: TriggerDispatch = platform.create_trigger_dispatch()
         self._scheduler: Scheduler = scheduler
-        self.motion_report: object = platform.load_object(config, "motion_report")
         self._async_processor: AsyncProcessor[_RawData] = AsyncProcessor[_RawData](reactor, self._process_raw_data)
         platform.register_lifecycle_handlers(
             on_identify=self._handle_mcu_identify,
@@ -99,12 +96,8 @@ class CartographerMcu(Mcu, KlipperStreamMcu):
         platform.register_config_callback(self._initialize)
 
     @property
-    def printer(self) -> Printer:
-        return self._platform.printer
-
-    @property
-    def klipper_mcu(self) -> MCU:
-        return self._platform.klipper_mcu
+    def host_mcu(self) -> MCU:
+        return self._platform.host_mcu
 
     @override
     def get_status(self, eventtime: float) -> dict[str, object]:
@@ -119,10 +112,10 @@ class CartographerMcu(Mcu, KlipperStreamMcu):
 
     def _initialize(self) -> None:
         if self._constants is None:
-            self._constants = KlipperCartographerConstants(self._platform)
+            self._constants = CartographerConstants(self._platform)
         self._constants.initialize()
         if self._commands is None:
-            self._commands = KlipperCartographerCommands(self._platform)
+            self._commands = CartographerCommands(self._platform)
         self._commands.initialize()
         self._platform.register_data_response(self._handle_data, self._DATA_MSG_FORMAT, self._DATA_MSG_NAME)
         self._sensor_ready = False
@@ -221,11 +214,11 @@ class CartographerMcu(Mcu, KlipperStreamMcu):
             self._platform.add_stepper_to_dispatch(self.dispatch, stepper)
 
     def _handle_connect(self) -> None:
-        if self._commands is not None:
+        if self._commands is not None and not self._platform.is_disconnected():
             self.stop_streaming()
 
     def _handle_shutdown(self) -> None:
-        if self._commands is not None:
+        if self._commands is not None and not self._platform.is_disconnected():
             self.stop_streaming()
 
     def register_reconnect_callback(self, callback: Callable[[], None]) -> None:
@@ -295,10 +288,11 @@ class CartographerMcu(Mcu, KlipperStreamMcu):
 
     def _validate_data(self, data: _RawData) -> None:
         """
-        Validate raw data from MCU (thread-safe operation).
+        Validate raw data from MCU.
 
-        This validation only checks the frequency count and doesn't access
-        any shared state, so it's safe to call from the MCU response thread.
+        Called from the MCU response thread. Accesses ``_constants`` for
+        range validation; if constants are not yet initialized (early
+        startup), range validation is skipped.
 
         Parameters:
         -----------
@@ -309,8 +303,10 @@ class CartographerMcu(Mcu, KlipperStreamMcu):
         error: str | None = None
         if count == SHORTED_FREQUENCY_VALUE:
             error = "coil is shorted or not connected."
-        elif count > self.constants.minimum_count * FREQUENCY_RANGE_PERCENT:
-            error = "coil frequency reading exceeded max expected value, received %(count)d"
+        else:
+            constants = self._constants
+            if constants is not None and count > constants.minimum_count * FREQUENCY_RANGE_PERCENT:
+                error = "coil frequency reading exceeded max expected value, received %(count)d"
 
         if self._data_error == error:
             return

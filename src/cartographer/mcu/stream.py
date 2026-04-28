@@ -12,8 +12,8 @@ if TYPE_CHECKING:
 
 
 @final
-class KlipperCondition(Condition):
-    """The Klipper equivalent of [threading.Condition](https://docs.python.org/3/library/threading.html#condition-objects)"""
+class CartographerCondition(Condition):
+    """Reactor-based equivalent of [threading.Condition](https://docs.python.org/3/library/threading.html#condition-objects)."""
 
     def __init__(self, reactor: Reactor):
         self.reactor = reactor
@@ -38,7 +38,7 @@ class KlipperCondition(Condition):
 T = TypeVar("T")
 
 
-class KlipperStreamMcu(Protocol):
+class CartographerStreamMcu(Protocol):
     def start_streaming(self) -> None:
         """Used to ask the MCU to start sending data."""
         ...
@@ -51,10 +51,10 @@ class KlipperStreamMcu(Protocol):
 
 
 @final
-class KlipperStream(Stream[T]):
+class CartographerStream(Stream[T]):
     def __init__(
         self,
-        mcu: KlipperStreamMcu,
+        mcu: CartographerStreamMcu,
         reactor: Reactor,
     ):
         super().__init__()
@@ -63,7 +63,7 @@ class KlipperStream(Stream[T]):
 
     @override
     def condition(self) -> Condition:
-        return KlipperCondition(self.reactor)
+        return CartographerCondition(self.reactor)
 
     @override
     def start_session(self, start_condition: Callable[[T], bool] | None = None) -> Session[T]:

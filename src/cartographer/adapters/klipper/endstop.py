@@ -16,6 +16,7 @@ if TYPE_CHECKING:
     from stepper import MCU_stepper
 
     from cartographer.interfaces.printer import Endstop
+    from cartographer.mcu.mcu import CartographerMcu
 
 logger = logging.getLogger(__name__)
 
@@ -53,7 +54,7 @@ class KlipperEndstop(MCU_endstop):
 
     @override
     def get_mcu(self) -> MCU:
-        return self.mcu.klipper_mcu
+        return self.mcu.host_mcu
 
     @override
     def add_stepper(self, stepper: MCU_stepper) -> None:

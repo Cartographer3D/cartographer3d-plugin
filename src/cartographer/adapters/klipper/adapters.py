@@ -12,6 +12,7 @@ from cartographer.adapters.klipper.scheduler import KlipperScheduler
 from cartographer.adapters.klipper.toolhead import KlipperToolhead
 from cartographer.config.fields import parse
 from cartographer.interfaces.configuration import GeneralConfig
+from cartographer.mcu.mcu import CartographerMcu
 from cartographer.runtime.adapters import Adapters
 
 if TYPE_CHECKING:
