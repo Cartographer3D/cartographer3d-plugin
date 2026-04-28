@@ -4,11 +4,11 @@ import logging
 from typing import TYPE_CHECKING, final
 
 from cartographer.adapters.kalico.axis_twist_compensation import KalicoAxisTwistCompensationAdapter
+from cartographer.adapters.kalico.mcu_platform import KalicoMcuPlatform
 from cartographer.adapters.kalico.toolhead import KalicoToolhead
 from cartographer.adapters.klipper.bed_mesh import KlipperBedMesh
 from cartographer.adapters.klipper.configuration import KlipperConfiguration
 from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
-from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
 from cartographer.adapters.klipper.scheduler import KlipperScheduler
 from cartographer.config.fields import parse
 from cartographer.interfaces.configuration import GeneralConfig
@@ -28,7 +28,8 @@ class KalicoAdapters(Adapters):
         self.scheduler = KlipperScheduler(self.printer.get_reactor())
 
         general = parse(GeneralConfig, config)
-        self.mcu = KlipperCartographerMcu(config, self.scheduler, general.mcu)
+        platform = KalicoMcuPlatform(config, general.mcu)
+        self.mcu = CartographerMcu(platform, self.scheduler)
         self.config = KlipperConfiguration(config, self.mcu, general)
 
         self.toolhead = KalicoToolhead(config, self.mcu)

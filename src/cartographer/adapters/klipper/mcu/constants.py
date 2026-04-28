@@ -7,7 +7,9 @@ from typing import TYPE_CHECKING, TypedDict, final
 from extras.thermistor import Thermistor
 
 if TYPE_CHECKING:
-    from mcu import MCU, CommandQueryWrapper
+    from mcu import CommandQueryWrapper
+
+    from cartographer.interfaces.mcu_platform import McuPlatform
 
 logger = logging.getLogger(__name__)
 
@@ -35,21 +37,21 @@ class KlipperCartographerConstants:
     minimum_adc_count: int = 0
     minimum_count: int = 0
 
-    def __init__(self, mcu: MCU):
-        self._mcu = mcu
-        self._command_queue = self._mcu.alloc_command_queue()
+    def __init__(self, platform: McuPlatform):
+        self._platform = platform
+        self._command_queue = self._platform.alloc_command_queue()
 
         self.thermistor = Thermistor(10000.0, 0.0)
         self.thermistor.setup_coefficients_beta(25.0, 47000.0, 4041.0)
 
     def initialize(self):
-        constants = self._mcu.get_constants()
+        constants = self._platform.get_constants()
         self._sensor_frequency = self._clock_to_sensor_frequency(float(constants["CLOCK_FREQ"]))
         self._inverse_adc_max = 1.0 / int(constants["ADC_MAX"])
         self._adc_smooth_count = int(constants["CARTOGRAPHER_ADC_SMOOTH_COUNT"])
         logger.debug("Received constants: %s", constants)
 
-        base_read_command = self._mcu.lookup_query_command(
+        base_read_command = self._platform.lookup_query_command(
             "cartographer_base_read len=%c offset=%hu",
             "cartographer_base_data bytes=%*s offset=%hu",
             cq=self._command_queue,
@@ -68,7 +70,7 @@ class KlipperCartographerConstants:
 
         if f_count >= UINT32_MAX or adc_count >= UINT16_MAX:
             msg = "Invalid f_count or adc_count"
-            raise self._mcu.error(msg)
+            raise self._platform.mcu_error(msg)
 
         self.minimum_adc_count = adc_count
         self.minimum_count = f_count

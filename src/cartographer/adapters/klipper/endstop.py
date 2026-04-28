@@ -15,7 +15,6 @@ if TYPE_CHECKING:
     from reactor import ReactorCompletion
     from stepper import MCU_stepper
 
-    from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
     from cartographer.interfaces.printer import Endstop
 
 logger = logging.getLogger(__name__)
@@ -48,7 +47,7 @@ class KlipperHomingState(HomingState):
 
 @final
 class KlipperEndstop(MCU_endstop):
-    def __init__(self, mcu: KlipperCartographerMcu, endstop: Endstop):
+    def __init__(self, mcu: CartographerMcu, endstop: Endstop):
         self.mcu = mcu
         self.endstop = endstop
 

@@ -24,12 +24,12 @@ from cartographer.interfaces.configuration import (
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
 
-    from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
+    from cartographer.mcu.mcu import CartographerMcu
 
 
 @final
 class KlipperConfiguration(Configuration):
-    def __init__(self, config: ConfigWrapper, mcu: KlipperCartographerMcu, general: GeneralConfig) -> None:
+    def __init__(self, config: ConfigWrapper, mcu: CartographerMcu, general: GeneralConfig) -> None:
         self.wrapper = config
         self._mcu = mcu
         self._config = config.get_printer().lookup_object("configfile")

@@ -4,7 +4,6 @@ import logging
 from typing import TYPE_CHECKING, final
 
 if TYPE_CHECKING:
-    from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
     from cartographer.interfaces.configuration import CoilConfiguration
     from cartographer.interfaces.printer import Sample
 
@@ -22,7 +21,7 @@ class PrinterTemperatureCoil:
     measured_max = ABSOLUTE_ZERO_TEMP
     temperature_warning = False
 
-    def __init__(self, mcu: KlipperCartographerMcu, config: CoilConfiguration) -> None:
+    def __init__(self, mcu: CartographerMcu, config: CoilConfiguration) -> None:
         self.mcu = mcu
         self.name = config.name
 

@@ -2,12 +2,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import asdict
-from functools import cached_property
 from typing import TYPE_CHECKING, TypedDict, final
 
-import mcu
 from mcu import MCU_trsync
-from mcu import TriggerDispatch as KlipperTriggerDispatch
 from typing_extensions import override
 
 from cartographer.adapters.klipper.mcu.async_processor import AsyncProcessor
@@ -26,14 +23,16 @@ from cartographer.adapters.klipper.mcu.constants import (
     KlipperCartographerConstants,
 )
 from cartographer.adapters.klipper.mcu.stream import KlipperStream, KlipperStreamMcu
-from cartographer.interfaces.printer import CoilCalibrationReference, Mcu, Position, Sample
+from cartographer.interfaces.printer import CoilCalibrationReference, Mcu, Sample
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from configfile import ConfigWrapper
+    from klippy import Printer
+    from mcu import MCU, TriggerDispatch
     from reactor import Reactor, ReactorCompletion
 
+    from cartographer.interfaces.mcu_platform import McuPlatform
     from cartographer.interfaces.multiprocessing import Scheduler
     from cartographer.stream import Session
 
@@ -47,7 +46,7 @@ class _RawData(TypedDict):
 
 
 @final
-class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
+class CartographerMcu(Mcu, KlipperStreamMcu):
     _constants: KlipperCartographerConstants | None = None
     _commands: KlipperCartographerCommands | None = None
 
@@ -70,54 +69,42 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         if self._commands is None:
             msg = "Cartographer MCU not initialized"
             raise RuntimeError(msg)
-        if getattr(self.klipper_mcu, "non_critical_disconnected", False):
+        if self._platform.is_disconnected():
             msg = "Cartographer MCU is disconnected"
             raise RuntimeError(msg)
         return self._commands
 
-    @cached_property
-    def kinematics(self):
-        return self.printer.lookup_object("toolhead").get_kinematics()
-
     def __init__(
         self,
-        config: ConfigWrapper,
+        platform: McuPlatform,
+        config: object,
         scheduler: Scheduler,
-        mcu_name: str,
-    ):
-        self._sensor_ready = False
+    ) -> None:
+        self._platform: McuPlatform = platform
+        self._sensor_ready: bool = False
         self._reconnect_callbacks: list[Callable[[], None]] = []
-        self.printer = config.get_printer()
-        self.klipper_mcu = mcu.get_printer_mcu(self.printer, mcu_name)
-        self._reactor: Reactor = self.klipper_mcu.get_printer().get_reactor()
-        self._stream = KlipperStream[Sample](self, self._reactor)
-        self.dispatch = KlipperTriggerDispatch(self.klipper_mcu)
-        self._scheduler = scheduler
-
-        self.motion_report = self.printer.load_object(config, "motion_report")
-
-        # Async processor for handling raw data on main thread
-        self._async_processor = AsyncProcessor[_RawData](
-            self._reactor,
-            self._process_raw_data,
+        reactor: Reactor = platform.get_reactor()
+        self._stream: KlipperStream[Sample] = KlipperStream[Sample](self, reactor)
+        self.dispatch: TriggerDispatch = platform.create_trigger_dispatch()
+        self._scheduler: Scheduler = scheduler
+        self.motion_report: object = platform.load_object(config, "motion_report")
+        self._async_processor: AsyncProcessor[_RawData] = AsyncProcessor[_RawData](reactor, self._process_raw_data)
+        platform.register_lifecycle_handlers(
+            on_identify=self._handle_mcu_identify,
+            on_connect=self._handle_connect,
+            on_shutdown=self._handle_shutdown,
+            on_reconnect=self._handle_reconnect,
+            on_disconnect=self._handle_disconnect,
         )
+        platform.register_config_callback(self._initialize)
 
-        self.printer.register_event_handler("klippy:mcu_identify", self._handle_mcu_identify)
-        self.printer.register_event_handler("klippy:connect", self._handle_connect)
-        self.printer.register_event_handler("klippy:shutdown", self._handle_shutdown)
-        self.klipper_mcu.register_config_callback(self._initialize)
+    @property
+    def printer(self) -> Printer:
+        return self._platform.printer
 
-        get_reconnect_event: Callable[[], str] | None = getattr(
-            self.klipper_mcu, "get_non_critical_reconnect_event_name", None
-        )
-        get_disconnect_event: Callable[[], str] | None = getattr(
-            self.klipper_mcu, "get_non_critical_disconnect_event_name", None
-        )
-        if get_reconnect_event is not None and get_disconnect_event is not None:
-            reconnect_event = get_reconnect_event()
-            disconnect_event = get_disconnect_event()
-            self.printer.register_event_handler(reconnect_event, self._handle_reconnect)  # pyright: ignore [reportCallIssue, reportArgumentType]
-            self.printer.register_event_handler(disconnect_event, self._handle_disconnect)  # pyright: ignore [reportCallIssue, reportArgumentType]
+    @property
+    def klipper_mcu(self) -> MCU:
+        return self._platform.klipper_mcu
 
     @override
     def get_status(self, eventtime: float) -> dict[str, object]:
@@ -132,33 +119,21 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
 
     def _initialize(self) -> None:
         if self._constants is None:
-            self._constants = KlipperCartographerConstants(self.klipper_mcu)
+            self._constants = KlipperCartographerConstants(self._platform)
         self._constants.initialize()
         if self._commands is None:
-            self._commands = KlipperCartographerCommands(self.klipper_mcu)
+            self._commands = KlipperCartographerCommands(self._platform)
         self._commands.initialize()
-        self._register_data_response()
+        self._platform.register_data_response(self._handle_data, self._DATA_MSG_FORMAT, self._DATA_MSG_NAME)
         self._sensor_ready = False
         logger.info("Initialized %s MCU", self.get_mcu_version() or "unknown")
 
     _DATA_MSG_FORMAT = "cartographer_data clock=%u data=%u temp=%u"
     _DATA_MSG_NAME = "cartographer_data"
 
-    def _register_data_response(self) -> None:
-        """Register the cartographer_data response handler.
-
-        Uses register_serial_response (Klipper c89393c+) when available,
-        falling back to register_response for older Klipper versions.
-        """
-        mcu = self.klipper_mcu
-        if hasattr(mcu, "register_serial_response"):
-            _ = mcu.register_serial_response(self._handle_data, self._DATA_MSG_FORMAT)
-        else:
-            mcu.register_response(self._handle_data, self._DATA_MSG_NAME)
-
     @override
     def get_mcu_version(self) -> str | None:
-        return self.klipper_mcu.get_status().get("mcu_version")
+        return self._platform.get_mcu_version()
 
     @override
     def start_homing_scan(self, print_time: float, frequency: float) -> ReactorCompletion:
@@ -233,7 +208,7 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
 
     @override
     def get_current_time(self) -> float:
-        return self.printer.get_reactor().monotonic()
+        return self._platform.get_reactor_time()
 
     def _set_threshold(self, trigger_frequency: float) -> None:
         trigger = self.constants.frequency_to_count(trigger_frequency)
@@ -242,9 +217,8 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         self.commands.send_threshold(ThresholdCommand(trigger, untrigger))
 
     def _handle_mcu_identify(self) -> None:
-        for stepper in self.kinematics.get_steppers():
-            if stepper.is_active_axis("z"):
-                self.dispatch.add_stepper(stepper)
+        for stepper in self._platform.get_z_steppers():
+            self._platform.add_stepper_to_dispatch(self.dispatch, stepper)
 
     def _handle_connect(self) -> None:
         if self._commands is not None:
@@ -264,7 +238,7 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
                 callback()
             except Exception as e:
                 logger.exception("Error in reconnect callback")
-                self.printer.invoke_shutdown(f"Cartographer MCU reconnect failed: {e}")
+                self._platform.invoke_shutdown(f"Cartographer MCU reconnect failed: {e}")
                 return
 
     def _handle_disconnect(self) -> None:
@@ -301,12 +275,12 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
             Raw data from the MCU to process.
         """
         count = data["data"]
-        clock = self.klipper_mcu.clock32_to_clock64(data["clock"])
-        time = self.klipper_mcu.clock_to_print_time(clock)
+        clock = self._platform.clock32_to_clock64(data["clock"])
+        time = self._platform.clock_to_print_time(clock)
 
         frequency = self.constants.count_to_frequency(count)
         temperature = self.constants.calculate_temperature(data["temp"])
-        position = self.get_requested_position(time)
+        position = self._platform.get_requested_position(time)
 
         sample = Sample(
             raw_count=count,
@@ -347,32 +321,7 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
 
         logger.debug(error, {"count": count})
         if len(self._stream.sessions) > 0:
-            self.klipper_mcu.get_printer().invoke_shutdown(error % {"count": count})
-
-    def get_requested_position(self, time: float) -> Position:
-        """
-        Get the requested position at a given time.
-
-        This method MUST be called from the main reactor thread as it
-        accesses stepper positions which are not thread-safe.
-
-        Parameters:
-        -----------
-        time : float
-            The time to query the position at.
-
-        Returns:
-        --------
-        Position
-            The position at the given time.
-        """
-        kinematics = self.kinematics
-        stepper_pos = {
-            stepper.get_name(): stepper.mcu_to_commanded_position(stepper.get_past_mcu_position(time))
-            for stepper in kinematics.get_steppers()
-        }
-        position = kinematics.calc_position(stepper_pos)
-        return Position(x=position[0], y=position[1], z=position[2])
+            self._platform.invoke_shutdown(error % {"count": count})
 
     def _ensure_sensor_ready(self, timeout: float = SENSOR_READY_TIMEOUT) -> None:
         """
