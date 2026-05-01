@@ -322,11 +322,35 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         """Convert grid results to Position objects."""
         positions: list[Position] = []
 
+        total_samples = sum(r.sample_count for r in results)
+        invalid_points = [(r.point, r.sample_count) for r in results if not isfinite(r.z)]
+        sparse_points = [(r.point, r.sample_count) for r in results if isfinite(r.z) and r.sample_count < 3]
+
+        if invalid_points:
+            invalid_list = ", ".join(f"({p[0]:.2f},{p[1]:.2f}) samples={n}" for p, n in invalid_points)
+            lines = [
+                f"Mesh scan failed: {len(invalid_points)}/{len(results)} grid points have no valid samples.",
+                f"Total samples collected: {total_samples}.",
+                f"Invalid grid points: {invalid_list}.",
+            ]
+            if sparse_points:
+                sparse_list = ", ".join(f"({p[0]:.2f},{p[1]:.2f})={n}" for p, n in sparse_points)
+                lines.append(f"Sparse grid points (<3 samples): {sparse_list}.")
+            msg = " ".join(lines)
+            logger.error(msg)
+            raise RuntimeError(msg)
+
+        if sparse_points:
+            sparse_list = ", ".join(f"({p[0]:.2f},{p[1]:.2f})={n}" for p, n in sparse_points)
+            logger.warning(
+                "Mesh scan: %d/%d grid points have fewer than 3 samples: %s",
+                len(sparse_points),
+                len(results),
+                sparse_list,
+            )
+
         for result in results:
             rx, ry = result.point
-            if not isfinite(result.z):
-                msg = f"Grid point ({rx:.2f},{ry:.2f}) has no valid samples"
-                raise RuntimeError(msg)
 
             # Calculate compensated height
             z = height - result.z
