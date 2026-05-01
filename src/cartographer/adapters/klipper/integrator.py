@@ -5,9 +5,9 @@ from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
-from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
 from cartographer.adapters.klipper.probe import KlipperCartographerProbe
 from cartographer.adapters.klipper_like.integrator import KlipperLikeIntegrator
+from cartographer.mcu.mcu import CartographerMcu
 
 if TYPE_CHECKING:
     from cartographer.adapters.klipper.adapters import KlipperAdapters
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 @final
 class KlipperIntegrator(KlipperLikeIntegrator):
     def __init__(self, adapters: KlipperAdapters) -> None:
-        assert isinstance(adapters.mcu, KlipperCartographerMcu), "Invalid MCU type for KlipperIntegrator"
+        assert isinstance(adapters.mcu, CartographerMcu), "Invalid MCU type for KlipperIntegrator"
         super().__init__(adapters)
         self._toolhead = adapters.toolhead
 

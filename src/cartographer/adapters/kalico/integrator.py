@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, final
 from typing_extensions import override
 
 from cartographer.adapters.kalico.probe import KalicoCartographerProbe
-from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
 from cartographer.adapters.klipper_like.integrator import KlipperLikeIntegrator
+from cartographer.mcu.mcu import CartographerMcu
 
 if TYPE_CHECKING:
     from cartographer.adapters.kalico.adapters import KalicoAdapters
@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 @final
 class KalicoIntegrator(KlipperLikeIntegrator):
     def __init__(self, adapters: KalicoAdapters) -> None:
-        assert isinstance(adapters.mcu, KlipperCartographerMcu), "Invalid MCU type for KalicoIntegrator"
+        assert isinstance(adapters.mcu, CartographerMcu), "Invalid MCU type for KalicoIntegrator"
         super().__init__(adapters)
         self._toolhead = adapters.toolhead
 

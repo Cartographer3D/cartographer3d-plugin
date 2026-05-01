@@ -8,9 +8,9 @@ from unittest.mock import Mock
 if "mcu" not in sys.modules:
     sys.modules["mcu"] = Mock()
 
-from cartographer.adapters.klipper.mcu.commands import (
+from cartographer.mcu.commands import (
+    CartographerCommands,
     HomeCommand,
-    KlipperCartographerCommands,
     ThresholdCommand,
     TriggerMethod,
 )
@@ -19,12 +19,12 @@ if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
 
-def _make_commands(mocker: MockerFixture) -> tuple[KlipperCartographerCommands, Mock]:
+def _make_commands(mocker: MockerFixture) -> tuple[CartographerCommands, Mock]:
     mcu = mocker.MagicMock()
     cmd_wrapper = mocker.Mock()
     mcu.lookup_command.return_value = cmd_wrapper
     mcu.alloc_command_queue.return_value = mocker.Mock()
-    commands = KlipperCartographerCommands(mcu)
+    commands = CartographerCommands(mcu)
     commands.initialize()
     return commands, cmd_wrapper
 

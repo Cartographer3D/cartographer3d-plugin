@@ -3,15 +3,15 @@ from typing import TYPE_CHECKING
 from configfile import ConfigWrapper
 from typing_extensions import override
 
-from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
 from cartographer.adapters.klipper_like.toolhead import KlipperLikeToolhead
+from cartographer.mcu.mcu import CartographerMcu
 
 if TYPE_CHECKING:
     from gcode import GCodeDispatch
 
 
 class KlipperToolhead(KlipperLikeToolhead):
-    def __init__(self, config: ConfigWrapper, mcu: KlipperCartographerMcu) -> None:
+    def __init__(self, config: ConfigWrapper, mcu: CartographerMcu) -> None:
         super().__init__(config, mcu)
         self._gcode: GCodeDispatch = config.printer.lookup_object("gcode")
 

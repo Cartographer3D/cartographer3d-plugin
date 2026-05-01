@@ -61,7 +61,7 @@ def test_formatting_error_prefix(formatter: GCodeConsoleFormatter, log_record: L
 @pytest.mark.parametrize(
     "logger_name,level,expected",
     [
-        ("adapters.klipper.mcu", logging.DEBUG, False),  # filtered out
+        ("cartographer.mcu", logging.DEBUG, False),  # filtered out
         ("adapters.klipper.printer", logging.INFO, True),  # allowed
         ("macros.scan", logging.DEBUG, True),  # allowed
     ],

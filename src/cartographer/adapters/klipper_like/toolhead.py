@@ -19,7 +19,7 @@ if TYPE_CHECKING:
     from stepper import MCU_stepper
     from toolhead import ToolHead as KlippyToolhead
 
-    from cartographer.adapters.klipper.mcu.mcu import KlipperCartographerMcu
+    from cartographer.mcu.mcu import CartographerMcu
 
 logger = logging.getLogger(__name__)
 
@@ -72,8 +72,8 @@ class KlipperLikeToolhead(Toolhead, ABC):
             self.__use_str_axes = not hasattr(kin, "note_z_not_homed")
         return self.__use_str_axes
 
-    def __init__(self, config: ConfigWrapper, mcu: KlipperCartographerMcu) -> None:
-        self.mcu: KlipperCartographerMcu = mcu
+    def __init__(self, config: ConfigWrapper, mcu: CartographerMcu) -> None:
+        self.mcu: CartographerMcu = mcu
         self.printer: Printer = config.get_printer()
 
     @override
