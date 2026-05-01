@@ -179,8 +179,11 @@ class Toolhead(Protocol):
         """Returns currently applied gcode offset for the z axis."""
         ...
 
-    def z_probing_move(self, endstop: Endstop, *, speed: float) -> float:
-        """Starts probing move towards the given endstop."""
+    def z_probing_move(self, endstop: Endstop, *, speed: float, z_limit: float | None = None) -> float:
+        """Starts probing move towards the given endstop.
+
+        If z_limit is provided, the probe will not travel below that Z position.
+        """
         ...
 
     def z_home_end(self, endstop: Endstop) -> None:
