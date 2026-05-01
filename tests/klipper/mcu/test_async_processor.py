@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from cartographer.adapters.klipper.mcu.async_processor import AsyncProcessor
+from cartographer.adapters.klipper.mcu.async_processor import BATCH_INTERVAL, AsyncProcessor
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -353,3 +353,102 @@ class TestAsyncProcessorEdgeCases:
 
         # Don't queue anything
         assert len(reactor.callbacks) == 0
+
+
+class TestAsyncProcessorImmediateMode:
+    """Test immediate dispatch mode."""
+
+    def test_normal_mode_uses_waketime(self) -> None:
+        """In normal mode, callback is scheduled with a waketime delay."""
+        mock_reactor = MagicMock()
+        mock_reactor.monotonic.return_value = 100.0
+        processor = AsyncProcessor[int](mock_reactor, lambda _: None)
+
+        processor.queue_item(1)
+
+        mock_reactor.register_async_callback.assert_called_once()
+        _, kwargs = mock_reactor.register_async_callback.call_args
+        assert kwargs["waketime"] == pytest.approx(100.0 + BATCH_INTERVAL)  # pyright: ignore[reportUnknownMemberType]
+
+    def test_immediate_mode_skips_waketime(self) -> None:
+        """In immediate mode, callback is scheduled without waketime."""
+        mock_reactor = MagicMock()
+        processor = AsyncProcessor[int](mock_reactor, lambda _: None)
+        processor.set_immediate(True)
+
+        processor.queue_item(1)
+
+        mock_reactor.register_async_callback.assert_called_once()
+        _, kwargs = mock_reactor.register_async_callback.call_args
+        assert "waketime" not in kwargs
+
+    def test_set_immediate_flushes_pending_items(self) -> None:
+        """Enabling immediate mode flushes items pending in the batch window."""
+        reactor = FakeReactor()
+        collector = ProcessedItemsCollector()
+        processor = AsyncProcessor[int](reactor, collector.process)
+
+        # Queue in normal mode
+        processor.queue_item(1)
+        processor.queue_item(2)
+        reactor.run_pending_callbacks()
+        assert collector.items == [1, 2]
+
+        # Simulate items queued but batched callback not yet fired
+        processor.queue_item(3)
+        reactor.callbacks.clear()
+        processor._processing_scheduled = False  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
+        # Enable immediate -- should schedule flush for pending item
+        processor.set_immediate(True)
+        assert len(reactor.callbacks) == 1
+        reactor.run_pending_callbacks()
+        assert collector.items == [1, 2, 3]
+
+    def test_set_immediate_no_flush_when_empty(self) -> None:
+        """Enabling immediate with no pending items does not schedule."""
+        reactor = FakeReactor()
+        processor = AsyncProcessor[int](reactor, lambda _: None)
+
+        processor.set_immediate(True)
+        assert len(reactor.callbacks) == 0
+
+    def test_disabling_immediate_resumes_batching(self) -> None:
+        """After disabling immediate mode, items are batched again."""
+        mock_reactor = MagicMock()
+        mock_reactor.monotonic.return_value = 0.0
+        processor = AsyncProcessor[int](mock_reactor, lambda _: None)
+
+        processor.set_immediate(True)
+        processor.queue_item(1)
+        _, kwargs = mock_reactor.register_async_callback.call_args
+        assert "waketime" not in kwargs
+
+        # Process pending so flag resets
+        callback = mock_reactor.register_async_callback.call_args[0][0]
+        callback(0.0)
+
+        # Disable -- back to batched
+        processor.set_immediate(False)
+        processor.queue_item(2)
+        _, kwargs = mock_reactor.register_async_callback.call_args
+        assert "waketime" in kwargs
+
+    def test_set_immediate_promotes_pending_batched_callback(self) -> None:
+        """Enabling immediate mode flushes items even when a batched callback is already scheduled."""
+        reactor = FakeReactor()
+        collector = ProcessedItemsCollector()
+        processor = AsyncProcessor[int](reactor, collector.process)
+
+        # Queue item in normal mode — a batched callback is now scheduled
+        processor.queue_item(1)
+        assert len(reactor.callbacks) == 1
+
+        # Enable immediate while the batched callback is still pending.
+        # This should schedule an additional immediate callback.
+        processor.set_immediate(True)
+        assert len(reactor.callbacks) == 2
+
+        # Run callbacks — both fire, but second finds nothing
+        reactor.run_pending_callbacks()
+        assert collector.items == [1]
