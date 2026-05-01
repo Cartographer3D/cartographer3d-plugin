@@ -347,7 +347,7 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
         if len(self._stream.sessions) > 0:
             self.klipper_mcu.get_printer().invoke_shutdown(error % {"count": count})
 
-    def get_requested_position(self, time: float) -> Position | None:
+    def get_requested_position(self, time: float) -> Position:
         """
         Get the requested position at a given time.
 
@@ -361,8 +361,8 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
 
         Returns:
         --------
-        Position | None
-            The position at the given time, or None if unavailable.
+        Position
+            The position at the given time.
         """
         kinematics = self.kinematics
         stepper_pos = {

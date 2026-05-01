@@ -122,7 +122,7 @@ class SampleProcessor:
         ]
 
         for x, y, sample in sample_points:
-            if not self.grid.contains_point((x, y)):
+            if not self.grid.contains_point((x, y), epsilon=self.max_distance):
                 continue
 
             j, i = self.grid.point_to_grid_index((x, y))
