@@ -29,9 +29,13 @@ class AsyncProcessor(Generic[T]):
     """
     Process items asynchronously on the main reactor thread.
 
-    This class queues items received from background threads and schedules
-    processing on the main reactor thread using register_async_callback.
-    This ensures thread-safe access to shared state during processing.
+    Items received from background threads are queued and processed on
+    the main reactor thread via register_async_callback.
+
+    By default, items are batched for up to ``BATCH_INTERVAL`` seconds
+    to reduce reactor wake-ups. When immediate mode is enabled, items
+    are dispatched without delay so that position lookups happen as
+    close to the sample time as possible.
 
     Parameters:
     -----------
@@ -50,14 +54,31 @@ class AsyncProcessor(Generic[T]):
         self._process_fn = process_fn
         self._pending_items: list[T] = []
         self._processing_scheduled = False
+        self._immediate = False
         self._lock = threading.Lock()
+
+    def set_immediate(self, enabled: bool) -> None:
+        """
+        Enable or disable immediate dispatch mode.
+
+        When enabled, items are dispatched to the reactor without delay
+        instead of waiting for the batch interval. Use during streaming
+        sessions where position accuracy matters.
+        """
+        with self._lock:
+            self._immediate = enabled
+            # Schedule immediate flush for any pending items — even if
+            # a batched callback is already pending, this ensures items
+            # don't wait for the full batch interval.
+            if enabled and self._pending_items:
+                self._processing_scheduled = True
+                self._reactor.register_async_callback(self._process_pending_items)
 
     def queue_item(self, item: T) -> None:
         """
         Queue an item for processing on the main reactor thread.
 
         This method is thread-safe and can be called from any thread.
-        It queues the item and schedules processing if not already scheduled.
 
         Parameters:
         -----------
@@ -66,11 +87,13 @@ class AsyncProcessor(Generic[T]):
         """
         with self._lock:
             self._pending_items.append(item)
-            # Schedule processing on main thread if not already scheduled
             if not self._processing_scheduled:
-                waketime = self._reactor.monotonic() + BATCH_INTERVAL
                 self._processing_scheduled = True
-                self._reactor.register_async_callback(self._process_pending_items, waketime=waketime)
+                if self._immediate:
+                    self._reactor.register_async_callback(self._process_pending_items)
+                else:
+                    waketime = self._reactor.monotonic() + BATCH_INTERVAL
+                    self._reactor.register_async_callback(self._process_pending_items, waketime=waketime)
 
     def _process_pending_items(self, eventtime: float) -> None:
         """

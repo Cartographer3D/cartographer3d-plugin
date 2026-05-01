@@ -224,9 +224,11 @@ class KlipperCartographerMcu(Mcu, KlipperStreamMcu):
     @override
     def start_streaming(self) -> None:
         self.commands.send_stream_state(enable=True)
+        self._async_processor.set_immediate(True)
 
     @override
     def stop_streaming(self) -> None:
+        self._async_processor.set_immediate(False)
         self.commands.send_stream_state(enable=False)
 
     @override
