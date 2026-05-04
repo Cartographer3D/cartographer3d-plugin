@@ -256,16 +256,6 @@ class TouchConfig:
 class BedMeshConfig:
     config_section_key: ClassVar[str] = "bed_mesh"
 
-    mesh_min: tuple[float, float] | None = option(
-        "Minimum coordinates of the mesh area.",
-        parse_fn=_parse_mesh_min,
-        default=None,
-    )
-    mesh_max: tuple[float, float] | None = option(
-        "Maximum coordinates of the mesh area.",
-        parse_fn=_parse_mesh_max,
-        default=None,
-    )
     probe_count: tuple[int, int] = option(
         "Number of probe points in X and Y.",
         parse_fn=_parse_probe_count,
@@ -277,6 +267,16 @@ class BedMeshConfig:
     faulty_regions: list[Region] = option(
         "Regions to exclude from mesh probing.",
         parse_fn=_parse_faulty_regions,
+    )
+    mesh_min: tuple[float, float] | None = option(
+        "Minimum coordinates of the mesh area.",
+        parse_fn=_parse_mesh_min,
+        default=None,
+    )
+    mesh_max: tuple[float, float] | None = option(
+        "Maximum coordinates of the mesh area.",
+        parse_fn=_parse_mesh_max,
+        default=None,
     )
     speed: float = option("Travel speed during mesh probing.", default=50, min=1)
     horizontal_move_z: float = option("Z height for horizontal moves during mesh.", default=5, min=1)
