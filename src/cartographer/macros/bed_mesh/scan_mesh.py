@@ -72,8 +72,8 @@ def _get_max_corner_radius(params: MacroParams, config_default: float | None) ->
 
 @dataclass(frozen=True)
 class BedMeshCalibrateConfiguration:
-    mesh_min: tuple[float, float]
-    mesh_max: tuple[float, float]
+    _config: Configuration
+
     probe_count: tuple[int, int]
     speed: float
     adaptive_margin: float
@@ -89,8 +89,7 @@ class BedMeshCalibrateConfiguration:
     @staticmethod
     def from_config(config: Configuration):
         return BedMeshCalibrateConfiguration(
-            mesh_min=config.bed_mesh.mesh_min,
-            mesh_max=config.bed_mesh.mesh_max,
+            _config=config,
             probe_count=config.bed_mesh.probe_count,
             speed=config.bed_mesh.speed,
             adaptive_margin=config.bed_mesh.adaptive_margin,
@@ -102,6 +101,15 @@ class BedMeshCalibrateConfiguration:
             max_corner_radius=config.scan.mesh_max_corner_radius,
             faulty_regions=list(map(lambda r: Region(r[0], r[1]), config.bed_mesh.faulty_regions)),
         )
+
+    # TODO: Explain why it is the way it is
+    @property
+    def mesh_min(self) -> tuple[float, float]:
+        return self._config.mesh_bounds()[0]
+
+    @property
+    def mesh_max(self) -> tuple[float, float]:
+        return self._config.mesh_bounds()[1]
 
 
 _directions: list[str] = ["x", "y"]

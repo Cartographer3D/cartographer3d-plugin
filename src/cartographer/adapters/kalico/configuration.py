@@ -21,42 +21,26 @@ from cartographer.interfaces.configuration import (
     TouchModelConfiguration,
 )
 
+# TODO: Consider deduplicating through inheritance or delegation
+# from ..klipper.configuration import KlipperConfiguration
+
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
 
     from cartographer.mcu.mcu import CartographerMcu
 
 
-def parse_touch_model_with_defaults(
-    config: ConfigWrapper,
-    *,
-    global_samples: int,
-    global_sample_range: float,
-) -> TouchModelConfiguration:
-    """Parse a touch model section, inheriting global touch defaults for missing keys.
-
-    Reads ``samples`` and ``sample_range`` from the model section directly using the
-    same constraints as the global ``[cartographer touch]`` definition.  When a key is
-    absent the global value is used, so every in-memory model always carries concrete
-    (non-None) values regardless of whether the config file was written before these
-    options were introduced.
-    """
-    samples = config.getint("samples", default=global_samples, minval=3)
-    sample_range = config.getfloat("sample_range", default=global_sample_range, minval=0.001, maxval=0.015)
-    return parse(TouchModelConfiguration, config, samples=samples, sample_range=sample_range)
-
-
 @final
-class KlipperConfiguration(Configuration):
+class KalicoConfiguration(Configuration):
     def __init__(self, config: ConfigWrapper, mcu: CartographerMcu, general: GeneralConfig) -> None:
         self.wrapper = config
         self._mcu = mcu
         self._config = config.get_printer().lookup_object("configfile")
+        self._printer = config.get_printer()
 
         self.name = config.get_name()
 
-        endstop_pin = f"{general.endstop_chip_name}:z_virtual_endstop"
-        self._validate_stepper_z(endstop_pin)
+        self._validate_stepper_z()
 
         self.general = general
         self.coil = parse(CoilConfiguration, config.getsection("cartographer coil"))
@@ -71,19 +55,11 @@ class KlipperConfiguration(Configuration):
         self.scan = parse(ScanConfig, config.getsection(f"{self.name} scan"), models=scan_models)
 
         self.touch_model_prefix = f"{self.name} touch_model"
-        # Parse global touch section first to obtain inherited defaults, with an
-        # empty models dict. Model sections are parsed below with the resolved
-        # global values as fallbacks so every model has concrete samples/sample_range.
-        _touch_global = parse(TouchConfig, config.getsection(f"{self.name} touch"), models={})
         touch_models = {
-            wrapper.get_name().split(" ")[-1]: parse_touch_model_with_defaults(
-                wrapper,
-                global_samples=_touch_global.samples,
-                global_sample_range=_touch_global.sample_range,
-            )
+            wrapper.get_name().split(" ")[-1]: parse(TouchModelConfiguration, wrapper)
             for wrapper in config.get_prefix_sections(self.touch_model_prefix)
         }
-        self.touch = replace(_touch_global, models=touch_models)
+        self.touch = parse(TouchConfig, config.getsection(f"{self.name} touch"), models=touch_models)
 
     @override
     def save_scan_model(self, config: ScanModelConfiguration) -> None:
@@ -124,8 +100,6 @@ class KlipperConfiguration(Configuration):
         save(_key("threshold"), config.threshold)
         save(_key("speed"), config.speed)
         save(_key("z_offset"), round(config.z_offset, 3))
-        save(_key("samples"), config.samples)
-        save(_key("sample_range"), round(config.sample_range, 4))
 
         # Version info fields are part of ModelVersionInfo, not individual option() fields
         sw_version = __version__
@@ -163,11 +137,11 @@ class KlipperConfiguration(Configuration):
     def log_runtime_warning(self, message: str) -> None:
         return self._config.runtime_warning(message)
 
-    def _validate_stepper_z(self, endstop_pin: str) -> None:
+    def _validate_stepper_z(self) -> None:
         if not self.wrapper.has_section("stepper_z"):
             return
         stepper_z = self.wrapper.getsection("stepper_z")
-        if stepper_z.get("endstop_pin", default=None) != endstop_pin:
+        if stepper_z.get("endstop_pin", default=None) != "probe:z_virtual_endstop":
             return
 
         homing_retract_dist = stepper_z.getfloat("homing_retract_dist", default=None, note_valid=False)
@@ -177,7 +151,20 @@ class KlipperConfiguration(Configuration):
 
     @override
     def mesh_bounds(self) -> tuple[tuple[float, float], tuple[float, float]]:
-        if self.bed_mesh.mesh_min is None or self.bed_mesh.mesh_max is None:
-            raise ValueError("Missing mesh bounds: 'mesh_min' and 'mesh_max' must be set in bed mesh configuration")
+        mesh_min = self.bed_mesh.mesh_min
+        mesh_max = self.bed_mesh.mesh_max
 
-        return self.bed_mesh.mesh_min, self.bed_mesh.mesh_max
+        # TODO: These values could be cached after the first calculation
+        if mesh_min is None or mesh_max is None:
+            # TODO: Add relevant type information
+            printer_info = self._printer.lookup_object("printer_info")
+
+            mesh_min, mesh_max = printer_info.calculate_bed_corners(
+                mesh_min,
+                mesh_max,
+                (self.general.x_offset, self.general.y_offset),
+                True,
+                lambda msg: self._printer.config_error(msg),
+            )
+
+        return mesh_min, mesh_max
