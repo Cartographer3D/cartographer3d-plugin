@@ -178,6 +178,9 @@ class GeneralConfig:
         " and does not claim the 'probe' object, allowing a separate [probe] section to coexist.",
         default=True,
     )
+    min_edge_distance: float | None = option(
+        "Minimum distance (in mm) from the edge of the bed to the center of the probe when probing.", default=None
+    )
 
     @property
     def endstop_chip_name(self) -> str:
@@ -253,13 +256,15 @@ class TouchConfig:
 class BedMeshConfig:
     config_section_key: ClassVar[str] = "bed_mesh"
 
-    mesh_min: tuple[float, float] = option(
+    mesh_min: tuple[float, float] | None = option(
         "Minimum coordinates of the mesh area.",
         parse_fn=_parse_mesh_min,
+        default=None,
     )
-    mesh_max: tuple[float, float] = option(
+    mesh_max: tuple[float, float] | None = option(
         "Maximum coordinates of the mesh area.",
         parse_fn=_parse_mesh_max,
+        default=None,
     )
     probe_count: tuple[int, int] = option(
         "Number of probe points in X and Y.",
@@ -360,3 +365,4 @@ class Configuration(Protocol):
     def remove_touch_model(self, name: str) -> None: ...
     def save_z_backlash(self, backlash: float) -> None: ...
     def log_runtime_warning(self, message: str) -> None: ...
+    def mesh_bounds(self) -> tuple[tuple[float, float], tuple[float, float]]: ...
