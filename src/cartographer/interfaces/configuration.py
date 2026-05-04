@@ -50,13 +50,20 @@ def _list_to_int_tuple(lst: list[int]) -> tuple[int, int]:
     return (lst[0], lst[1])
 
 
-def _parse_mesh_min(config: ConfigWrapper) -> tuple[float, float]:
-    return _list_to_tuple(config.getfloatlist("mesh_min", count=2))
+def _parse_mesh_min(config: ConfigWrapper) -> tuple[float, float] | None:
+    result = config.getfloatlist("mesh_min", count=2, default=None)
+    if result is None:
+        return None
+
+    return _list_to_tuple(result)
 
 
-def _parse_mesh_max(config: ConfigWrapper) -> tuple[float, float]:
-    return _list_to_tuple(config.getfloatlist("mesh_max", count=2))
+def _parse_mesh_max(config: ConfigWrapper) -> tuple[float, float] | None:
+    result = config.getfloatlist("mesh_max", count=2, default=None)
+    if result is None:
+        return None
 
+    return _list_to_tuple(result)
 
 def _parse_probe_count(config: ConfigWrapper) -> tuple[int, int]:
     return _list_to_int_tuple(config.getintlist("probe_count", count=2))
