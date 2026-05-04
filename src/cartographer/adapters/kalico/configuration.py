@@ -162,9 +162,9 @@ class KalicoConfiguration(Configuration):
             mesh_min, mesh_max = printer_info.calculate_bed_corners(
                 mesh_min,
                 mesh_max,
-                (self.general.x_offset, self.general.y_offset),
                 True,
                 lambda msg: self._printer.config_error(msg),
+                probe_offset=(self.general.x_offset, self.general.y_offset),
             )
 
         return mesh_min, mesh_max
