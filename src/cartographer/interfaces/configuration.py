@@ -65,6 +65,7 @@ def _parse_mesh_max(config: ConfigWrapper) -> tuple[float, float] | None:
 
     return _list_to_tuple(result)
 
+
 def _parse_probe_count(config: ConfigWrapper) -> tuple[int, int]:
     return _list_to_int_tuple(config.getintlist("probe_count", count=2))
 
