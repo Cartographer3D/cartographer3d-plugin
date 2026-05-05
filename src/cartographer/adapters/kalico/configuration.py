@@ -159,11 +159,11 @@ class KalicoConfiguration(Configuration):
             # TODO: Add relevant type information
             printer_info = self._printer.lookup_object("printer_info")
 
-            mesh_min, mesh_max = printer_info.calculate_bed_corners(
+            mesh_min, mesh_max = printer_info.get_mesh_bounds(
                 mesh_min,
                 mesh_max,
-                True,
-                lambda msg: self._printer.config_error(msg),
+                use_offsets=True,
+                error=self._printer.config_error,
                 probe_offset=(self.general.x_offset, self.general.y_offset),
             )
 
