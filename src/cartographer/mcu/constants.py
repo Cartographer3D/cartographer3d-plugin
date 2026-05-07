@@ -46,7 +46,11 @@ class CartographerConstants:
 
     def initialize(self):
         constants = self._platform.get_constants()
-        self._sensor_frequency = self._clock_to_sensor_frequency(float(constants["CLOCK_FREQ"]))
+        clock_frequency = float(constants["CLOCK_FREQ"])
+        if "CARTOGRAPHER_SENSOR_FREQ_DIVISOR" in constants:
+            self._sensor_frequency = clock_frequency / int(constants["CARTOGRAPHER_SENSOR_FREQ_DIVISOR"])
+        else:
+            self._sensor_frequency = self._fallback_sensor_frequency(clock_frequency)
         self._inverse_adc_max = 1.0 / int(constants["ADC_MAX"])
         self._adc_smooth_count = int(constants["CARTOGRAPHER_ADC_SMOOTH_COUNT"])
         logger.debug("Received constants: %s", constants)
@@ -75,7 +79,8 @@ class CartographerConstants:
         self.minimum_adc_count = adc_count
         self.minimum_count = f_count
 
-    def _clock_to_sensor_frequency(self, clock_frequency: float) -> float:
+    def _fallback_sensor_frequency(self, clock_frequency: float) -> float:
+        """Heuristic for firmware without CARTOGRAPHER_SENSOR_FREQ_DIVISOR."""
         if clock_frequency < 20e6:
             return clock_frequency
         if clock_frequency < 100e6:
