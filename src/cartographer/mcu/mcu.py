@@ -270,6 +270,8 @@ class CartographerMcu(Mcu, CartographerStreamMcu):
         count = data["data"]
         clock = self._platform.clock32_to_clock64(data["clock"])
         time = self._platform.clock_to_print_time(clock)
+        if time < 0:
+            return
 
         frequency = self.constants.count_to_frequency(count)
         temperature = self.constants.calculate_temperature(data["temp"])
