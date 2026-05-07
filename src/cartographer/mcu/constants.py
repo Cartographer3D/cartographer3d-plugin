@@ -80,7 +80,7 @@ class CartographerConstants:
             return clock_frequency
         if clock_frequency < 100e6:
             return clock_frequency / 2
-        return clock_frequency / 8
+        return clock_frequency / 6
 
     def count_to_frequency(self, count: int) -> float:
         return count * self._sensor_frequency / (2**28)
