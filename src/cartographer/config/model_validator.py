@@ -4,7 +4,7 @@ import logging
 import re
 from typing import TYPE_CHECKING
 
-MINIMUM_SCAN_MODEL_VERSION = (1, 0, 0)
+MINIMUM_SCAN_MODEL_VERSION = (1, 5, 3)
 MINIMUM_TOUCH_MODEL_VERSION = (1, 1, 0)
 
 if TYPE_CHECKING:
