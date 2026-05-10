@@ -47,6 +47,20 @@ class TestMeshGrid:
         assert grid.x_step == 5.0
         assert grid.y_step == 5.0
 
+    def test_coords_are_cached(self):
+        """Test that x_coords/y_coords return the same object on repeated access."""
+        grid = MeshGrid((0.0, 0.0), (10.0, 10.0), 5, 5)
+        assert grid.x_coords is grid.x_coords
+        assert grid.y_coords is grid.y_coords
+
+    def test_coords_are_read_only(self):
+        """Test that cached coordinate arrays are immutable."""
+        grid = MeshGrid((0.0, 0.0), (10.0, 10.0), 5, 5)
+        with pytest.raises(ValueError, match="read-only"):
+            grid.x_coords[0] = 99.0
+        with pytest.raises(ValueError, match="read-only"):
+            grid.y_coords[0] = 99.0
+
     def test_generate_points(self):
         """Test point generation in correct order."""
         grid = MeshGrid((0.0, 0.0), (2.0, 2.0), 3, 3)
