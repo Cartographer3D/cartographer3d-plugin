@@ -49,7 +49,15 @@ def _format_option(opt: OptionInfo) -> str:
     """Format a single option as a Klipper-style config reference block."""
     lines: list[str] = []
 
-    # Description
+    # The option line itself (Klipper puts this first)
+    if opt.required:
+        lines.append(f"{opt.name}:")
+    elif opt.has_default:
+        lines.append(f"#{opt.name}: {_format_default(opt.default)}")
+    else:
+        lines.append(f"#{opt.name}:")
+
+    # Description (below the option name)
     if opt.description:
         lines.append(f"#   {opt.description}")
 
@@ -65,14 +73,6 @@ def _format_option(opt: OptionInfo) -> str:
     # Allowed values (Enum choices)
     if opt.choices:
         lines.append(f"#   Allowed values: {', '.join(opt.choices)}")
-
-    # The option line itself
-    if opt.required:
-        lines.append(f"{opt.name}:")
-    elif opt.has_default:
-        lines.append(f"#{opt.name}: {_format_default(opt.default)}")
-    else:
-        lines.append(f"#{opt.name}:")
 
     return "\n".join(lines)
 
