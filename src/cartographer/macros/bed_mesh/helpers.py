@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 from collections import defaultdict
 from dataclasses import dataclass
+from functools import cached_property
 from math import ceil
 from typing import TYPE_CHECKING, Callable, Sequence, final, overload
 
@@ -51,15 +52,18 @@ class MeshGrid(Region):
             msg = f"Grid resolution must be at least {MIN_GRID_RESOLUTION}x{MIN_GRID_RESOLUTION}"
             raise ValueError(msg)
 
-    @property
+    # cached_property requires __dict__; do not add __slots__ to MeshGrid.
+    @cached_property
     def x_coords(self) -> NDArray[np.float_]:
-        """Get array of x coordinates."""
-        return np.round(np.linspace(self.min_point[0], self.max_point[0], self.x_resolution), 2)
+        arr = np.round(np.linspace(self.min_point[0], self.max_point[0], self.x_resolution), 2)
+        arr.setflags(write=False)
+        return arr
 
-    @property
+    @cached_property
     def y_coords(self) -> NDArray[np.float_]:
-        """Get array of y coordinates."""
-        return np.round(np.linspace(self.min_point[1], self.max_point[1], self.y_resolution), 2)
+        arr = np.round(np.linspace(self.min_point[1], self.max_point[1], self.y_resolution), 2)
+        arr.setflags(write=False)
+        return arr
 
     @property
     def x_step(self) -> float:
