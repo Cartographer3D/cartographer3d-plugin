@@ -55,12 +55,14 @@ class MeshGrid(Region):
     # cached_property requires __dict__; do not add __slots__ to MeshGrid.
     @cached_property
     def x_coords(self) -> NDArray[np.float_]:
+        """Get array of x coordinates."""
         arr = np.round(np.linspace(self.min_point[0], self.max_point[0], self.x_resolution), 2)
         arr.setflags(write=False)
         return arr
 
     @cached_property
     def y_coords(self) -> NDArray[np.float_]:
+        """Get array of y coordinates."""
         arr = np.round(np.linspace(self.min_point[1], self.max_point[1], self.y_resolution), 2)
         arr.setflags(write=False)
         return arr
