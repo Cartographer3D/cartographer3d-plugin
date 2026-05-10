@@ -12,6 +12,9 @@ changelog:
     - title: 🐛 Squashed Bugs
       labels:
         - fix
+    - title: ⚡ Performance Improvements
+      labels:
+        - performance
     - title: 🧰 Other Changes
       labels:
         - "*"
