@@ -31,6 +31,20 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+@final
+class _SensorConfigShim:
+    """Minimal shim satisfying heaters.register_sensor(config, ...) interface."""
+
+    def __init__(self, name: str) -> None:
+        self._name = name
+
+    def get_name(self) -> str:
+        return self._name
+
+    def get(self, _option: str, default: str | None = None, **_kw: object) -> str | None:
+        return default
+
+
 class KlipperLikeAdapters(Protocol):
     mcu: CartographerMcu
     printer: Printer
@@ -81,7 +95,7 @@ class KlipperLikeIntegrator(Integrator, ABC):
 
         object_name = f"temperature_sensor {sensor.name}"
         self._printer.add_object(object_name, sensor)
-        pheaters.available_sensors.append(object_name)
+        pheaters.register_sensor(_SensorConfigShim(object_name), sensor)  # pyright: ignore[reportArgumentType]  # shim satisfies runtime interface
 
     @override
     def register_ready_callback(self, callback: Callable[[], None]) -> None:
