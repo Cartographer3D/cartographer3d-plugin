@@ -11,6 +11,7 @@ if TYPE_CHECKING:
 
 
 class Adapters(Protocol):
+    environment: str
     config: Configuration
     toolhead: Toolhead
     mcu: Mcu

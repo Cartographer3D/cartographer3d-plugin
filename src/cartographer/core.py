@@ -9,6 +9,7 @@ from cartographer.coil.temperature_compensation import (
     CoilTemperatureCompensationModel,
 )
 from cartographer.config.model_validator import validate_and_remove_incompatible_models
+from cartographer.events import EventBus
 from cartographer.macros.axis_twist_compensation import (
     AxisTwistCompensationMacro,
 )
@@ -30,13 +31,15 @@ from cartographer.macros.scan import ScanAccuracyMacro
 from cartographer.macros.scan_calibrate import (
     DEFAULT_SCAN_MODEL_NAME,
     ScanCalibrateMacro,
+    ScanCalibrationEvent,
 )
 from cartographer.macros.stream import StreamMacro
-from cartographer.macros.temperature_calibrate import TemperatureCalibrateMacro
+from cartographer.macros.temperature_calibrate import TemperatureCalibrateMacro, TemperatureCalibrationEvent
 from cartographer.macros.touch import (
     DEFAULT_TOUCH_MODEL_NAME,
     TouchAccuracyMacro,
     TouchCalibrateMacro,
+    TouchCalibrationEvent,
     TouchHomeMacro,
     TouchProbeMacro,
 )
@@ -44,6 +47,8 @@ from cartographer.probe.probe import Probe
 from cartographer.probe.scan_mode import ScanMode, ScanModeConfiguration
 from cartographer.probe.touch_mode import TouchMode, TouchModeConfiguration
 from cartographer.task_executor import MultiprocessingExecutor
+from cartographer.telemetry import TelemetryReporter
+from cartographer.telemetry.backend import get_telemetry_backend
 from cartographer.toolhead import BacklashCompensatingToolhead
 
 if TYPE_CHECKING:
@@ -62,10 +67,12 @@ class MacroRegistration:
 @final
 class PrinterCartographer:
     def __init__(self, adapters: Adapters) -> None:
+        self._adapters = adapters
         self.mcu = adapters.mcu
         self.config = adapters.config
         self.scheduler = adapters.scheduler
         self.task_executor = MultiprocessingExecutor(self.scheduler)
+        self.events = EventBus()
 
         # Initialize toolhead with optional backlash compensation
         toolhead = self._create_toolhead(adapters.toolhead)
@@ -86,6 +93,38 @@ class PrinterCartographer:
 
     def ready_callback(self) -> None:
         self.validate_and_load_models()
+        self._setup_telemetry()
+
+    def _setup_telemetry(self) -> None:
+        if not self.config.general.telemetry:
+            return
+        backend = get_telemetry_backend()
+        if backend is None:
+            return
+        reporter = TelemetryReporter(backend, self._adapters)
+        self.events.subscribe(
+            ScanCalibrationEvent,
+            lambda e: reporter.send_event(
+                "scan_calibration",
+                method=e.method,
+            ),
+        )
+        self.events.subscribe(
+            TouchCalibrationEvent,
+            lambda e: reporter.send_event(
+                "touch_calibration",
+                threshold=e.threshold,
+                speed=e.speed,
+                median_range=e.median_range,
+            ),
+        )
+        self.events.subscribe(
+            TemperatureCalibrationEvent,
+            lambda e: reporter.send_event(
+                "temperature_calibration",
+            ),
+        )
+        reporter.send_startup_event()
 
     def validate_and_load_models(self) -> None:
         mcu_version = self.mcu.get_mcu_version()
@@ -228,6 +267,7 @@ class PrinterCartographer:
                             adapters.gcode,
                             self.task_executor,
                             self.scheduler,
+                            self.events,
                         ),
                     ),
                 ]
@@ -241,7 +281,7 @@ class PrinterCartographer:
                 [
                     self._register_macro(
                         "SCAN_CALIBRATE",
-                        ScanCalibrateMacro(probe, toolhead, self.config),
+                        ScanCalibrateMacro(probe, toolhead, self.config, self.events),
                     ),
                     self._register_macro(
                         "SCAN_ACCURACY",
@@ -266,7 +306,14 @@ class PrinterCartographer:
                 [
                     self._register_macro(
                         "TOUCH_CALIBRATE",
-                        TouchCalibrateMacro(probe, self.mcu, toolhead, self.config, self.task_executor),
+                        TouchCalibrateMacro(
+                            probe,
+                            self.mcu,
+                            toolhead,
+                            self.config,
+                            self.task_executor,
+                            self.events,
+                        ),
                     ),
                     self._register_macro(
                         "TOUCH_MODEL",

@@ -8,18 +8,25 @@ from typing import TYPE_CHECKING, final
 
 from typing_extensions import assert_never, override
 
+from cartographer.events import Event
 from cartographer.interfaces.printer import Macro, MacroParams, Position, Toolhead
 from cartographer.macros.fields import param, parse
 from cartographer.probe import Probe, ScanModel
 
 if TYPE_CHECKING:
+    from cartographer.events import EventBus
     from cartographer.interfaces.configuration import Configuration
-
-    pass
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_SCAN_MODEL_NAME = "default"
+
+
+@dataclass(frozen=True)
+class ScanCalibrationEvent(Event):
+    """Emitted after a successful scan calibration."""
+
+    method: str  # "touch" or "manual"
 
 
 class ScanCalibrateMethod(Enum):
@@ -44,10 +51,12 @@ class ScanCalibrateMacro(Macro):
         probe: Probe,
         toolhead: Toolhead,
         config: Configuration,
+        events: EventBus,
     ) -> None:
         self._probe = probe
         self._toolhead = toolhead
         self._config = config
+        self._events = events
 
     @override
     def run(self, params: MacroParams) -> None:
@@ -66,27 +75,27 @@ class ScanCalibrateMacro(Macro):
         self._toolhead.wait_moves()
 
         if p.method == ScanCalibrateMethod.TOUCH:
-            return self._run_touch(name)
+            return self._run_touch(name, p.method.value)
         elif p.method == ScanCalibrateMethod.MANUAL:
-            return self._run_manual(name)
+            return self._run_manual(name, p.method.value)
 
         assert_never(p.method)
 
-    def _run_touch(self, name: str) -> None:
+    def _run_touch(self, name: str, method: str) -> None:
         trigger_pos = self._probe.perform_touch()
         pos = self._toolhead.get_position()
         self._toolhead.set_z_position(pos.z - trigger_pos)
-        self._calibrate(name)
+        self._calibrate(name, method)
 
-    def _run_manual(self, name: str) -> None:
+    def _run_manual(self, name: str, method: str) -> None:
         _, z_max = self._toolhead.get_axis_limits("z")
         self._toolhead.set_z_position(z=z_max - 10)
 
         logger.info("Triggering manual probe, please bring nozzle to 0.1mm above the bed")
 
-        self._toolhead.manual_probe(partial(self._handle_manual_probe, name))
+        self._toolhead.manual_probe(partial(self._handle_manual_probe, name, method))
 
-    def _handle_manual_probe(self, name: str, pos: Position | None) -> None:
+    def _handle_manual_probe(self, name: str, method: str, pos: Position | None) -> None:
         if pos is None:
             self._toolhead.clear_z_homing_state()
             return
@@ -95,9 +104,9 @@ class ScanCalibrateMacro(Macro):
         # We assume the user will move the nozzle to 0.1mm above the bed
         self._toolhead.set_z_position(0.1)
 
-        self._calibrate(name)
+        self._calibrate(name, method)
 
-    def _calibrate(self, name: str):
+    def _calibrate(self, name: str, method: str):
         self._toolhead.move(z=5.5, speed=self._config.general.lift_speed)
         self._toolhead.wait_moves()
 
@@ -126,3 +135,4 @@ class ScanCalibrateMacro(Macro):
             "The SAVE_CONFIG command will update the printer config file and restart the printer.",
             name,
         )
+        self._events.publish(ScanCalibrationEvent(method=method))

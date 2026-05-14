@@ -24,6 +24,8 @@ logger = logging.getLogger(__name__)
 
 @final
 class KlipperAdapters(Adapters):
+    environment = "klipper"
+
     def __init__(self, config: KlipperConfigWrapper) -> None:
         self.printer = config.get_printer()
         self.scheduler = KlipperScheduler(self.printer.get_reactor())

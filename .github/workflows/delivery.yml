@@ -22,6 +22,7 @@ jobs:
         env:
           GIT_VERSION: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
+          BETTERSTACK_SOURCE_TOKEN: ${{ secrets.BETTERSTACK_SOURCE_TOKEN }}
       - name: Store the distribution packages
         uses: actions/upload-artifact@v4
         with:

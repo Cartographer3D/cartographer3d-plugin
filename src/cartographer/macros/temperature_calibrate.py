@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, final
 from typing_extensions import override
 
 from cartographer.coil.calibration import fit_coil_temperature_model
+from cartographer.events import Event
 from cartographer.interfaces.printer import GCodeDispatch, Macro, MacroParams, Mcu, Sample, Toolhead
 from cartographer.lib import scipy_helpers
 from cartographer.lib.csv import generate_filepath, write_samples_to_csv
@@ -15,10 +16,17 @@ from cartographer.lib.log import log_duration
 from cartographer.macros.fields import param, parse
 
 if TYPE_CHECKING:
+    from cartographer.events import EventBus
     from cartographer.interfaces.configuration import Configuration
     from cartographer.interfaces.multiprocessing import Scheduler, TaskExecutor
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class TemperatureCalibrationEvent(Event):
+    """Emitted after a successful temperature calibration."""
+
 
 # Temperature monitoring constants
 TEMP_CHECK_INTERVAL = 1.0  # Check temperature every second
@@ -54,6 +62,7 @@ class TemperatureCalibrateMacro(Macro):
         gcode: GCodeDispatch,
         task_executor: TaskExecutor,
         scheduler: Scheduler,
+        events: EventBus,
     ) -> None:
         self.mcu = mcu
         self.toolhead = toolhead
@@ -61,6 +70,7 @@ class TemperatureCalibrateMacro(Macro):
         self.gcode = gcode
         self.task_executor = task_executor
         self.scheduler = scheduler
+        self._events = events
 
     @override
     def run(self, params: MacroParams) -> None:
@@ -121,6 +131,8 @@ class TemperatureCalibrateMacro(Macro):
         model = self.task_executor.run(fit_coil_temperature_model, data_per_height, self.mcu.get_coil_reference())
 
         self.config.save_coil_model(model)
+
+        self._events.publish(TemperatureCalibrationEvent())
 
         logger.info(
             "Temperature calibration complete!\n"
