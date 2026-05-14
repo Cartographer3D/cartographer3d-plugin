@@ -82,7 +82,7 @@ def u_turn(start: Point, end: Point, entry_dir: Vec, radius: float) -> Iterator[
     # Determine if the turn is CCW or CW based on 2D cross product
     # We'll assume a horizontal travel: if moving left to right, then back right to left
     # Then the perpendicular should flip for the reverse direction
-    turn_ccw = bool(np.cross(entry_dir, turn_dir) > 0)  # flip depending on entry direction
+    turn_ccw = bool(entry_dir[0] * turn_dir[1] - entry_dir[1] * turn_dir[0] > 0)  # 2D cross product
     turn_angle = 90 if turn_ccw else -90
 
     entry_perp = perpendicular(entry_dir, ccw=turn_ccw)
