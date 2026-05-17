@@ -71,8 +71,8 @@ class TemperatureCalibrateMacro(Macro):
         if p.max_temp < p.min_temp + 20:
             msg = f"MAX_TEMP ({p.max_temp}) must be at least MIN_TEMP + 20 ({p.min_temp + 20})"
             raise RuntimeError(msg)
-        if p.bed_temp < p.max_temp + 30:
-            msg = f"BED_TEMP ({p.bed_temp}) must be at least MAX_TEMP + 30 ({p.max_temp + 30})"
+        if p.bed_temp < p.max_temp:
+            msg = f"BED_TEMP ({p.bed_temp}) must be at least MAX_TEMP ({p.max_temp})"
             raise RuntimeError(msg)
 
         if not self.toolhead.is_homed("x") or not self.toolhead.is_homed("y") or not self.toolhead.is_homed("z"):
