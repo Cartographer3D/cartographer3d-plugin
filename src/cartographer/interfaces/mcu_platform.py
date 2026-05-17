@@ -9,12 +9,23 @@ if TYPE_CHECKING:
         MCU,
         CommandQueryWrapper,
         CommandWrapper,
-        TriggerDispatch,
     )
-    from reactor import Reactor
+    from reactor import Reactor, ReactorCompletion
     from stepper import MCU_stepper
 
     from cartographer.interfaces.printer import Position
+
+
+class TriggerDispatch(Protocol):
+    """Interface for multi-MCU trigger dispatch used during homing."""
+
+    def get_oid(self) -> int: ...
+    def get_command_queue(self) -> object: ...
+    def add_stepper(self, stepper: MCU_stepper) -> None: ...
+    def get_steppers(self) -> list[MCU_stepper]: ...
+    def start(self, print_time: float) -> ReactorCompletion: ...
+    def wait_end(self, end_time: float) -> None: ...
+    def stop(self) -> int: ...
 
 
 class McuPlatform(Protocol):

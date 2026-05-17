@@ -5,7 +5,6 @@ from functools import cached_property
 from typing import TYPE_CHECKING
 
 import mcu as _mcu_module
-from mcu import TriggerDispatch as _KlipperTriggerDispatch
 
 from cartographer.interfaces.printer import Position
 
@@ -19,11 +18,12 @@ if TYPE_CHECKING:
         MCU,
         CommandQueryWrapper,
         CommandWrapper,
-        TriggerDispatch,
     )
     from reactor import Reactor
     from stepper import MCU_stepper
     from toolhead import ToolHead
+
+    from cartographer.interfaces.mcu_platform import TriggerDispatch
 
 
 class KlipperLikeMcuPlatform(ABC):
@@ -50,8 +50,8 @@ class KlipperLikeMcuPlatform(ABC):
     # Trigger dispatch
     # ------------------------------------------------------------------
 
-    def create_trigger_dispatch(self) -> TriggerDispatch:
-        return _KlipperTriggerDispatch(self._host_mcu)
+    @abstractmethod
+    def create_trigger_dispatch(self) -> TriggerDispatch: ...
 
     def add_stepper_to_dispatch(self, dispatch: TriggerDispatch, stepper: MCU_stepper) -> None:
         dispatch.add_stepper(stepper)

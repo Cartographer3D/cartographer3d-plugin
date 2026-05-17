@@ -28,10 +28,10 @@ from cartographer.mcu.stream import CartographerStream, CartographerStreamMcu
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from mcu import MCU, TriggerDispatch
+    from mcu import MCU
     from reactor import Reactor, ReactorCompletion
 
-    from cartographer.interfaces.mcu_platform import McuPlatform
+    from cartographer.interfaces.mcu_platform import McuPlatform, TriggerDispatch
     from cartographer.interfaces.multiprocessing import Scheduler
     from cartographer.stream import Session
 

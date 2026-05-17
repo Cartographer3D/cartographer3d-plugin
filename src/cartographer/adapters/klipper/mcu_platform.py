@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, final
 
+from mcu import TriggerDispatch as KlipperTriggerDispatch
 from typing_extensions import override
 
 from cartographer.adapters.klipper_like.mcu_platform import KlipperLikeMcuPlatform
@@ -11,10 +12,12 @@ if TYPE_CHECKING:
 
     from configfile import ConfigWrapper
 
+    from cartographer.interfaces.mcu_platform import TriggerDispatch
+
 
 @final
 class KlipperMcuPlatform(KlipperLikeMcuPlatform):
-    """McuPlatform implementation for stock Klipper (all versions).
+    """McuPlatform implementation for stock Klipper.
 
     Handles API version differences (``register_serial_response`` vs
     ``register_response``) via a strategy stored at construction time.
@@ -38,6 +41,14 @@ class KlipperMcuPlatform(KlipperLikeMcuPlatform):
                 self._host_mcu.register_response(handler, name)
 
             self._data_response_strategy = _use_response
+
+    # ------------------------------------------------------------------
+    # Trigger dispatch
+    # ------------------------------------------------------------------
+
+    @override
+    def create_trigger_dispatch(self) -> TriggerDispatch:
+        return KlipperTriggerDispatch(self._host_mcu)
 
     # ------------------------------------------------------------------
     # Data response registration

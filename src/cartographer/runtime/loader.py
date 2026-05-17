@@ -1,37 +1,43 @@
+from __future__ import annotations
+
+import logging
 from typing import TYPE_CHECKING, cast
 
-from cartographer.adapters.kalico.adapters import KalicoAdapters
-from cartographer.adapters.kalico.integrator import KalicoIntegrator
-from cartographer.adapters.klipper.adapters import KlipperAdapters
-from cartographer.adapters.klipper.integrator import KlipperIntegrator
-from cartographer.runtime.adapters import Adapters
 from cartographer.runtime.environment import Environment, detect_environment
-from cartographer.runtime.integrator import Integrator
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper as KlipperConfigWrapper
 
+    from cartographer.runtime.adapters import Adapters
+    from cartographer.runtime.integrator import Integrator
 
-def init_adapter(config: object) -> Adapters:
+logger = logging.getLogger(__name__)
+
+
+def init_runtime(config: object) -> tuple[Adapters, Integrator]:
     env = detect_environment(config)
+    logger.info("Detected environment: %s", env.value)
+
     if env == Environment.Klipper:
         from cartographer.adapters.klipper.adapters import KlipperAdapters
+        from cartographer.adapters.klipper.integrator import KlipperIntegrator
 
-        return KlipperAdapters(cast("KlipperConfigWrapper", config))
+        adapters = KlipperAdapters(cast("KlipperConfigWrapper", config))
+        return adapters, KlipperIntegrator(adapters)
+
+    if env == Environment.KlipperV12:
+        from cartographer.adapters.klipper.integrator import KlipperIntegrator
+        from cartographer.adapters.klipper_v12.adapters import KlipperV12Adapters
+
+        adapters = KlipperV12Adapters(cast("KlipperConfigWrapper", config))
+        return adapters, KlipperIntegrator(adapters)
+
     if env == Environment.Kalico:
         from cartographer.adapters.kalico.adapters import KalicoAdapters
+        from cartographer.adapters.kalico.integrator import KalicoIntegrator
 
-        return KalicoAdapters(cast("KlipperConfigWrapper", config))
+        adapters = KalicoAdapters(cast("KlipperConfigWrapper", config))
+        return adapters, KalicoIntegrator(adapters)
 
     msg = f"Unsupported environment: {env}"
-    raise RuntimeError(msg)
-
-
-def init_integrator(adapters: Adapters) -> Integrator:
-    if isinstance(adapters, KlipperAdapters):
-        return KlipperIntegrator(adapters)
-    if isinstance(adapters, KalicoAdapters):
-        return KalicoIntegrator(adapters)
-
-    msg = "Unsupported adapters"
     raise RuntimeError(msg)
