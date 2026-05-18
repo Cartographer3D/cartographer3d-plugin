@@ -98,7 +98,8 @@ class TriggerDispatch:
         _ffi_main, ffi_lib = chelper.get_ffi()
         ffi_lib.trdispatch_stop(self._trdispatch)
         res = [trsync.stop() for trsync in self._trsyncs]
-        err_res = [r for r in res if r >= MCU_trsync.REASON_COMMS_TIMEOUT]
+        # `==` not `>=`: v0.12 orders COMMS_TIMEOUT=2 below HOST_REQUEST=3 and PAST_END_TIME=4.
+        err_res = [r for r in res if r == MCU_trsync.REASON_COMMS_TIMEOUT]
         if err_res:
             return err_res[0]
         return res[0]

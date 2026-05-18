@@ -168,7 +168,7 @@ class CartographerMcu(Mcu, CartographerStreamMcu):
         self.dispatch.wait_end(home_end_time)
         self.commands.send_stop_home()
         result = self.dispatch.stop()
-        if result >= MCU_trsync.REASON_COMMS_TIMEOUT:
+        if result == MCU_trsync.REASON_COMMS_TIMEOUT:
             msg = "Communication timeout during homing"
             raise RuntimeError(msg)
         if result != MCU_trsync.REASON_ENDSTOP_HIT:
