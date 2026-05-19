@@ -11,6 +11,7 @@ from cartographer.mcu.mcu import CartographerMcu
 
 if TYPE_CHECKING:
     from cartographer.adapters.klipper.adapters import KlipperAdapters
+    from cartographer.adapters.klipper_v12.adapters import KlipperV12Adapters
     from cartographer.core import PrinterCartographer
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @final
 class KlipperIntegrator(KlipperLikeIntegrator):
-    def __init__(self, adapters: KlipperAdapters) -> None:
+    def __init__(self, adapters: KlipperAdapters | KlipperV12Adapters) -> None:
         assert isinstance(adapters.mcu, CartographerMcu), "Invalid MCU type for KlipperIntegrator"
         super().__init__(adapters)
         self._toolhead = adapters.toolhead

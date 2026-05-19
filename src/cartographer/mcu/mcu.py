@@ -28,10 +28,10 @@ from cartographer.mcu.stream import CartographerStream, CartographerStreamMcu
 if TYPE_CHECKING:
     from collections.abc import Callable
 
-    from mcu import MCU, TriggerDispatch
+    from mcu import MCU
     from reactor import Reactor, ReactorCompletion
 
-    from cartographer.interfaces.mcu_platform import McuPlatform
+    from cartographer.interfaces.mcu_platform import McuPlatform, TriggerDispatch
     from cartographer.interfaces.multiprocessing import Scheduler
     from cartographer.stream import Session
 
@@ -168,7 +168,7 @@ class CartographerMcu(Mcu, CartographerStreamMcu):
         self.dispatch.wait_end(home_end_time)
         self.commands.send_stop_home()
         result = self.dispatch.stop()
-        if result >= MCU_trsync.REASON_COMMS_TIMEOUT:
+        if result == MCU_trsync.REASON_COMMS_TIMEOUT:
             msg = "Communication timeout during homing"
             raise RuntimeError(msg)
         if result != MCU_trsync.REASON_ENDSTOP_HIT:
