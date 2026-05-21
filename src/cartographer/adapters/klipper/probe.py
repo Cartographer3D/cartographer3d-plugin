@@ -72,8 +72,7 @@ class KlipperCartographerProbe:
         self.toolhead = toolhead
         self.lift_speed = config.lift_speed
 
-    def get_lift_speed(self, gcmd: GCodeCommand | None = None):
-        """Part of PrinterProbe interface in Klipper <= v0.12. Called by extras like axis_twist_compensation."""
+    def _get_lift_speed(self, gcmd: GCodeCommand | None = None):
         if gcmd is None:
             return self.lift_speed
         return gcmd.get_float("LIFT_SPEED", self.lift_speed, above=0.0)
@@ -81,7 +80,7 @@ class KlipperCartographerProbe:
     def get_probe_params(self, gcmd: GCodeCommand | None = None):
         return {
             "probe_speed": 5,
-            "lift_speed": self.get_lift_speed(gcmd),
+            "lift_speed": self._get_lift_speed(gcmd),
             "samples": 1,
             "sample_retract_dist": 0.2,
             "samples_tolerance": 0.1,

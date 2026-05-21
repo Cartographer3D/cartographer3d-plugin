@@ -5,21 +5,21 @@ from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
-from cartographer.adapters.klipper.probe import KlipperCartographerProbe
 from cartographer.adapters.klipper_like.integrator import KlipperLikeIntegrator
+from cartographer.adapters.klipper_v12.probe import KlipperV12CartographerProbe
 from cartographer.mcu.mcu import CartographerMcu
 
 if TYPE_CHECKING:
-    from cartographer.adapters.klipper.adapters import KlipperAdapters
+    from cartographer.adapters.klipper_v12.adapters import KlipperV12Adapters
     from cartographer.core import PrinterCartographer
 
 logger = logging.getLogger(__name__)
 
 
 @final
-class KlipperIntegrator(KlipperLikeIntegrator):
-    def __init__(self, adapters: KlipperAdapters) -> None:
-        assert isinstance(adapters.mcu, CartographerMcu), "Invalid MCU type for KlipperIntegrator"
+class KlipperV12Integrator(KlipperLikeIntegrator):
+    def __init__(self, adapters: KlipperV12Adapters) -> None:
+        assert isinstance(adapters.mcu, CartographerMcu), "Invalid MCU type for KlipperV12Integrator"
         super().__init__(adapters)
         self._toolhead = adapters.toolhead
 
@@ -27,7 +27,7 @@ class KlipperIntegrator(KlipperLikeIntegrator):
     def register_cartographer(self, cartographer: PrinterCartographer) -> None:
         self._printer.add_object(
             "probe",
-            KlipperCartographerProbe(
+            KlipperV12CartographerProbe(
                 self._toolhead,
                 cartographer.scan_mode,
                 cartographer.probe_macro,

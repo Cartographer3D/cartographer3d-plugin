@@ -26,11 +26,11 @@ def init_runtime(config: object) -> tuple[Adapters, Integrator]:
         return adapters, KlipperIntegrator(adapters)
 
     if env == Environment.KlipperV12:
-        from cartographer.adapters.klipper.integrator import KlipperIntegrator
         from cartographer.adapters.klipper_v12.adapters import KlipperV12Adapters
+        from cartographer.adapters.klipper_v12.integrator import KlipperV12Integrator
 
         adapters = KlipperV12Adapters(cast("KlipperConfigWrapper", config))
-        return adapters, KlipperIntegrator(adapters)
+        return adapters, KlipperV12Integrator(adapters)
 
     if env == Environment.Kalico:
         from cartographer.adapters.kalico.adapters import KalicoAdapters
