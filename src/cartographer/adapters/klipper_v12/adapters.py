@@ -3,12 +3,12 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, final
 
-from cartographer.adapters.klipper.axis_twist_compensation import KlipperAxisTwistCompensationAdapter
 from cartographer.adapters.klipper.bed_mesh import KlipperBedMesh
 from cartographer.adapters.klipper.configuration import KlipperConfiguration
 from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
 from cartographer.adapters.klipper.scheduler import KlipperScheduler
 from cartographer.adapters.klipper.toolhead import KlipperToolhead
+from cartographer.adapters.klipper_v12.axis_twist_compensation import KlipperV12AxisTwistCompensationAdapter
 from cartographer.adapters.klipper_v12.mcu_platform import KlipperV12McuPlatform
 from cartographer.config.fields import parse
 from cartographer.interfaces.configuration import GeneralConfig
@@ -39,4 +39,4 @@ class KlipperV12Adapters(Adapters):
 
         self.axis_twist_compensation = None
         if config.has_section("axis_twist_compensation"):
-            self.axis_twist_compensation = KlipperAxisTwistCompensationAdapter(config)
+            self.axis_twist_compensation = KlipperV12AxisTwistCompensationAdapter(config)

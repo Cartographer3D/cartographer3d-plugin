@@ -44,6 +44,7 @@ class CompensationResult:
 class AxisTwistCompensationAdapter(AxisTwistCompensation, Protocol):
     move_height: float
     speed: float
+    available_axes: tuple[Literal["x", "y"], ...]
 
     def clear_compensations(self, axis: Literal["x", "y"]) -> None: ...
     def apply_compensation(self, result: CompensationResult) -> None: ...
@@ -144,6 +145,9 @@ class AxisTwistCompensationMacro(Macro):
         axis = p.axis.lower()
         if axis not in ("x", "y"):
             msg = f"Invalid axis '{axis}'"
+            raise RuntimeError(msg)
+        if axis not in self.adapter.available_axes:
+            msg = f"Axis '{axis}' is not supported for twist compensation on this variant of Klipper"
             raise RuntimeError(msg)
 
         boundaries = self.probe.touch.boundaries

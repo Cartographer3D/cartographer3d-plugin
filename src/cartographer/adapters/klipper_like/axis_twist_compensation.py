@@ -29,6 +29,7 @@ class KlipperLikeAxisTwistCompensationAdapter(AxisTwistCompensationAdapter, ABC)
 
         self.move_height: float = self.compensation.horizontal_move_z
         self.speed: float = self.compensation.speed
+        self.available_axes: tuple[Literal["x", "y"], ...] = ("x", "y")
 
     @override
     def clear_compensations(self, axis: Literal["x", "y"]) -> None:
