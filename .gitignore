@@ -12,3 +12,4 @@ dist/
 .tox/
 junit*.xml
 release_info
+src/cartographer/telemetry/_token.py

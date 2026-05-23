@@ -93,7 +93,21 @@ class CustomBuildHook(BuildHookInterface[BuilderConfig]):
 
         build_data["extra_metadata"][str(out_file)] = "release_info"
 
+        self._inject_telemetry_token()
+
+    def _inject_telemetry_token(self) -> None:
+        """Generate the telemetry token module from environment.
+
+        Reads ``BETTERSTACK_SOURCE_TOKEN``.  Produces an empty token for
+        local builds so the build never fails — telemetry simply won't send.
+        """
+        token = os.getenv("BETTERSTACK_SOURCE_TOKEN", "")
+        out = Path(self.root, "src", "cartographer", "telemetry", "_token.py")
+        _ = out.write_text(f'TOKEN = "{token}"\n')
+
     @override
     def clean(self, versions: list[str]) -> None:
         out_file = Path(self.root, "release_info")
         out_file.unlink(missing_ok=True)
+        token_file = Path(self.root, "src", "cartographer", "telemetry", "_token.py")
+        token_file.unlink(missing_ok=True)

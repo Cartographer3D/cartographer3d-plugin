@@ -148,6 +148,7 @@ class GeneralConfig:
         " E.g. 'CARTO' would result in 'CARTO_TOUCH_HOME'.",
         default=None,
     )
+    telemetry: bool = option("Set to yes to enable anonymous usage telemetry.", default=False)
 
 
 @dataclass(frozen=True)

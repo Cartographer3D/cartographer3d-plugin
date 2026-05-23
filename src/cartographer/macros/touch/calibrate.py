@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, final
 import numpy as np
 from typing_extensions import Protocol, override, runtime_checkable
 
+from cartographer.events import Event
 from cartographer.interfaces.configuration import (
     Configuration,
     TouchModelConfiguration,
@@ -28,6 +29,7 @@ from cartographer.probe.touch_mode import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    from cartographer.events import EventBus
     from cartographer.interfaces.multiprocessing import TaskExecutor
     from cartographer.interfaces.printer import Toolhead
     from cartographer.probe.probe import Probe
@@ -40,6 +42,15 @@ MIN_STEP = 50
 MAX_STEP = 1000
 DEFAULT_TOUCH_MODEL_NAME = "default"
 DEFAULT_Z_OFFSET = -0.05
+
+
+@dataclass(frozen=True)
+class TouchCalibrationEvent(Event):
+    """Emitted after a successful touch calibration."""
+
+    threshold: int
+    speed: int
+    median_range: float
 
 
 @dataclass(frozen=True)
@@ -246,12 +257,14 @@ class TouchCalibrateMacro(Macro):
         toolhead: Toolhead,
         config: Configuration,
         task_executor: TaskExecutor,
+        events: EventBus,
     ) -> None:
         self._probe = probe
         self._mcu = mcu
         self._toolhead = toolhead
         self._config = config
         self._task_executor = task_executor
+        self._events = events
 
     @override
     def run(self, params: MacroParams) -> None:
@@ -307,7 +320,7 @@ class TouchCalibrateMacro(Macro):
         verifier = ThresholdVerifier(calibration_mode)
 
         with force_home_z(self._toolhead):
-            threshold = self._find_threshold(
+            result = self._find_threshold(
                 screener,
                 verifier,
                 p.threshold_start,
@@ -317,11 +330,11 @@ class TouchCalibrateMacro(Macro):
                 p.verification_samples,
             )
 
-        if threshold is None:
+        if result is None:
             self._log_calibration_failure(p.threshold_start, p.threshold_max)
             return
 
-        self._save_calibration_result(name, threshold, p.speed)
+        self._save_calibration_result(name, result.threshold, p.speed, result.median_range)
 
     def _move_to_calibration_position(self) -> None:
         """Move to the zero reference position for calibration."""
@@ -341,7 +354,7 @@ class TouchCalibrateMacro(Macro):
         sample_range: float,
         max_verify_range: float,
         verification_samples: int,
-    ) -> int | None:
+    ) -> VerificationResult | None:
         """
         Find the minimum threshold that produces consistent results.
 
@@ -349,6 +362,8 @@ class TouchCalibrateMacro(Macro):
         1. Screen with few samples - pass if any valid subset found
         2. If screening passes, verify with multiple actual touch probes
         3. Accept if probe results are consistent
+
+        Returns the passing VerificationResult, or None if no threshold worked.
         """
         threshold = threshold_start
         screening_samples = self._config.touch.samples + self._config.touch.max_noisy_samples
@@ -383,7 +398,7 @@ class TouchCalibrateMacro(Macro):
                     format_distance(verification.median_range),
                     len(verification.probe_medians),
                 )
-                return threshold
+                return verification
 
             # Consistency check failed - increase threshold
             logger.debug(
@@ -416,6 +431,7 @@ class TouchCalibrateMacro(Macro):
         name: str,
         threshold: int,
         speed: int,
+        median_range: float,
     ) -> None:
         """Save the calibration result and log success."""
         logger.info(
@@ -432,6 +448,7 @@ class TouchCalibrateMacro(Macro):
             "file and restart the printer.",
             name,
         )
+        self._events.publish(TouchCalibrationEvent(threshold=threshold, speed=speed, median_range=median_range))
 
     def _log_screening_result(
         self,

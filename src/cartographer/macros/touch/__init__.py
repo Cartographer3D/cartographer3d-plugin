@@ -5,5 +5,8 @@ from cartographer.macros.touch.calibrate import (
 from cartographer.macros.touch.calibrate import (
     TouchCalibrateMacro as TouchCalibrateMacro,
 )
+from cartographer.macros.touch.calibrate import (
+    TouchCalibrationEvent as TouchCalibrationEvent,
+)
 from cartographer.macros.touch.home import TouchHomeMacro as TouchHomeMacro
 from cartographer.macros.touch.probe import TouchProbeMacro as TouchProbeMacro
