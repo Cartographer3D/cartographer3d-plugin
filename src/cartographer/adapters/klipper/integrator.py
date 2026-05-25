@@ -24,7 +24,7 @@ class KlipperIntegrator(KlipperLikeIntegrator):
         self._toolhead = adapters.toolhead
 
     @override
-    def register_cartographer(self, cartographer: PrinterCartographer) -> None:
+    def register_probe(self, cartographer: PrinterCartographer) -> None:
         self._printer.add_object(
             "probe",
             KlipperCartographerProbe(

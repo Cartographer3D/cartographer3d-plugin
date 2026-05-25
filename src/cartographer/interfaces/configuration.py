@@ -148,6 +148,18 @@ class GeneralConfig:
         " E.g. 'CARTO' would result in 'CARTO_TOUCH_HOME'.",
         default=None,
     )
+    register_as_probe: bool = option(
+        "When true, Cartographer registers as the 'probe' printer object and 'probe:' pin chip,"
+        " overriding PROBE/PROBE_ACCURACY/QUERY_PROBE/Z_OFFSET_APPLY_PROBE commands."
+        " When false, Cartographer registers its endstop under the 'cartographer_probe:' pin chip"
+        " and does not claim the 'probe' object, allowing a separate [probe] section to coexist.",
+        default=True,
+    )
+
+    @property
+    def endstop_chip_name(self) -> str:
+        """The chip name under which Cartographer registers its virtual endstop."""
+        return "probe" if self.register_as_probe else "cartographer_probe"
 
 
 @dataclass(frozen=True)

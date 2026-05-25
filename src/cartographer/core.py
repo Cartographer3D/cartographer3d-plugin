@@ -171,7 +171,9 @@ class PrinterCartographer:
         return registrations
 
     def _create_probe_macro_registrations(self, probe: Probe, toolhead: Toolhead) -> list[MacroRegistration]:
-        """Create standard probe macro registrations."""
+        """Create standard probe macro registrations (only when register_as_probe is true)."""
+        if not self.config.general.register_as_probe:
+            return []
         return list(
             chain.from_iterable(
                 [
@@ -239,6 +241,10 @@ class PrinterCartographer:
         return list(
             chain.from_iterable(
                 [
+                    self._register_macro(
+                        "SCAN_PROBE",
+                        self.probe_macro,
+                    ),
                     self._register_macro(
                         "SCAN_CALIBRATE",
                         ScanCalibrateMacro(probe, toolhead, self.config),
