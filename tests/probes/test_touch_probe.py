@@ -118,6 +118,14 @@ def test_home_wait(mocker: MockerFixture, mcu: Mcu, probe: Probe) -> None:
     assert probe.touch.home_wait(home_end_time=1.0) == 1.5
 
 
+def test_note_homing_complete_updates_last_homing_time(probe: Probe, toolhead: Toolhead) -> None:
+    assert probe.touch.last_homing_time == 0
+
+    probe.touch.note_homing_complete()
+
+    assert probe.touch.last_homing_time == toolhead.get_last_move_time() - 1
+
+
 def test_abort_if_current_extruder_too_hot(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
     toolhead.get_extruder_temperature = mocker.Mock(return_value=TemperatureStatus(156, 0))
 

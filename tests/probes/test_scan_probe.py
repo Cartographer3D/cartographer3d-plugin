@@ -127,6 +127,14 @@ def test_scan_mode_sets_homed_position(
     homed_position_spy.assert_called_once_with(5)
 
 
+def test_note_homing_complete_updates_last_homing_time(probe: Probe, toolhead: Toolhead):
+    assert probe.scan.last_homing_time == 0
+
+    probe.scan.note_homing_complete()
+
+    assert probe.scan.last_homing_time == toolhead.get_last_move_time() - 1
+
+
 def test_endstop_is_triggered(mocker: MockerFixture, probe: Probe):
     probe.scan.measure_distance = mocker.Mock(return_value=1)
 

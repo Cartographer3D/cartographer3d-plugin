@@ -9,7 +9,12 @@ from typing import TYPE_CHECKING, Callable, Protocol, Sequence, final
 from gcode import GCodeCommand, GCodeDispatch
 from typing_extensions import override
 
-from cartographer.adapters.klipper.endstop import KlipperEndstop, KlipperHomingState
+from cartographer.adapters.klipper.endstop import (
+    KlipperEndstop,
+    KlipperEndstopBase,
+    KlipperHomingState,
+    KlipperProbeEndstop,
+)
 from cartographer.adapters.klipper.homing import KlipperHomingChip
 from cartographer.adapters.klipper.logging import setup_console_logger
 from cartographer.adapters.klipper.temperature import PrinterTemperatureCoil
@@ -71,7 +76,13 @@ class KlipperLikeIntegrator(Integrator, ABC):
 
     @override
     def register_endstop_pin(self, chip_name: str, pin: str, endstop: Endstop) -> None:
-        mcu_endstop = KlipperEndstop(self._mcu, endstop)
+        # When registered as probe (chip_name == "probe"), expose get_position_endstop so
+        # new Klipper routes Z homing through the probe-session path. Otherwise, omit it
+        # so new Klipper falls through to the traditional MCU_endstop homing path.
+        if chip_name == "probe":
+            mcu_endstop = KlipperProbeEndstop(self._mcu, endstop)
+        else:
+            mcu_endstop = KlipperEndstop(self._mcu, endstop)
         chip = KlipperHomingChip(mcu_endstop, pin)
         self._printer.lookup_object("pins").register_chip(chip_name, chip)
 
@@ -105,7 +116,7 @@ class KlipperLikeIntegrator(Integrator, ABC):
     def _handle_home_rails_end(self, homing: Homing, rails: Sequence[_Rail]) -> None:
         homing_state = KlipperHomingState(homing)
         klipper_endstops = [
-            es.endstop for rail in rails for es, _ in rail.get_endstops() if isinstance(es, KlipperEndstop)
+            es.endstop for rail in rails for es, _ in rail.get_endstops() if isinstance(es, KlipperEndstopBase)
         ]
         for endstop in klipper_endstops:
             endstop.on_home_end(homing_state)

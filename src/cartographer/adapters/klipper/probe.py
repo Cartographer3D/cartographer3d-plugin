@@ -22,10 +22,14 @@ class KlipperProbeSession:
 
     @reraise_for_klipper
     def run_probe(self, gcmd: GCodeCommand) -> None:
-        del gcmd
         pos = self.toolhead.get_position()
         trigger_pos = self._probe.perform_probe()
         self._results.append([pos.x, pos.y, trigger_pos])
+
+        # In new Klipper's _do_home_z_via_probe path, the gcmd contains HOME_ATTEMPT_NUM.
+        # This signals we're homing, so update _last_homing_time for Z_OFFSET_APPLY_PROBE.
+        if gcmd.get("HOME_ATTEMPT_NUM", None) is not None:
+            self._probe.note_homing_complete()
 
     def pull_probed_results(self):
         results = self._results
