@@ -36,7 +36,8 @@ class KlipperConfiguration(Configuration):
 
         self.name = config.get_name()
 
-        self._validate_stepper_z()
+        endstop_pin = f"{general.endstop_chip_name}:z_virtual_endstop"
+        self._validate_stepper_z(endstop_pin)
 
         self.general = general
         self.coil = parse(CoilConfiguration, config.getsection("cartographer coil"))
@@ -133,11 +134,11 @@ class KlipperConfiguration(Configuration):
     def log_runtime_warning(self, message: str) -> None:
         return self._config.runtime_warning(message)
 
-    def _validate_stepper_z(self) -> None:
+    def _validate_stepper_z(self, endstop_pin: str) -> None:
         if not self.wrapper.has_section("stepper_z"):
             return
         stepper_z = self.wrapper.getsection("stepper_z")
-        if stepper_z.get("endstop_pin", default=None) != "probe:z_virtual_endstop":
+        if stepper_z.get("endstop_pin", default=None) != endstop_pin:
             return
 
         homing_retract_dist = stepper_z.getfloat("homing_retract_dist", default=None, note_valid=False)

@@ -41,7 +41,7 @@ if TYPE_CHECKING:
 # Macros in the order they should appear in docs.
 # (macro_name, macro_class, params_dataclass)
 MACROS: list[tuple[str, type[Macro], type]] = [
-    # Standard probe macros (no CARTOGRAPHER_ prefix)
+    # Standard probe macros (no CARTOGRAPHER_ prefix) — only registered when register_as_probe is true
     ("PROBE", ProbeMacro, ProbeMacroParams),
     ("PROBE_ACCURACY", ProbeAccuracyMacro, ProbeAccuracyParams),
     ("QUERY_PROBE", QueryProbeMacro, QueryProbeMacroParams),
@@ -51,6 +51,7 @@ MACROS: list[tuple[str, type[Macro], type]] = [
     ("CARTOGRAPHER_QUERY", QueryMacro, QueryParams),
     ("CARTOGRAPHER_STREAM", StreamMacro, StreamParams),
     ("CARTOGRAPHER_TEMPERATURE_CALIBRATE", TemperatureCalibrateMacro, TemperatureCalibrateParams),
+    ("CARTOGRAPHER_SCAN_PROBE", ProbeMacro, ProbeMacroParams),
     ("CARTOGRAPHER_SCAN_CALIBRATE", ScanCalibrateMacro, ScanCalibrateParams),
     ("CARTOGRAPHER_SCAN_ACCURACY", ScanAccuracyMacro, ScanAccuracyParams),
     ("CARTOGRAPHER_SCAN_MODEL", ScanModelManager, ModelManagerParams),

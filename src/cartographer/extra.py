@@ -16,13 +16,16 @@ def load_config(config: object) -> object:
 
     cartographer = PrinterCartographer(adapters)
 
-    integrator.register_cartographer(cartographer)
+    if cartographer.config.general.register_as_probe:
+        integrator.register_probe(cartographer)
 
     for macro in cartographer.macros:
         integrator.register_macro(macro)
 
     integrator.register_coil_temperature_sensor()
-    integrator.register_endstop_pin("probe", "z_virtual_endstop", cartographer.scan_mode)
+
+    chip_name = cartographer.config.general.endstop_chip_name
+    integrator.register_endstop_pin(chip_name, "z_virtual_endstop", cartographer.scan_mode)
 
     integrator.register_ready_callback(cartographer.ready_callback)
 
