@@ -310,6 +310,10 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         self._last_homing_time = self._toolhead.get_last_move_time()
 
     @override
+    def note_homing_complete(self) -> None:
+        self._last_homing_time = self._toolhead.get_last_move_time()
+
+    @override
     def home_wait(self, home_end_time: float) -> float:
         return self._mcu.stop_homing(home_end_time)
 

@@ -46,8 +46,12 @@ class KlipperHomingState(HomingState):
         self.homing.set_homed_position([None, None, position])
 
 
-@final
-class KlipperEndstop(MCU_endstop):
+class KlipperEndstopBase(MCU_endstop):
+    """Base endstop bridging the plugin's Endstop interface to Klipper's MCU_endstop."""
+
+    mcu: CartographerMcu
+    endstop: Endstop
+
     def __init__(self, mcu: CartographerMcu, endstop: Endstop):
         self.mcu = mcu
         self.endstop = endstop
@@ -87,6 +91,26 @@ class KlipperEndstop(MCU_endstop):
     def query_endstop(self, print_time: float) -> int:
         return 1 if self.endstop.query_is_triggered(print_time) else 0
 
-    @override
+
+@final
+class KlipperProbeEndstop(KlipperEndstopBase):
+    """Endstop variant for register_as_probe: true.
+
+    Exposes get_position_endstop(), signaling to new Klipper (post-4767a8ed) that
+    Z homing should route through the probe-session path (_do_home_z_via_probe).
+    """
+
     def get_position_endstop(self) -> float:
         return self.endstop.get_endstop_position()
+
+
+@final
+class KlipperEndstop(KlipperEndstopBase):
+    """Plain endstop variant (register_as_probe: false, or internal probing moves).
+
+    Does NOT expose get_position_endstop(), so new Klipper falls through to the
+    traditional _do_home_rails path. This avoids a crash when no 'probe' object
+    is registered, or incorrect routing to a different probe.
+    """
+
+    pass
