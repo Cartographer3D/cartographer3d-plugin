@@ -6,8 +6,8 @@ from typing import TYPE_CHECKING, final
 from cartographer.adapters.klipper.bed_mesh import KlipperBedMesh
 from cartographer.adapters.klipper.configuration import KlipperConfiguration
 from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
-from cartographer.adapters.klipper.scheduler import KlipperScheduler
 from cartographer.adapters.klipper.toolhead import KlipperToolhead
+from cartographer.adapters.klipper_like.scheduler import KlipperScheduler
 from cartographer.adapters.klipper_v12.axis_twist_compensation import KlipperV12AxisTwistCompensationAdapter
 from cartographer.adapters.klipper_v12.mcu_platform import KlipperV12McuPlatform
 from cartographer.config.fields import parse
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class KlipperV12Adapters(Adapters):
     def __init__(self, config: KlipperConfigWrapper) -> None:
         self.printer = config.get_printer()
-        self.scheduler = KlipperScheduler(self.printer.get_reactor())
+        self.scheduler = KlipperScheduler(self.printer.get_reactor(), self.printer.is_shutdown)
 
         general = parse(GeneralConfig, config)
         platform = KlipperV12McuPlatform(config, general.mcu)

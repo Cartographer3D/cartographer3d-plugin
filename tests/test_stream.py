@@ -7,6 +7,7 @@ from typing import Callable
 import pytest
 from typing_extensions import override
 
+from cartographer.interfaces.errors import PrinterShutdownError
 from cartographer.stream import Condition, Stream
 
 
@@ -37,19 +38,19 @@ def stream() -> Stream[object]:
 
 
 class TestStream:
-    def test_start_session(self, stream: Stream[int]) -> None:
+    def test_start_session(self, stream: Stream[object]) -> None:
         with stream.start_session() as session:
             stream.add_item(42)
         assert session.get_items() == [42]
 
-    def test_start_session_with_condition(self, stream: Stream[int]) -> None:
+    def test_start_session_with_condition(self, stream: Stream[object]) -> None:
         with stream.start_session(start_condition=lambda x: x == 2) as session:
             stream.add_item(1)
             stream.add_item(2)
             stream.add_item(3)
         assert session.get_items() == [2, 3]
 
-    def test_wait_for(self, stream: Stream[int]) -> None:
+    def test_wait_for(self, stream: Stream[object]) -> None:
         session = stream.start_session()
 
         def add_items():
@@ -96,6 +97,24 @@ class TestSessionAbort:
         with pytest.raises(RuntimeError, match="disconnected"):
             session.wait_for(lambda items: False)
 
+    def test_abort_with_custom_error_raises_that_error(self, stream: Stream[object]) -> None:
+        """Passing a custom error to abort() causes wait_for to raise that exact error."""
+        session = stream.start_session()
+        custom_error = ValueError("custom error")
+        session.abort(custom_error)
+
+        with pytest.raises(ValueError, match="custom error"):
+            session.wait_for(lambda items: False)
+
+    def test_abort_with_printer_shutdown_error(self, stream: Stream[object]) -> None:
+        """Passing PrinterShutdownError to abort() causes wait_for to raise it."""
+        session = stream.start_session()
+        error = PrinterShutdownError()
+        session.abort(error)
+
+        with pytest.raises(PrinterShutdownError, match="Printer entered shutdown"):
+            session.wait_for(lambda items: False)
+
 
 class TestAbortAllSessions:
     def test_stream_abort_all_sessions_aborts_each(self, stream: Stream[object]) -> None:
@@ -114,3 +133,17 @@ class TestAbortAllSessions:
     def test_stream_abort_all_sessions_empty(self, stream: Stream[object]) -> None:
         """abort_all_sessions on a stream with no sessions does not raise."""
         stream.abort_all_sessions()  # Should not raise
+
+    def test_abort_all_sessions_with_error_propagates_to_all(self, stream: Stream[object]) -> None:
+        """A custom error passed to abort_all_sessions is raised by every active session."""
+        session_a = stream.start_session()
+        session_b = stream.start_session()
+        custom_error = ValueError("custom")
+
+        stream.abort_all_sessions(custom_error)
+
+        with pytest.raises(ValueError, match="custom"):
+            session_a.wait_for(lambda items: False)
+
+        with pytest.raises(ValueError, match="custom"):
+            session_b.wait_for(lambda items: False)

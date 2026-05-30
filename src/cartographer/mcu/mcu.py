@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, TypedDict, final
 from mcu import MCU_trsync
 from typing_extensions import override
 
+from cartographer.interfaces.errors import McuDisconnectedError, PrinterShutdownError
 from cartographer.interfaces.printer import CoilCalibrationReference, Mcu, Sample
 from cartographer.mcu.async_processor import AsyncProcessor
 from cartographer.mcu.commands import (
@@ -218,8 +219,11 @@ class CartographerMcu(Mcu, CartographerStreamMcu):
             self.stop_streaming()
 
     def _handle_shutdown(self) -> None:
-        if self._commands is not None and not self._platform.is_disconnected():
-            self.stop_streaming()
+        try:
+            if self._commands is not None and not self._platform.is_disconnected():
+                self.stop_streaming()
+        finally:
+            self._stream.abort_all_sessions(PrinterShutdownError())
 
     def register_reconnect_callback(self, callback: Callable[[], None]) -> None:
         self._reconnect_callbacks.append(callback)
@@ -237,7 +241,7 @@ class CartographerMcu(Mcu, CartographerStreamMcu):
     def _handle_disconnect(self) -> None:
         logger.warning("Cartographer MCU disconnected")
         self._sensor_ready = False
-        self._stream.abort_all_sessions()
+        self._stream.abort_all_sessions(McuDisconnectedError())
 
     def _handle_data(self, data: _RawData) -> None:
         """

@@ -3,6 +3,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import Callable, Generic, Protocol, TypeVar
 
+from cartographer.interfaces.errors import McuDisconnectedError
+
 T = TypeVar("T")
 
 
@@ -16,8 +18,6 @@ class Condition(Protocol):
 
 
 class Session(Generic[T]):
-    _aborted: bool = False
-
     def __init__(
         self,
         stream: Stream[T],
@@ -28,8 +28,10 @@ class Session(Generic[T]):
         self.items: list[T] = []
         self.start_condition: Callable[[T], bool] | None = start_condition
         self._condition: Condition = condition
+        self._aborted: bool = False
+        self._abort_error: Exception | None = None
 
-    def add_item(self, item: T):
+    def add_item(self, item: T) -> None:
         """Adds an item to the session only after the start condition is met."""
         if self.start_condition is not None:
             if not self.start_condition(item):
@@ -39,26 +41,33 @@ class Session(Generic[T]):
         self.items.append(item)
         self._condition.notify_all()
 
-    def wait_for(self, condition: Callable[[list[T]], bool]):
+    def wait_for(self, condition: Callable[[list[T]], bool]) -> None:
         """Waits until the given condition function returns True.
 
-        Raises RuntimeError if the session was aborted (e.g. MCU disconnect).
+        Raises McuDisconnectedError (or the stored abort error) if the session was aborted.
         """
         self._condition.wait_for(lambda: self._aborted or condition(self.items))
         if self._aborted:
-            msg = "Cartographer MCU disconnected during session"
-            raise RuntimeError(msg)
+            if self._abort_error is not None:
+                raise self._abort_error
+            raise McuDisconnectedError()
 
     def get_items(self) -> list[T]:
         """Returns collected items after session ends."""
         return self.items
 
-    def abort(self) -> None:
-        """Abort this session; any waiter will wake and raise RuntimeError."""
+    def abort(self, error: Exception | None = None) -> None:
+        """Abort this session; any waiter will wake and raise the given error (or McuDisconnectedError).
+
+        Idempotent: the first abort reason wins; subsequent calls are no-ops.
+        """
+        if self._aborted:
+            return
+        self._abort_error = error
         self._aborted = True
         self._condition.notify_all()
 
-    def __enter__(self):
+    def __enter__(self) -> Session[T]:
         return self  # Allows using `with session:`
 
     def __exit__(
@@ -66,7 +75,7 @@ class Session(Generic[T]):
         exc_type: object,
         exc_val: object,
         exc_tb: object,
-    ):
+    ) -> None:
         """Automatically remove session from stream when exiting the with-block."""
         self.stream.end_session(self)
 
@@ -95,24 +104,24 @@ class Stream(ABC, Generic[T]):
         self.sessions.add(session)
         return session
 
-    def end_session(self, session: Session[T]):
+    def end_session(self, session: Session[T]) -> None:
         """Ends a session and removes it from active sessions."""
         self.sessions.discard(session)
 
-    def abort_all_sessions(self) -> None:
+    def abort_all_sessions(self, error: Exception | None = None) -> None:
         """Wake all waiting sessions so they detect abort and raise."""
         for session in list(self.sessions):
-            session.abort()
+            session.abort(error)
 
-    def register_callback(self, callback: Callable[[T], None]):
+    def register_callback(self, callback: Callable[[T], None]) -> None:
         """Registers a callback to the stream."""
         self.callbacks.add(callback)
 
-    def unregister_callback(self, callback: Callable[[T], None]):
+    def unregister_callback(self, callback: Callable[[T], None]) -> None:
         """Removes the callback from the stream."""
         self.callbacks.discard(callback)
 
-    def add_item(self, item: T):
+    def add_item(self, item: T) -> None:
         """Pushes the item to all active sessions."""
         self._last_item = item
 

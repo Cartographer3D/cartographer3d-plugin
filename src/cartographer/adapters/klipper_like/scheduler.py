@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Callable, final, overload
 
 from typing_extensions import override
 
+from cartographer.interfaces.errors import PrinterShutdownError
 from cartographer.interfaces.multiprocessing import Scheduler
 
 if TYPE_CHECKING:
@@ -14,13 +15,16 @@ if TYPE_CHECKING:
 class KlipperScheduler(Scheduler):
     """Klipper-specific scheduler using the reactor pattern."""
 
-    def __init__(self, reactor: Reactor) -> None:
+    def __init__(self, reactor: Reactor, shutdown_check: Callable[[], bool]) -> None:
         self._reactor = reactor
+        self._shutdown_check = shutdown_check
 
     @override
     def sleep(self, seconds: float) -> None:
         eventtime = self._reactor.monotonic()
         _ = self._reactor.pause(eventtime + seconds)
+        if self._shutdown_check():
+            raise PrinterShutdownError()
 
     @overload
     def wait_until(
@@ -50,6 +54,8 @@ class KlipperScheduler(Scheduler):
 
         while not condition():
             eventtime = self._reactor.pause(eventtime + poll_interval)
+            if self._shutdown_check():
+                raise PrinterShutdownError()
             if eventtime >= end_time:
                 return False
 
