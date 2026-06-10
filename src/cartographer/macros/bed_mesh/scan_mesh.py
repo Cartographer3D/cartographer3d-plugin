@@ -78,6 +78,68 @@ class BedMeshCalibrateConfiguration:
 
 _directions: list[str] = ["x", "y"]
 
+_MAX_INVALID_DIAGNOSTICS = 20
+
+
+def _compute_mesh_assignment_radius(grid: MeshGrid) -> float:
+    """Derive a bed-mesh-specific sample-assignment radius from grid spacing.
+
+    radius = max(1.0, min(min_spacing / 3.0, 5.0))
+
+    Falls back to 1.0 when no valid (positive) spacing exists (degenerate grid).
+    """
+    spacings = [spacing for spacing in (grid.x_step, grid.y_step) if spacing > 0]
+    if not spacings:
+        return 1.0
+    return max(1.0, min(min(spacings) / 3.0, 5.0))
+
+
+def _build_invalid_point_diagnostics(
+    invalid_points: list[tuple[Point, int]],
+    samples: list[Sample],
+) -> list[str]:
+    """Return per-point diagnostic lines for invalid grid points.
+
+    Only the first *_MAX_INVALID_DIAGNOSTICS* points are detailed; the remainder
+    are summarised in a single trailing line.  Each entry reports the nearest
+    raw-sample position and its distance.
+    """
+    sample_positions: list[tuple[float, float]] = [
+        (s.position.x, s.position.y) for s in samples if s.position is not None
+    ]
+
+    lines: list[str] = []
+    shown = min(len(invalid_points), _MAX_INVALID_DIAGNOSTICS)
+
+    for point, assigned in invalid_points[:shown]:
+        gx, gy = float(point[0]), float(point[1])
+        best_dist: float | None = None
+        best_sx: float = 0.0
+        best_sy: float = 0.0
+
+        for sx, sy in sample_positions:
+            dx = sx - gx
+            dy = sy - gy
+            dist = (dx * dx + dy * dy) ** 0.5
+            if best_dist is None or dist < best_dist:
+                best_dist = dist
+                best_sx = sx
+                best_sy = sy
+
+        if best_dist is not None:
+            lines.append(
+                f"  ({gx:.2f},{gy:.2f}) assigned={assigned}"
+                f" nearest=({best_sx:.2f},{best_sy:.2f}) dist={best_dist:.2f}mm"
+            )
+        else:
+            lines.append(f"  ({gx:.2f},{gy:.2f}) assigned={assigned} [no raw samples]")
+
+    omitted = len(invalid_points) - shown
+    if omitted > 0:
+        lines.append(f"  ... and {omitted} more invalid point(s) not shown")
+
+    return lines
+
 
 PATH_GENERATOR_MAP = {
     MeshPath.SNAKE: SnakePathGenerator,
@@ -309,34 +371,40 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
     @log_duration("Processing samples into final mesh positions")
     def _process_samples_to_positions(self, grid: MeshGrid, samples: list[Sample], height: float) -> list[Position]:
         """Process samples into final mesh positions."""
-        sample_processor = SampleProcessor(grid)
+        assignment_radius = _compute_mesh_assignment_radius(grid)
+        sample_processor = SampleProcessor(grid, max_distance=assignment_radius)
 
         # Assign samples to grid points
         results = sample_processor.assign_samples_to_grid(samples, self.probe.scan.calculate_sample_distance)
 
         # Convert results to positions
-        positions = self._results_to_positions(results, height)
+        positions = self._results_to_positions(results, height, samples, assignment_radius)
         return self.coordinate_transformer.apply_faulty_regions(positions, self.config.faulty_regions)
 
-    def _results_to_positions(self, results: list[GridPointResult], height: float) -> list[Position]:
+    def _results_to_positions(
+        self, results: list[GridPointResult], height: float, samples: list[Sample], assignment_radius: float
+    ) -> list[Position]:
         """Convert grid results to Position objects."""
         positions: list[Position] = []
 
-        total_samples = sum(r.sample_count for r in results)
         invalid_points = [(r.point, r.sample_count) for r in results if not isfinite(r.z)]
         sparse_points = [(r.point, r.sample_count) for r in results if isfinite(r.z) and r.sample_count < 3]
 
         if invalid_points:
-            invalid_list = ", ".join(f"({p[0]:.2f},{p[1]:.2f}) samples={n}" for p, n in invalid_points)
-            lines = [
-                f"Mesh scan failed: {len(invalid_points)}/{len(results)} grid points have no valid samples.",
-                f"Total samples collected: {total_samples}.",
-                f"Invalid grid points: {invalid_list}.",
+            raw_count = len(samples)
+            assigned_count = sum(r.sample_count for r in results)
+            diag_lines = _build_invalid_point_diagnostics(invalid_points, samples)
+            msg_lines = [
+                f"Mesh scan failed: {len(invalid_points)}/{len(results)} grid points have no valid samples."
+                f" Raw samples: {raw_count}. Assigned to grid: {assigned_count}."
+                f" Assignment radius: {assignment_radius:.2f}mm.",
+                f"Invalid points ({len(invalid_points)} total):",
+                *diag_lines,
             ]
             if sparse_points:
                 sparse_list = ", ".join(f"({p[0]:.2f},{p[1]:.2f})={n}" for p, n in sparse_points)
-                lines.append(f"Sparse grid points (<3 samples): {sparse_list}.")
-            msg = " ".join(lines)
+                msg_lines.append(f"Sparse grid points (<3 samples): {sparse_list}.")
+            msg = "\n".join(msg_lines)
             logger.error(msg)
             raise RuntimeError(msg)
 
