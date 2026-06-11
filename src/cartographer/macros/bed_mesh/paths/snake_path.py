@@ -9,6 +9,7 @@ from cartographer.macros.bed_mesh.interfaces import PathGenerator
 from cartographer.macros.bed_mesh.paths.utils import (
     Vec,
     angle_deg,
+    apply_corner_radius_cap,
     arc_points,
     cluster_points,
     normalize,
@@ -24,8 +25,9 @@ BUFFER = 0.5
 
 @final
 class SnakePathGenerator(PathGenerator):
-    def __init__(self, main_direction: str):
+    def __init__(self, main_direction: str, max_corner_radius: float | None = None):
         self.main_direction: str = main_direction
+        self.max_corner_radius: float | None = max_corner_radius
 
     @override
     def generate_path(
@@ -47,8 +49,10 @@ class SnakePathGenerator(PathGenerator):
         mesh_max = grid[-1][-1][main_index]
         max_radius_by_bounds = min(mesh_min - axis_min, axis_max - mesh_max) - BUFFER
 
-        # Final corner radius
-        corner_radius = float(max(0, min(max_radius_by_spacing, max_radius_by_bounds)))
+        # Auto corner radius (clamped to valid range)
+        auto_radius = float(max(0, min(max_radius_by_spacing, max_radius_by_bounds)))
+
+        effective_radius = apply_corner_radius_cap(auto_radius, self.max_corner_radius)
 
         prev_row = grid[0]
 
@@ -60,9 +64,8 @@ class SnakePathGenerator(PathGenerator):
             if i > 0:
                 prev_last = prev_row[-1]
                 curr_first = row[0]
-                entry_dir = row_direction(prev_row[-2:])  # You must define this separately
-
-                yield from u_turn(prev_last, curr_first, entry_dir, corner_radius)
+                entry_dir = row_direction(prev_row[-2:])
+                yield from u_turn(prev_last, curr_first, entry_dir, effective_radius)
 
             yield from row
             prev_row = row

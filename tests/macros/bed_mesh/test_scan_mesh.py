@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
-from typing import TYPE_CHECKING, final
+from typing import TYPE_CHECKING, cast, final
 
 import numpy as np
 import pytest
@@ -235,6 +235,81 @@ class TestBedMeshIntegration:
         # Check that all expected nozzle positions were visited
         missing = expected_nozzle_positions - actual_move_positions
         assert not missing, f"Missing expected nozzle moves: {missing}"
+
+    def test_max_corner_radius_zero_macro_override_disables_arc_moves(
+        self,
+        mocker: MockerFixture,
+        bed_mesh_macro: BedMeshCalibrateMacro,
+        probe_offset: Position,
+        params: MockParams,
+        session: Mock,
+        toolhead: MockToolhead,
+    ):
+        """Test that MAX_CORNER_RADIUS=0 is wired through BED_MESH_CALIBRATE and removes off-grid arc moves."""
+        expected_probe_positions = [(float(10 + 20 * x), float(10 + 20 * y)) for x in range(5) for y in range(5)]
+        heights = [1.5 + 0.1 * i for i in range(len(expected_probe_positions))]
+        mock_samples = self.create_samples_at_probe_positions(expected_probe_positions, heights, probe_offset)
+        session.get_items = mocker.Mock(return_value=mock_samples)
+
+        params.params = {"METHOD": "scan", "MAX_CORNER_RADIUS": "0"}
+        bed_mesh_macro.run(params)
+
+        expected_nozzle_positions = {
+            (round(px - probe_offset.x, 2), round(py - probe_offset.y, 2)) for (px, py) in expected_probe_positions
+        }
+        actual_move_positions = {(round(x, 2), round(y, 2)) for x, y in toolhead.moves}
+        non_scan_moves = {(0.0, 0.0)}
+
+        extra_moves = actual_move_positions - expected_nozzle_positions - non_scan_moves
+        assert not extra_moves, f"MAX_CORNER_RADIUS=0 generated off-grid arc moves: {extra_moves}"
+
+    def test_max_corner_radius_auto_macro_override_enables_arc_moves_when_config_disables_them(
+        self,
+        mocker: MockerFixture,
+        probe: Probe,
+        toolhead: MockToolhead,
+        adapter: BedMeshAdapter,
+        mesh_config: BedMeshCalibrateConfiguration,
+        probe_offset: Position,
+        params: MockParams,
+        session: Mock,
+    ):
+        """Test that MAX_CORNER_RADIUS=AUTO overrides a configured zero radius back to automatic arcs."""
+        expected_probe_positions = [(float(10 + 20 * x), float(10 + 20 * y)) for x in range(5) for y in range(5)]
+        heights = [1.5 + 0.1 * i for i in range(len(expected_probe_positions))]
+        mock_samples = self.create_samples_at_probe_positions(expected_probe_positions, heights, probe_offset)
+        session.get_items = mocker.Mock(return_value=mock_samples)
+        macro = BedMeshCalibrateMacro(
+            probe,
+            cast("Toolhead", cast("object", toolhead)),
+            adapter,
+            None,
+            InlineTaskExecutor(),
+            replace(mesh_config, max_corner_radius=0.0),
+        )
+
+        params.params = {"METHOD": "scan", "MAX_CORNER_RADIUS": "AUTO"}
+        macro.run(params)
+
+        expected_nozzle_positions = {
+            (round(px - probe_offset.x, 2), round(py - probe_offset.y, 2)) for (px, py) in expected_probe_positions
+        }
+        actual_move_positions = {(round(x, 2), round(y, 2)) for x, y in toolhead.moves}
+        non_scan_moves = {(0.0, 0.0)}
+
+        extra_moves = actual_move_positions - expected_nozzle_positions - non_scan_moves
+        assert extra_moves, "MAX_CORNER_RADIUS=AUTO did not restore automatic off-grid arc moves"
+
+    def test_max_corner_radius_negative_macro_override_is_rejected(
+        self,
+        bed_mesh_macro: BedMeshCalibrateMacro,
+        params: MockParams,
+    ):
+        """Test that MAX_CORNER_RADIUS rejects negative values."""
+        params.params = {"METHOD": "scan", "MAX_CORNER_RADIUS": "-1"}
+
+        with pytest.raises(ValueError):
+            bed_mesh_macro.run(params)
 
     def test_adaptive_mesh_boundary_and_coordinate_transformation(
         self,

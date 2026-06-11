@@ -132,6 +132,28 @@ def _parse_scan_domain(config: ConfigWrapper) -> tuple[float, float]:
     return _list_to_tuple(config.getfloatlist("domain", count=2))
 
 
+def _parse_mesh_max_corner_radius(config: ConfigWrapper) -> float | None:
+    raw = config.get("mesh_max_corner_radius", default=None)
+    if raw is None:
+        return None
+
+    value = raw.strip()
+    if value.lower() == "auto":
+        return None
+
+    try:
+        radius = float(value)
+    except ValueError:
+        msg = f"mesh_max_corner_radius must be 'auto' or a non-negative number, got {raw!r}"
+        raise ValueError(msg) from None
+
+    if radius < 0:
+        msg = f"mesh_max_corner_radius must be 'auto' or a non-negative number, got {radius}"
+        raise ValueError(msg)
+
+    return radius
+
+
 @dataclass(frozen=True)
 class GeneralConfig:
     config_section_key: ClassVar[str] = "cartographer"
@@ -180,6 +202,14 @@ class ScanConfig:
     mesh_path: MeshPath = option(
         "The path to use when calibrating a scan mesh.",
         default=MeshPath.SNAKE,
+    )
+    mesh_max_corner_radius: float | None = option(
+        "Maximum corner radius (mm) for scan mesh path arcs."
+        " Omit or set to 'auto' to derive the radius from point spacing and axis limits;"
+        " 0 disables smoothing arcs;"
+        " positive values cap the auto-computed radius.",
+        default=None,
+        parse_fn=_parse_mesh_max_corner_radius,
     )
     models: dict[str, ScanModelConfiguration] = field(default_factory=dict)  # provided via override
 

@@ -16,8 +16,8 @@ MIN_DIST = 10.0
 
 @final
 class RandomPathGenerator(PathGenerator):
-    def __init__(self, main_direction: str):
-        del main_direction
+    def __init__(self, main_direction: str, max_corner_radius: float | None = None):
+        del main_direction, max_corner_radius
 
     @override
     def generate_path(
