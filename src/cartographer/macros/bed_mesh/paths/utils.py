@@ -81,3 +81,21 @@ def row_direction(row: list[Point]) -> Vec:
     p1: Vec = np.asarray(row[1], dtype=float)
     dir_vec = p1 - p0
     return dir_vec / np.linalg.norm(dir_vec)  # normalized
+
+
+def apply_corner_radius_cap(auto_radius: float, max_corner_radius: float | None) -> float:
+    """Apply max_corner_radius config cap to an auto-computed corner radius.
+
+    Semantics:
+      - None  → use the auto radius unchanged (existing behaviour)
+      -   0   → disable arcs; return 0.0
+      -  >0   → return min(auto_radius, max_corner_radius)
+
+    The auto radius is defensively clamped to >=0 before applying the cap.
+    When ``max_corner_radius == 0``, the general ``min(auto_radius, max_corner_radius)``
+    expression returns 0, so no special-case branch is needed.
+    """
+    auto_radius = max(0.0, auto_radius)
+    if max_corner_radius is None:
+        return auto_radius
+    return min(auto_radius, max_corner_radius)

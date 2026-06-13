@@ -37,6 +37,7 @@ default_scan_config = ScanConfig(
     mesh_direction=MeshDirection.X,
     mesh_height=4.0,
     mesh_path=MeshPath.SNAKE,
+    mesh_max_corner_radius=None,
 )
 default_touch_config = TouchConfig(
     samples=5,
