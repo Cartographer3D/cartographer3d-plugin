@@ -7,6 +7,7 @@ import pytest
 from typing_extensions import TypeAlias
 
 from cartographer.macros.bed_mesh.paths.alternating_snake import AlternatingSnakePathGenerator
+from cartographer.macros.bed_mesh.paths.hilbert_path import HilbertPathGenerator, next_power_of_two, xy_to_hilbert
 from cartographer.macros.bed_mesh.paths.random_path import RandomPathGenerator
 from cartographer.macros.bed_mesh.paths.snake_path import SnakePathGenerator
 from cartographer.macros.bed_mesh.paths.spiral_path import SpiralPathGenerator
@@ -28,8 +29,12 @@ GridFixture: TypeAlias = "tuple[str, list[Point]]"
     params=[
         ("Snake X", lambda: SnakePathGenerator(main_direction="x")),
         ("Snake Y", lambda: SnakePathGenerator(main_direction="y")),
+        ("Alternating Snake X", lambda: AlternatingSnakePathGenerator(main_direction="x")),
+        ("Alternating Snake Y", lambda: AlternatingSnakePathGenerator(main_direction="y")),
         ("Spiral", lambda: SpiralPathGenerator(main_direction="x")),
         ("Random", lambda: RandomPathGenerator(main_direction="x")),
+        ("Hilbert X", lambda: HilbertPathGenerator(main_direction="x")),
+        ("Hilbert Y", lambda: HilbertPathGenerator(main_direction="y")),
     ]
 )
 def generator(request: pytest.FixtureRequest):
@@ -193,3 +198,228 @@ class TestApplyCornerRadiusCap:
 
     def test_negative_auto_with_cap(self):
         assert apply_corner_radius_cap(-1.0, 2.0) == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Hilbert path internals
+# ---------------------------------------------------------------------------
+
+
+class TestNextPowerOfTwo:
+    def test_one(self):
+        assert next_power_of_two(1) == 1
+
+    def test_already_power_of_two(self):
+        assert next_power_of_two(4) == 4
+        assert next_power_of_two(8) == 8
+        assert next_power_of_two(16) == 16
+
+    def test_rounds_up(self):
+        assert next_power_of_two(3) == 4
+        assert next_power_of_two(5) == 8
+        assert next_power_of_two(10) == 16
+        assert next_power_of_two(11) == 16
+        assert next_power_of_two(20) == 32
+        assert next_power_of_two(21) == 32
+
+    def test_zero_or_negative_returns_one(self):
+        assert next_power_of_two(0) == 1
+        assert next_power_of_two(-5) == 1
+
+
+class TestXyToHilbert:
+    """Spot-check xy_to_hilbert for small power-of-two grids."""
+
+    def test_2x2_all_indices_unique(self):
+        """All four (x,y) positions in a 2×2 square get distinct distances."""
+        distances = {xy_to_hilbert(2, x, y) for x in range(2) for y in range(2)}
+        assert distances == {0, 1, 2, 3}
+
+    def test_4x4_all_indices_unique(self):
+        distances = {xy_to_hilbert(4, x, y) for x in range(4) for y in range(4)}
+        assert len(distances) == 16
+        assert distances == set(range(16))
+
+    def test_origin_is_always_zero(self):
+        for order in (1, 2, 4, 8, 16):
+            assert xy_to_hilbert(order, 0, 0) == 0
+
+
+# ---------------------------------------------------------------------------
+# HilbertPathGenerator behaviour
+# ---------------------------------------------------------------------------
+
+
+_AXIS_LIMITS = (-10.0, 300.0)
+
+
+class TestHilbertPathGeneratorExact:
+    """Exact output tests for small, well-known grids."""
+
+    def test_1x1_grid_yields_single_point(self):
+        gen = HilbertPathGenerator("x")
+        pts: list[Point] = [(5.0, 7.0)]
+        path = list(gen.generate_path(pts, _AXIS_LIMITS, _AXIS_LIMITS))
+        assert path == [(5.0, 7.0)]
+
+    def test_empty_grid_yields_nothing(self):
+        gen = HilbertPathGenerator("x")
+        path = list(gen.generate_path([], _AXIS_LIMITS, _AXIS_LIMITS))
+        assert path == []
+
+    def test_2x2_x_direction_exact_order(self):
+        """For a 2×2 unit grid, main_direction='x' first step is +X."""
+        # grid[0] = [(0,0),(1,0)], grid[1] = [(0,1),(1,1)]
+        # r=0,c=0 → hilbert(2,0,0)=0  → (0,0)
+        # r=0,c=1 → hilbert(2,0,1)=1  → (1,0)
+        # r=1,c=1 → hilbert(2,1,1)=2  → (1,1)
+        # r=1,c=0 → hilbert(2,1,0)=3  → (0,1)
+        gen = HilbertPathGenerator("x")
+        pts: list[Point] = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)]
+        path = list(gen.generate_path(pts, _AXIS_LIMITS, _AXIS_LIMITS))
+        assert path[0] == (0.0, 0.0), "first point must be origin"
+        # First move should be in the +X direction
+        assert float(path[1][0]) > float(path[0][0]), "first step should be +X for main_direction='x'"
+        assert len(path) == 4
+
+    def test_2x2_y_direction_exact_order(self):
+        """For a 2×2 unit grid, main_direction='y' first step is +Y."""
+        gen = HilbertPathGenerator("y")
+        pts: list[Point] = [(0.0, 0.0), (1.0, 0.0), (0.0, 1.0), (1.0, 1.0)]
+        path = list(gen.generate_path(pts, _AXIS_LIMITS, _AXIS_LIMITS))
+        assert path[0] == (0.0, 0.0), "first point must be origin"
+        # First move should be in the +Y direction
+        assert float(path[1][1]) > float(path[0][1]), "first step should be +Y for main_direction='y'"
+        assert len(path) == 4
+
+    def test_x_and_y_directions_differ(self):
+        """x and y orientation produce different orderings on an asymmetric grid."""
+        pts = make_grid(3, 4, 1.0)  # rectangular → orientations differ
+        gen_x = HilbertPathGenerator("x")
+        gen_y = HilbertPathGenerator("y")
+        path_x = list(gen_x.generate_path(pts, _AXIS_LIMITS, _AXIS_LIMITS))
+        path_y = list(gen_y.generate_path(pts, _AXIS_LIMITS, _AXIS_LIMITS))
+        assert path_x != path_y, "x and y orientations must produce different traversal orders"
+
+
+class TestHilbertPathGeneratorNoDuplicates:
+    """Each input mesh point is visited exactly once."""
+
+    @pytest.mark.parametrize(
+        "nx,ny",
+        [
+            (3, 3),
+            (4, 4),
+            (5, 5),
+            (10, 10),
+            (11, 11),
+            (20, 20),
+            (21, 21),
+            (3, 5),
+            (5, 3),
+            (4, 7),
+            (7, 4),
+        ],
+    )
+    def test_no_duplicates_covers_all_points(self, nx: int, ny: int):
+        pts = make_grid(nx, ny, 1.0)
+        gen = HilbertPathGenerator("x")
+        path = list(gen.generate_path(pts, _AXIS_LIMITS, _AXIS_LIMITS))
+        assert len(path) == len(pts), f"expected {len(pts)} points for {nx}×{ny}, got {len(path)}"
+        # Convert to rounded tuples for set comparison (floats may vary slightly)
+        path_set = {(round(float(x), 6), round(float(y), 6)) for x, y in path}
+        pts_set = {(round(float(x), 6), round(float(y), 6)) for x, y in pts}
+        assert path_set == pts_set, f"{nx}×{ny}: path does not cover all input points exactly"
+
+
+class TestHilbertPathGeneratorDeterministic:
+    """Repeated calls with identical input produce identical output."""
+
+    @pytest.mark.parametrize("direction", ["x", "y"])
+    def test_deterministic(self, direction: str):
+        pts = make_grid(5, 5, 2.5)
+        gen = HilbertPathGenerator(direction)
+        path_a = list(gen.generate_path(pts, _AXIS_LIMITS, _AXIS_LIMITS))
+        path_b = list(gen.generate_path(pts, _AXIS_LIMITS, _AXIS_LIMITS))
+        assert path_a == path_b, f"Hilbert {direction!r}: two calls produced different orderings"
+
+
+class TestHilbertPathGeneratorRectangular:
+    """Rectangular (non-square) grids are handled correctly."""
+
+    @pytest.mark.parametrize(
+        "nx,ny",
+        [
+            (3, 7),
+            (7, 3),
+            (1, 10),
+            (10, 1),
+            (6, 11),
+        ],
+    )
+    def test_rectangular_covers_all_points(self, nx: int, ny: int):
+        pts = make_grid(nx, ny, 1.0)
+        gen = HilbertPathGenerator("x")
+        path = list(gen.generate_path(pts, _AXIS_LIMITS, _AXIS_LIMITS))
+        assert len(path) == nx * ny
+        path_set = {(round(float(x), 6), round(float(y), 6)) for x, y in path}
+        pts_set = {(round(float(x), 6), round(float(y), 6)) for x, y in pts}
+        assert path_set == pts_set
+
+
+class TestHilbertPathGeneratorMaxCornerRadius:
+    """max_corner_radius is accepted but has no effect on the output."""
+
+    def test_radius_none_same_as_zero(self):
+        pts = make_grid(4, 4, 1.0)
+        gen_none = HilbertPathGenerator("x", max_corner_radius=None)
+        gen_zero = HilbertPathGenerator("x", max_corner_radius=0.0)
+        gen_pos = HilbertPathGenerator("x", max_corner_radius=5.0)
+        path_none = list(gen_none.generate_path(pts, _AXIS_LIMITS, _AXIS_LIMITS))
+        path_zero = list(gen_zero.generate_path(pts, _AXIS_LIMITS, _AXIS_LIMITS))
+        path_pos = list(gen_pos.generate_path(pts, _AXIS_LIMITS, _AXIS_LIMITS))
+        # All three should produce identical paths (no arc points added)
+        assert path_none == path_zero == path_pos
+        assert len(path_none) == 16  # exactly the grid points, no extras
+
+
+class TestHilbertPathRegistration:
+    """MeshPath.HILBERT is registered in PATH_GENERATOR_MAP."""
+
+    def test_hilbert_in_mesh_path_enum(self):
+        from cartographer.interfaces.configuration import MeshPath
+
+        assert MeshPath("hilbert") == MeshPath.HILBERT
+        assert str(MeshPath.HILBERT) == "hilbert"
+
+    def test_hilbert_in_path_generator_map(self):
+        from cartographer.interfaces.configuration import MeshPath
+        from cartographer.macros.bed_mesh.scan_mesh import PATH_GENERATOR_MAP
+
+        assert MeshPath.HILBERT in PATH_GENERATOR_MAP
+        assert PATH_GENERATOR_MAP[MeshPath.HILBERT] is HilbertPathGenerator
+
+    def test_path_generator_map_produces_correct_instance(self):
+        from cartographer.interfaces.configuration import MeshPath
+        from cartographer.macros.bed_mesh.scan_mesh import PATH_GENERATOR_MAP
+
+        gen = PATH_GENERATOR_MAP[MeshPath.HILBERT]("x", None)
+        assert isinstance(gen, HilbertPathGenerator)
+
+
+class TestAlternatingSnakePathRegistration:
+    """MeshPath.ALTERNATING_SNAKE is registered in PATH_GENERATOR_MAP."""
+
+    def test_alternating_snake_in_path_generator_map(self):
+        from cartographer.interfaces.configuration import MeshPath
+        from cartographer.macros.bed_mesh.scan_mesh import PATH_GENERATOR_MAP
+
+        assert MeshPath.ALTERNATING_SNAKE in PATH_GENERATOR_MAP
+        assert PATH_GENERATOR_MAP[MeshPath.ALTERNATING_SNAKE] is AlternatingSnakePathGenerator
+
+    def test_path_generator_map_produces_correct_instance(self):
+        from cartographer.interfaces.configuration import MeshPath
+        from cartographer.macros.bed_mesh.scan_mesh import PATH_GENERATOR_MAP
+
+        gen = PATH_GENERATOR_MAP[MeshPath.ALTERNATING_SNAKE]("x", None)
+        assert isinstance(gen, AlternatingSnakePathGenerator)

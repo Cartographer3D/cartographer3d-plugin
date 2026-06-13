@@ -354,6 +354,7 @@ class TestEnumStr:
         assert str(MeshPath.ALTERNATING_SNAKE) == "alternating_snake"
         assert str(MeshPath.SPIRAL) == "spiral"
         assert str(MeshPath.RANDOM) == "random"
+        assert str(MeshPath.HILBERT) == "hilbert"
 
     def test_mesh_path_fstring(self) -> None:
         assert f"{MeshPath.SNAKE}" == "snake"

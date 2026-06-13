@@ -28,6 +28,7 @@ class MeshPath(str, Enum):
     ALTERNATING_SNAKE = "alternating_snake"
     SPIRAL = "spiral"
     RANDOM = "random"
+    HILBERT = "hilbert"
 
     # See MeshDirection.__str__ for rationale.
     @override

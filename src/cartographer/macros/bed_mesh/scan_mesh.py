@@ -29,6 +29,7 @@ from cartographer.macros.bed_mesh.helpers import (
     SampleProcessor,
 )
 from cartographer.macros.bed_mesh.paths.alternating_snake import AlternatingSnakePathGenerator
+from cartographer.macros.bed_mesh.paths.hilbert_path import HilbertPathGenerator
 from cartographer.macros.bed_mesh.paths.random_path import RandomPathGenerator
 from cartographer.macros.bed_mesh.paths.snake_path import SnakePathGenerator
 from cartographer.macros.bed_mesh.paths.spiral_path import SpiralPathGenerator
@@ -111,6 +112,7 @@ PATH_GENERATOR_MAP = {
     MeshPath.ALTERNATING_SNAKE: AlternatingSnakePathGenerator,
     MeshPath.SPIRAL: SpiralPathGenerator,
     MeshPath.RANDOM: RandomPathGenerator,
+    MeshPath.HILBERT: HilbertPathGenerator,
 }
 
 
