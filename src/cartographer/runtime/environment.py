@@ -21,9 +21,10 @@ def detect_environment(config: object) -> Environment:
         pass
 
     try:
-        from mcu import TriggerDispatch
+        from extras.probe import PrinterProbe
 
-        del TriggerDispatch
+        if not hasattr(PrinterProbe, "start_probe_session"):
+            return Environment.KlipperV12
     except ImportError:
         return Environment.KlipperV12
 
