@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING
 import matplotlib.pyplot as plt
 
 from cartographer.macros.bed_mesh.paths.alternating_snake import AlternatingSnakePathGenerator
+from cartographer.macros.bed_mesh.paths.hilbert_path import HilbertPathGenerator
 from cartographer.macros.bed_mesh.paths.random_path import RandomPathGenerator
 from cartographer.macros.bed_mesh.paths.snake_path import SnakePathGenerator
 from cartographer.macros.bed_mesh.paths.spiral_path import SpiralPathGenerator
@@ -25,6 +26,7 @@ PATH_STRATEGY_MAP = {
     "alternating_snake": AlternatingSnakePathGenerator,
     "spiral": SpiralPathGenerator,
     "random": RandomPathGenerator,
+    "hilbert": HilbertPathGenerator,
 }
 
 # ---------------------------------------------------------------------------
@@ -161,6 +163,7 @@ examples:
   python scripts/plot_path.py snake
   python scripts/plot_path.py snake --grid 7x7 --max-corner-radius 0 --output snake.png
   python scripts/plot_path.py spiral --grid 9x8 --max-corner-radius auto
+  python scripts/plot_path.py hilbert --grid 21x21 --direction x --output hilbert.png
 """,
     )
     parser.add_argument(
@@ -181,7 +184,7 @@ examples:
         default=None,
         type=parse_max_corner_radius,
         dest="max_corner_radius",
-        help="Corner-radius cap: 'auto' or a non-negative float. Omit for auto.",
+        help="Corner-radius cap: 'auto' or a non-negative float. Omit for auto (ignored by random and hilbert).",
     )
     parser.add_argument(
         "--grid",
