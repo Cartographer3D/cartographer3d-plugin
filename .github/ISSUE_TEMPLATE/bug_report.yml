@@ -1,0 +1,80 @@
+name: Bug report
+description: Report a problem with the Cartographer3D plugin.
+labels: ["fix"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for reproducible Cartographer3D plugin bugs, errors, or regressions.
+
+        If you need setup help, calibration advice, or printer-specific troubleshooting and are not sure this is a plugin bug, please start with the documentation, Discord, or contact links on the issue chooser.
+
+  - type: dropdown
+    id: firmware
+    attributes:
+      label: Firmware target
+      description: Which host firmware are you running?
+      options:
+        - Klipper (mainline)
+        - Kalico
+        - SimpleAF
+        - Other / Unknown
+    validations:
+      required: true
+
+  - type: input
+    id: firmware_version
+    attributes:
+      label: Firmware version
+      description: The Klipper, Kalico, or SimpleAF version/commit you are running.
+      placeholder: "e.g. v0.12.0-123-gabcdef, commit SHA, or release version"
+    validations:
+      required: true
+
+  - type: input
+    id: plugin_version
+    attributes:
+      label: Plugin version
+      placeholder: "e.g. 1.2.3 or git SHA"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: What happened?
+      description: A clear description of the bug — what went wrong?
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What did you expect to happen?
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Configure ...
+        2. Run macro ...
+        3. See error ...
+    validations:
+      required: true
+
+  - type: textarea
+    id: config
+    attributes:
+      label: Relevant printer.cfg / cartographer config
+      description: Paste the `[cartographer]` section and any related blocks. Remove sensitive values (e.g. IPs, serial numbers).
+      render: ini
+
+  - type: textarea
+    id: logs
+    attributes:
+      label: Klipper log / error output
+      description: Paste relevant lines from `klippy.log` or the console.
+      render: text

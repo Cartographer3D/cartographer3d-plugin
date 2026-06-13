@@ -20,7 +20,7 @@ function getLabelsFromTitle(title) {
 
   // Check for breaking change
   if (normalizedTitle.includes(config.breakingChangeIndicator)) {
-    labels.push("breaking change");
+    labels.push(config.breakingChangeLabel);
   }
 
   return labels;

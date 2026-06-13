@@ -3,7 +3,7 @@
     "fix",
     "enhancement",
     "chore",
-    "breaking change",
+    "breaking-change",
     "ignore-for-release",
     "performance"
   ],
@@ -15,5 +15,6 @@
   },
   "releaseRelevantPaths": ["^src/", "^uv\\.lock$"],
   "breakingChangeIndicator": "!",
+  "breakingChangeLabel": "breaking-change",
   "ignoreForReleaseLabel": "ignore-for-release"
 }
