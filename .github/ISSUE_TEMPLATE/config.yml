@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Documentation
+    url: https://docs.cartographer3d.com/
+    about: Configuration guides, calibration walkthroughs, and troubleshooting.
+  - name: Discord community
+    url: https://discord.gg/EFSwpureHz
+    about: For setup help, calibration advice, and printer-specific troubleshooting.
+  - name: Contact Cartographer3D
+    url: https://cartographer3d.com/pages/contact
+    about: For general questions and community support, contact Cartographer3D directly.
