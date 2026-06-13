@@ -19,6 +19,7 @@ from cartographer.adapters.klipper.homing import KlipperHomingChip
 from cartographer.adapters.klipper.logging import setup_console_logger
 from cartographer.adapters.klipper.temperature import PrinterTemperatureCoil
 from cartographer.adapters.klipper_like.utils import reraise_for_klipper
+from cartographer.interfaces.errors import PrinterShutdownError
 from cartographer.interfaces.printer import Macro, MacroParams, SupportsFallbackMacro
 from cartographer.runtime.integrator import Integrator
 
@@ -97,7 +98,7 @@ class KlipperLikeIntegrator(Integrator, ABC):
             else:
                 logger.warning("No original macro found to fallback to for '%s'", name)
 
-        self._gcode.register_command(name, _catch_macro_errors(macro.run), desc=macro.description)
+        self._gcode.register_command(name, catch_macro_errors(macro.run), desc=macro.description)
 
     @override
     def register_coil_temperature_sensor(self) -> None:
@@ -127,11 +128,14 @@ class KlipperLikeIntegrator(Integrator, ABC):
         handler.setLevel(log_level)
 
 
-def _catch_macro_errors(func: Callable[[GCodeCommand], None]) -> Callable[[GCodeCommand], None]:
+def catch_macro_errors(func: Callable[[GCodeCommand], None]) -> Callable[[GCodeCommand], None]:
     @wraps(func)
     def wrapper(gcmd: GCodeCommand) -> None:
         try:
             func(gcmd)
+        except PrinterShutdownError:
+            msg = "Aborted: printer entered shutdown"
+            raise gcmd.error(msg) from None
         except (RuntimeError, ValueError) as e:
             msg = dedent(str(e)).replace("\n", " ").replace("  ", "\n").strip()
             raise gcmd.error(msg) from e

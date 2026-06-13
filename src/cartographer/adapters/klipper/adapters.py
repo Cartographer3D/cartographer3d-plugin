@@ -8,8 +8,8 @@ from cartographer.adapters.klipper.bed_mesh import KlipperBedMesh
 from cartographer.adapters.klipper.configuration import KlipperConfiguration
 from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
 from cartographer.adapters.klipper.mcu_platform import KlipperMcuPlatform
-from cartographer.adapters.klipper.scheduler import KlipperScheduler
 from cartographer.adapters.klipper.toolhead import KlipperToolhead
+from cartographer.adapters.klipper_like.scheduler import KlipperScheduler
 from cartographer.config.fields import parse
 from cartographer.interfaces.configuration import GeneralConfig
 from cartographer.mcu.mcu import CartographerMcu
@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 class KlipperAdapters(Adapters):
     def __init__(self, config: KlipperConfigWrapper) -> None:
         self.printer = config.get_printer()
-        self.scheduler = KlipperScheduler(self.printer.get_reactor())
+        self.scheduler = KlipperScheduler(self.printer.get_reactor(), self.printer.is_shutdown)
 
         general = parse(GeneralConfig, config)
         platform = KlipperMcuPlatform(config, general.mcu)

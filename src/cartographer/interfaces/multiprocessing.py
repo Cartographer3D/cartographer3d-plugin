@@ -41,7 +41,14 @@ class Scheduler(Protocol):
     """Abstract interface for time-based operations."""
 
     def sleep(self, seconds: float) -> None:
-        """Sleep for the specified duration."""
+        """
+        Sleep for the specified duration.
+
+        Raises
+        ------
+        PrinterShutdownError
+            If the printer enters shutdown while sleeping.
+        """
         ...
 
     @overload
@@ -84,5 +91,10 @@ class Scheduler(Protocol):
             If timeout is None, returns None (waits indefinitely).
             If timeout is specified, returns True if condition was met,
             False if timeout expired.
+
+        Raises
+        ------
+        PrinterShutdownError
+            If the printer enters shutdown while waiting.
         """
         ...

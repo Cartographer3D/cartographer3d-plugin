@@ -7,7 +7,7 @@ from gcode import CommandError
 from gcode import Coord as GCodeCoord
 from typing_extensions import ParamSpec
 
-from cartographer.interfaces.errors import ProbeTriggerError
+from cartographer.interfaces.errors import PrinterShutdownError, ProbeTriggerError
 
 if TYPE_CHECKING:
     from cartographer.interfaces.printer import Position
@@ -51,6 +51,9 @@ def reraise_for_klipper(
     def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
         try:
             return func(*args, **kwargs)
+        except PrinterShutdownError:
+            msg = "Aborted: printer entered shutdown"
+            raise CommandError(msg) from None
         except RuntimeError as e:
             raise CommandError(str(e)) from e
 

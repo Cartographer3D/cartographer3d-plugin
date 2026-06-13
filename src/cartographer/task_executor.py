@@ -40,22 +40,27 @@ class MultiprocessingExecutor(TaskExecutor):
         proc = multiprocessing.Process(target=worker, args=(child_conn,), daemon=True)
         proc.start()
 
-        # Wait for data to be available
-        self._scheduler.wait_until(lambda: not proc.is_alive() or parent_conn.poll())
-
-        # Check if data is actually available
-        if not parent_conn.poll():
-            proc.join()
-            exit_code = proc.exitcode
-            parent_conn.close()
-            msg = f"Worker process terminated unexpectedly with exit code {exit_code}"
-            raise RuntimeError(msg)
-
-        # Receive result
         try:
-            is_error, payload = parent_conn.recv()
+            # Wait for data to be available
+            self._scheduler.wait_until(lambda: not proc.is_alive() or parent_conn.poll())
+
+            # Check if data is actually available
+            if not parent_conn.poll():
+                proc.join()
+                msg = f"Worker process terminated unexpectedly with exit code {proc.exitcode}"
+                raise RuntimeError(msg)
+
+            # Receive result
+            try:
+                is_error, payload = parent_conn.recv()
+            except EOFError:
+                proc.join()
+                msg = f"Worker process terminated unexpectedly with exit code {proc.exitcode}"
+                raise RuntimeError(msg) from None
         finally:
             parent_conn.close()
+            if proc.is_alive():
+                proc.terminate()
             proc.join()
 
         if is_error:
