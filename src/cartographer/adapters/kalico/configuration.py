@@ -21,6 +21,9 @@ from cartographer.interfaces.configuration import (
     TouchModelConfiguration,
 )
 
+# TODO: Consider deduplicating through inheritance or delegation
+# from ..klipper.configuration import KlipperConfiguration
+
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
 
@@ -28,16 +31,16 @@ if TYPE_CHECKING:
 
 
 @final
-class KlipperConfiguration(Configuration):
+class KalicoConfiguration(Configuration):
     def __init__(self, config: ConfigWrapper, mcu: CartographerMcu, general: GeneralConfig) -> None:
         self.wrapper = config
         self._mcu = mcu
         self._config = config.get_printer().lookup_object("configfile")
+        self._printer = config.get_printer()
 
         self.name = config.get_name()
 
-        endstop_pin = f"{general.endstop_chip_name}:z_virtual_endstop"
-        self._validate_stepper_z(endstop_pin)
+        self._validate_stepper_z()
 
         self.general = general
         self.coil = parse(CoilConfiguration, config.getsection("cartographer coil"))
@@ -134,11 +137,11 @@ class KlipperConfiguration(Configuration):
     def log_runtime_warning(self, message: str) -> None:
         return self._config.runtime_warning(message)
 
-    def _validate_stepper_z(self, endstop_pin: str) -> None:
+    def _validate_stepper_z(self) -> None:
         if not self.wrapper.has_section("stepper_z"):
             return
         stepper_z = self.wrapper.getsection("stepper_z")
-        if stepper_z.get("endstop_pin", default=None) != endstop_pin:
+        if stepper_z.get("endstop_pin", default=None) != "probe:z_virtual_endstop":
             return
 
         homing_retract_dist = stepper_z.getfloat("homing_retract_dist", default=None, note_valid=False)
@@ -148,7 +151,20 @@ class KlipperConfiguration(Configuration):
 
     @override
     def mesh_bounds(self) -> tuple[tuple[float, float], tuple[float, float]]:
-        if self.bed_mesh.mesh_min is None or self.bed_mesh.mesh_max is None:
-            raise ValueError("Missing mesh bounds: 'mesh_min' and 'mesh_max' must be set in bed mesh configuration")
+        mesh_min = self.bed_mesh.mesh_min
+        mesh_max = self.bed_mesh.mesh_max
 
-        return self.bed_mesh.mesh_min, self.bed_mesh.mesh_max
+        # TODO: These values could be cached after the first calculation
+        if mesh_min is None or mesh_max is None:
+            # TODO: Add relevant type information
+            printer_info = self._printer.lookup_object("printer_info")
+
+            mesh_min, mesh_max = printer_info.get_mesh_bounds(
+                mesh_min,
+                mesh_max,
+                use_offsets=True,
+                error=self._printer.config_error,
+                probe_offset=(self.general.x_offset, self.general.y_offset),
+            )
+
+        return mesh_min, mesh_max

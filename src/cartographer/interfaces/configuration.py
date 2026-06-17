@@ -50,12 +50,20 @@ def _list_to_int_tuple(lst: list[int]) -> tuple[int, int]:
     return (lst[0], lst[1])
 
 
-def _parse_mesh_min(config: ConfigWrapper) -> tuple[float, float]:
-    return _list_to_tuple(config.getfloatlist("mesh_min", count=2))
+def _parse_mesh_min(config: ConfigWrapper) -> tuple[float, float] | None:
+    result = config.getfloatlist("mesh_min", count=2, default=None)
+    if result is None:
+        return None
+
+    return _list_to_tuple(result)
 
 
-def _parse_mesh_max(config: ConfigWrapper) -> tuple[float, float]:
-    return _list_to_tuple(config.getfloatlist("mesh_max", count=2))
+def _parse_mesh_max(config: ConfigWrapper) -> tuple[float, float] | None:
+    result = config.getfloatlist("mesh_max", count=2, default=None)
+    if result is None:
+        return None
+
+    return _list_to_tuple(result)
 
 
 def _parse_probe_count(config: ConfigWrapper) -> tuple[int, int]:
@@ -178,6 +186,9 @@ class GeneralConfig:
         " and does not claim the 'probe' object, allowing a separate [probe] section to coexist.",
         default=True,
     )
+    min_edge_distance: float | None = option(
+        "Minimum distance (in mm) from the edge of the bed to the center of the probe when probing.", default=None
+    )
 
     @property
     def endstop_chip_name(self) -> str:
@@ -253,14 +264,6 @@ class TouchConfig:
 class BedMeshConfig:
     config_section_key: ClassVar[str] = "bed_mesh"
 
-    mesh_min: tuple[float, float] = option(
-        "Minimum coordinates of the mesh area.",
-        parse_fn=_parse_mesh_min,
-    )
-    mesh_max: tuple[float, float] = option(
-        "Maximum coordinates of the mesh area.",
-        parse_fn=_parse_mesh_max,
-    )
     probe_count: tuple[int, int] = option(
         "Number of probe points in X and Y.",
         parse_fn=_parse_probe_count,
@@ -272,6 +275,16 @@ class BedMeshConfig:
     faulty_regions: list[Region] = option(
         "Regions to exclude from mesh probing.",
         parse_fn=_parse_faulty_regions,
+    )
+    mesh_min: tuple[float, float] | None = option(
+        "Minimum coordinates of the mesh area.",
+        parse_fn=_parse_mesh_min,
+        default=None,
+    )
+    mesh_max: tuple[float, float] | None = option(
+        "Maximum coordinates of the mesh area.",
+        parse_fn=_parse_mesh_max,
+        default=None,
     )
     speed: float = option("Travel speed during mesh probing.", default=50, min=1)
     horizontal_move_z: float = option("Z height for horizontal moves during mesh.", default=5, min=1)
@@ -360,3 +373,4 @@ class Configuration(Protocol):
     def remove_touch_model(self, name: str) -> None: ...
     def save_z_backlash(self, backlash: float) -> None: ...
     def log_runtime_warning(self, message: str) -> None: ...
+    def mesh_bounds(self) -> tuple[tuple[float, float], tuple[float, float]]: ...

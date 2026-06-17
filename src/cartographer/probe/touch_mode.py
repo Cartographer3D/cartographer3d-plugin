@@ -42,14 +42,14 @@ class TouchModeConfiguration:
 
     x_offset: float
     y_offset: float
-    mesh_min: tuple[float, float]
-    mesh_max: tuple[float, float]
     max_touch_temperature: int
     lift_speed: float
 
     retract_distance: float
     models: dict[str, TouchModelConfiguration]
     sample_range: float
+
+    _config: Configuration
 
     @staticmethod
     def from_config(config: Configuration):
@@ -60,13 +60,21 @@ class TouchModeConfiguration:
             models=config.touch.models,
             x_offset=config.general.x_offset,
             y_offset=config.general.y_offset,
-            mesh_min=config.bed_mesh.mesh_min,
-            mesh_max=config.bed_mesh.mesh_max,
+            _config=config,
             max_touch_temperature=config.touch.max_touch_temperature,
             lift_speed=config.general.lift_speed,
             retract_distance=config.touch.retract_distance,
             sample_range=config.touch.sample_range,
         )
+
+    # TODO: Both can be resolved here now
+    @property
+    def mesh_min(self) -> tuple[float, float]:
+        return self._config.mesh_bounds()[0]
+
+    @property
+    def mesh_max(self) -> tuple[float, float]:
+        return self._config.mesh_bounds()[1]
 
 
 class TouchError(RuntimeError):
@@ -220,8 +228,16 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         self._mcu: Mcu = mcu
         self._config: TouchModeConfiguration = config
 
-        self.boundaries: TouchBoundaries = TouchBoundaries.from_config(config)
+        self._boundaries: TouchBoundaries | None = None
         self.last_z_result: float | None = None
+
+    @property
+    def boundaries(self) -> TouchBoundaries:
+        # TODO: Explain why this is the way it is
+        if self._boundaries is None:
+            self._boundaries = TouchBoundaries.from_config(self._config)
+
+        return self._boundaries
 
     @override
     def get_status(self, eventtime: float) -> dict[str, object]:

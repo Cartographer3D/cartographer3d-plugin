@@ -7,7 +7,7 @@ from cartographer.adapters.kalico.axis_twist_compensation import KalicoAxisTwist
 from cartographer.adapters.kalico.mcu_platform import KalicoMcuPlatform
 from cartographer.adapters.kalico.toolhead import KalicoToolhead
 from cartographer.adapters.klipper.bed_mesh import KlipperBedMesh
-from cartographer.adapters.klipper.configuration import KlipperConfiguration
+from cartographer.adapters.kalico.configuration import KalicoConfiguration
 from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
 from cartographer.adapters.klipper_like.scheduler import KlipperScheduler
 from cartographer.config.fields import parse
@@ -31,7 +31,7 @@ class KalicoAdapters(Adapters):
         general = parse(GeneralConfig, config)
         platform = KalicoMcuPlatform(config, general.mcu)
         self.mcu = CartographerMcu(platform, self.scheduler)
-        self.config = KlipperConfiguration(config, self.mcu, general)
+        self.config = KalicoConfiguration(config, self.mcu, general)
 
         self.toolhead = KalicoToolhead(config, self.mcu)
         self.bed_mesh = KlipperBedMesh(config)
