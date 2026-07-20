@@ -9,6 +9,7 @@ from extras.manual_probe import ManualProbeHelper
 from typing_extensions import override
 
 from cartographer.adapters.klipper.endstop import KlipperEndstop
+from cartographer.adapters.klipper_like.axis_compat import uses_string_homing_axes
 from cartographer.adapters.klipper_like.utils import reraise_from_klipper
 from cartographer.interfaces.printer import Endstop, HomingAxis, Position, TemperatureStatus, Toolhead
 
@@ -68,8 +69,7 @@ class KlipperLikeToolhead(Toolhead, ABC):
     @property
     def _use_str_axes(self) -> bool:
         if self.__use_str_axes is None:
-            kin = self.toolhead.get_kinematics()
-            self.__use_str_axes = not hasattr(kin, "note_z_not_homed")
+            self.__use_str_axes = uses_string_homing_axes(self.toolhead)
         return self.__use_str_axes
 
     def __init__(self, config: ConfigWrapper, mcu: CartographerMcu) -> None:
