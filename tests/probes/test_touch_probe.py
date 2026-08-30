@@ -45,6 +45,7 @@ def test_probe_includes_z_offset(
         )
     )
     probe.touch.load_model("test_touch")
+    toolhead.get_axis_limits = mocker.Mock(return_value=(-5, 100))
     toolhead.z_probing_move = mocker.Mock(return_value=-0.5)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
@@ -110,6 +111,32 @@ def test_probe_unhomed_z(mocker: MockerFixture, toolhead: Toolhead, probe: Probe
 
     with pytest.raises(RuntimeError, match="Z axis must be homed"):
         _ = probe.touch.perform_probe()
+
+
+@pytest.mark.parametrize("trigger_z", [-5.0, -4.999], ids=["exact_floor", "inclusive_boundary"])
+def test_floor_abort_retract_then_wait_raises(
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, trigger_z: float
+) -> None:
+    """Retract queued after floor hit, wait_moves completes it, then RuntimeError raised."""
+    toolhead.get_axis_limits = mocker.Mock(return_value=(-5, 100))
+    toolhead.z_probing_move = mocker.Mock(return_value=trigger_z)
+    toolhead.get_position = mocker.Mock(
+        side_effect=[
+            Position(0, 0, 2),
+            Position(0, 0, 2),
+            Position(0, 0, trigger_z),
+        ]
+    )
+    move_counts: list[int] = []
+    move_spy = mocker.spy(toolhead, "move")
+    wait_spy = mocker.spy(toolhead, "wait_moves")
+    wait_spy.side_effect = lambda: move_counts.append(move_spy.call_count)
+
+    with pytest.raises(RuntimeError, match="movement floor"):
+        _ = probe.touch.perform_probe()
+
+    move_spy.assert_called_once_with(z=2, speed=5)
+    assert move_counts == [0, 0, 1]
 
 
 def test_home_wait(mocker: MockerFixture, mcu: Mcu, probe: Probe) -> None:

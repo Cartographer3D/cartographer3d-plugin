@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 
 TOUCH_ACCEL = 100
 MAX_TOUCH_TEMPERATURE_EPSILON = 2
+_TOUCH_FLOOR_TOLERANCE = 0.001
 
 
 @dataclass(frozen=True)
@@ -278,6 +279,13 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             z=max(pos.z + self._config.retract_distance, self._config.retract_distance),
             speed=self._config.lift_speed,
         )
+
+        z_min, _ = self._toolhead.get_axis_limits("z")
+        if trigger_pos <= z_min + _TOUCH_FLOOR_TOLERANCE:
+            self._toolhead.wait_moves()
+            msg = f"Probe triggered at or near the Z movement floor (z={trigger_pos:.6f}, floor={z_min:.6f})"
+            raise RuntimeError(msg)
+
         return trigger_pos - model.z_offset
 
     @override

@@ -12,6 +12,7 @@ from cartographer.macros.touch import TouchHomeMacro
 
 if TYPE_CHECKING:
     from pytest import LogCaptureFixture
+    from pytest_mock import MockerFixture
 
     from cartographer.interfaces.configuration import Configuration
     from cartographer.interfaces.printer import MacroParams, Toolhead
@@ -50,7 +51,7 @@ def calibrated_scan(scan: ScanMode, config: Configuration, session: Session[Samp
 
 
 @pytest.fixture
-def calibrated_touch(touch: TouchMode, config: Configuration):
+def calibrated_touch(touch: TouchMode, config: Configuration, toolhead: Toolhead, mocker: MockerFixture):
     """Fixture to setup a calibrated touch mode."""
     config.touch.models["default"] = TouchModelConfiguration(
         name="default",
@@ -59,6 +60,7 @@ def calibrated_touch(touch: TouchMode, config: Configuration):
         z_offset=0.0,
     )
     touch.load_model("default")
+    toolhead.get_axis_limits = mocker.Mock(return_value=(-5, 100))
     return touch
 
 
