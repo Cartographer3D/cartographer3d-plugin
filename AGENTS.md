@@ -9,7 +9,7 @@ A Python plugin for [Klipper](https://github.com/Klipper3d/klipper) 3D printer f
 - [Kalico](https://github.com/KalicoCrew/kalico) — Klipper fork with extended APIs
 - [SimpleAF](https://github.com/pellcorp/klipper) — community fork, largely follows mainline Klipper; `scipy` is **not available** in this environment
 
-Runtime detection lives in `src/cartographer/runtime/environment.py`. Adapter-specific code is isolated under `src/cartographer/adapters/{klipper,kalico}/`. The loader in `src/cartographer/runtime/loader.py` picks the correct adapter at startup. Any new firmware-specific behaviour must go through this adapter pattern — never import Klipper/Kalico modules directly in core logic.
+Runtime detection lives in `src/cartographer/runtime/environment.py`. Adapter-specific code is isolated under `src/cartographer/adapters/` (`klipper/`, `klipper_v12/`, `kalico/`, and `klipper_like/`). The loader in `src/cartographer/runtime/loader.py` picks the correct adapter at startup. Any new firmware-specific behaviour must go through this adapter pattern — never import Klipper/Kalico modules directly in core logic.
 
 ## Architecture
 
@@ -18,8 +18,10 @@ src/cartographer/
 ├── extra.py              ← Klipper entry point (load_config)
 ├── core.py              ← PrinterCartographer orchestrator
 ├── adapters/            ← Firmware-specific implementations
-│   ├── klipper/         ← Mainline + pellcorp Klipper
-│   └── kalico/          ← Kalico fork
+│   ├── klipper/         ← Mainline Klipper
+│   ├── klipper_v12/     ← SimpleAF/pellcorp compatibility
+│   ├── kalico/          ← Kalico fork
+│   └── klipper_like/    ← Shared Klipper-like implementation (shared integrator)
 ├── runtime/             ← Environment detection & loader
 ├── interfaces/          ← Abstract contracts (Printer, Mcu, Toolhead, etc.)
 ├── probe/               ← Probe modes (scan, touch) + calibration models

@@ -20,24 +20,27 @@ def init_runtime(config: object) -> tuple[Adapters, Integrator]:
 
     if env == Environment.Klipper:
         from cartographer.adapters.klipper.adapters import KlipperAdapters
-        from cartographer.adapters.klipper.integrator import KlipperIntegrator
+        from cartographer.adapters.klipper.probe import KlipperCartographerProbe
+        from cartographer.adapters.klipper_like.integrator import KlipperLikeIntegrator
 
         adapters = KlipperAdapters(cast("KlipperConfigWrapper", config))
-        return adapters, KlipperIntegrator(adapters)
+        return adapters, KlipperLikeIntegrator(adapters, KlipperCartographerProbe)
 
     if env == Environment.KlipperV12:
+        from cartographer.adapters.klipper_like.integrator import KlipperLikeIntegrator
         from cartographer.adapters.klipper_v12.adapters import KlipperV12Adapters
-        from cartographer.adapters.klipper_v12.integrator import KlipperV12Integrator
+        from cartographer.adapters.klipper_v12.probe import KlipperV12CartographerProbe
 
         adapters = KlipperV12Adapters(cast("KlipperConfigWrapper", config))
-        return adapters, KlipperV12Integrator(adapters)
+        return adapters, KlipperLikeIntegrator(adapters, KlipperV12CartographerProbe)
 
     if env == Environment.Kalico:
         from cartographer.adapters.kalico.adapters import KalicoAdapters
-        from cartographer.adapters.kalico.integrator import KalicoIntegrator
+        from cartographer.adapters.kalico.probe import KalicoCartographerProbe
+        from cartographer.adapters.klipper_like.integrator import KlipperLikeIntegrator
 
         adapters = KalicoAdapters(cast("KlipperConfigWrapper", config))
-        return adapters, KalicoIntegrator(adapters)
+        return adapters, KlipperLikeIntegrator(adapters, KalicoCartographerProbe)
 
     msg = f"Unsupported environment: {env}"
     raise RuntimeError(msg)
