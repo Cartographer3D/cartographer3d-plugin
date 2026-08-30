@@ -253,7 +253,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             sample_range=self._config.sample_range,
         )
 
-    def _perform_single_probe(self) -> float:
+    def _perform_single_probe(self, *, z_limit: float | None = None) -> float:
         model = self.get_model()
         if self._toolhead.get_position().z < self._config.retract_distance:
             self._toolhead.move(z=self._config.retract_distance, speed=self._config.lift_speed)
@@ -269,7 +269,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             pass
 
         try:
-            trigger_pos = self._toolhead.z_probing_move(self, speed=model.speed)
+            trigger_pos = self._toolhead.z_probing_move(self, speed=model.speed, z_limit=z_limit)
         finally:
             self._toolhead.set_max_accel(max_accel)
 
