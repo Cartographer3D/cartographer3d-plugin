@@ -30,7 +30,9 @@ if TYPE_CHECKING:
 
     from cartographer.adapters.klipper.configuration import KlipperConfiguration
     from cartographer.core import MacroRegistration, PrinterCartographer
-    from cartographer.interfaces.printer import Endstop, Toolhead
+    from cartographer.interfaces.configuration import GeneralConfig
+    from cartographer.interfaces.printer import Endstop, ProbeMode, Toolhead
+    from cartographer.macros.probe import ProbeMacro, QueryProbeMacro
     from cartographer.mcu.mcu import CartographerMcu
 
 logger = logging.getLogger(__name__)
@@ -66,7 +68,11 @@ class _Rail(Protocol):
 
 @final
 class KlipperLikeIntegrator(Integrator):
-    def __init__(self, adapters: KlipperLikeAdapters, target_probe_class: Callable[..., object]) -> None:
+    def __init__(
+        self,
+        adapters: KlipperLikeAdapters,
+        target_probe_class: Callable[[Toolhead, ProbeMode, ProbeMacro, QueryProbeMacro, GeneralConfig], object],
+    ) -> None:
         self._config: KlipperConfiguration = adapters.config
         self._printer: Printer = adapters.printer
         self._mcu: CartographerMcu = adapters.mcu
