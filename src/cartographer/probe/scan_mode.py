@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import math
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Protocol
+from typing import TYPE_CHECKING
 
 import numpy as np
 from typing_extensions import override
@@ -22,16 +22,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class Model(Protocol):
-    @property
-    def name(self) -> str: ...
-
-    @property
-    def z_offset(self) -> float: ...
-    def distance_to_frequency(self, distance: float) -> float: ...
-    def frequency_to_distance(self, frequency: float) -> float: ...
-
-
 TRIGGER_DISTANCE = 2.0
 
 
@@ -39,7 +29,6 @@ TRIGGER_DISTANCE = 2.0
 class ScanModeConfiguration:
     x_offset: float
     y_offset: float
-    travel_speed: float
     probe_speed: float
 
     samples: int
@@ -50,7 +39,6 @@ class ScanModeConfiguration:
         return ScanModeConfiguration(
             x_offset=config.general.x_offset,
             y_offset=config.general.y_offset,
-            travel_speed=config.general.travel_speed,
             probe_speed=config.scan.probe_speed,
             samples=config.scan.samples,
             models=config.scan.models,
