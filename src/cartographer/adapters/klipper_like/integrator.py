@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from abc import ABC
 from functools import wraps
 from textwrap import dedent
 from typing import TYPE_CHECKING, Callable, Protocol, Sequence, final
@@ -30,8 +29,8 @@ if TYPE_CHECKING:
     from stepper import MCU_stepper
 
     from cartographer.adapters.klipper.configuration import KlipperConfiguration
-    from cartographer.core import MacroRegistration
-    from cartographer.interfaces.printer import Endstop
+    from cartographer.core import MacroRegistration, PrinterCartographer
+    from cartographer.interfaces.printer import Endstop, Toolhead
     from cartographer.mcu.mcu import CartographerMcu
 
 logger = logging.getLogger(__name__)
@@ -56,17 +55,23 @@ class KlipperLikeAdapters(Protocol):
     printer: Printer
     config: KlipperConfiguration
 
+    @property
+    def toolhead(self) -> Toolhead: ...
+
 
 class _Rail(Protocol):
     def get_steppers(self) -> list[MCU_stepper]: ...
     def get_endstops(self) -> list[tuple[MCU_endstop, str]]: ...
 
 
-class KlipperLikeIntegrator(Integrator, ABC):
-    def __init__(self, adapters: KlipperLikeAdapters) -> None:
+@final
+class KlipperLikeIntegrator(Integrator):
+    def __init__(self, adapters: KlipperLikeAdapters, target_probe_class: Callable[..., object]) -> None:
         self._config: KlipperConfiguration = adapters.config
         self._printer: Printer = adapters.printer
         self._mcu: CartographerMcu = adapters.mcu
+        self._toolhead: Toolhead = adapters.toolhead
+        self._target_probe_class = target_probe_class
 
         self._gcode: GCodeDispatch = self._printer.lookup_object("gcode")
 
@@ -99,6 +104,19 @@ class KlipperLikeIntegrator(Integrator, ABC):
                 logger.warning("No original macro found to fallback to for '%s'", name)
 
         self._gcode.register_command(name, catch_macro_errors(macro.run), desc=macro.description)
+
+    @override
+    def register_probe(self, cartographer: PrinterCartographer) -> None:
+        self._printer.add_object(
+            "probe",
+            self._target_probe_class(
+                self._toolhead,
+                cartographer.scan_mode,
+                cartographer.probe_macro,
+                cartographer.query_probe_macro,
+                cartographer.config.general,
+            ),
+        )
 
     @override
     def register_coil_temperature_sensor(self) -> None:

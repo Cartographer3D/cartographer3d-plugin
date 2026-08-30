@@ -4,7 +4,6 @@ from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
-from typing_extensions import override
 
 from cartographer.adapters.klipper.endstop import KlipperEndstop, KlipperProbeEndstop
 from cartographer.adapters.klipper.homing import KlipperHomingChip
@@ -14,12 +13,9 @@ if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
 
-class ConcreteIntegrator(KlipperLikeIntegrator):
-    """Minimal concrete subclass for testing the ABC's methods."""
-
-    @override
-    def register_probe(self, cartographer: object) -> None:
-        pass
+@pytest.fixture
+def probe_class(mocker: MockerFixture) -> Mock:
+    return mocker.Mock()
 
 
 @pytest.fixture
@@ -28,17 +24,18 @@ def adapters(mocker: MockerFixture) -> Mock:
     mock.mcu = mocker.Mock()
     mock.printer = mocker.Mock()
     mock.config = mocker.Mock()
+    mock.toolhead = mocker.Mock()
     mock.printer.lookup_object = mocker.Mock(return_value=mocker.Mock())
     return mock
 
 
 @pytest.fixture
-def integrator(adapters: Mock) -> ConcreteIntegrator:
-    return ConcreteIntegrator(adapters)
+def integrator(adapters: Mock, probe_class: Mock) -> KlipperLikeIntegrator:
+    return KlipperLikeIntegrator(adapters, probe_class)
 
 
 class TestRegisterEndstopPin:
-    def test_probe_chip_registers_probe_endstop(self, integrator: ConcreteIntegrator, adapters: Mock) -> None:
+    def test_probe_chip_registers_probe_endstop(self, integrator: KlipperLikeIntegrator, adapters: Mock) -> None:
         endstop = Mock()
         pins_mock = adapters.printer.lookup_object.return_value
 
@@ -50,7 +47,7 @@ class TestRegisterEndstopPin:
         assert isinstance(chip.endstop, KlipperProbeEndstop)
         assert hasattr(chip.endstop, "get_position_endstop")
 
-    def test_non_probe_chip_registers_plain_endstop(self, integrator: ConcreteIntegrator, adapters: Mock) -> None:
+    def test_non_probe_chip_registers_plain_endstop(self, integrator: KlipperLikeIntegrator, adapters: Mock) -> None:
         endstop = Mock()
         pins_mock = adapters.printer.lookup_object.return_value
 
@@ -61,3 +58,29 @@ class TestRegisterEndstopPin:
         assert isinstance(chip, KlipperHomingChip)
         assert isinstance(chip.endstop, KlipperEndstop)
         assert not hasattr(chip.endstop, "get_position_endstop")
+
+
+class TestRegisterProbe:
+    def test_invokes_probe_callable_with_expected_deps(
+        self, integrator: KlipperLikeIntegrator, adapters: Mock, probe_class: Mock
+    ) -> None:
+        cartographer = Mock()
+
+        integrator.register_probe(cartographer)
+
+        probe_class.assert_called_once_with(
+            adapters.toolhead,
+            cartographer.scan_mode,
+            cartographer.probe_macro,
+            cartographer.query_probe_macro,
+            cartographer.config.general,
+        )
+
+    def test_registers_probe_instance_as_printer_object(
+        self, integrator: KlipperLikeIntegrator, adapters: Mock, probe_class: Mock
+    ) -> None:
+        cartographer = Mock()
+
+        integrator.register_probe(cartographer)
+
+        adapters.printer.add_object.assert_called_once_with("probe", probe_class.return_value)
