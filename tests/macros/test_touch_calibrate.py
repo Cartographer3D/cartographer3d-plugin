@@ -4,15 +4,18 @@ import pytest
 from typing_extensions import final
 
 from cartographer.interfaces.errors import ProbeTriggerError
+from cartographer.macros.fields import parse
 from cartographer.macros.touch.calibrate import (
     ScreeningResult,
     ThresholdScreener,
     ThresholdVerifier,
+    TouchCalibrateParams,
     VerificationResult,
     calculate_step,
     format_distance,
 )
 from cartographer.probe.touch_mode import TouchError
+from tests.mocks.params import MockParams
 
 # --- Fake probe for testing ---
 
@@ -317,3 +320,19 @@ class TestCalculateStep:
         """Range just above 10x uses large step."""
         step = calculate_step(threshold=1000, range_value=0.101, sample_range=0.010)
         assert step == 200  # 0.101 > 10 * 0.010, uses 20%
+
+
+# --- TouchCalibrateParams ---
+
+
+class TestTouchCalibrateParams:
+    def test_fractional_speed_parsed_and_retained(self):
+        """CARTOGRAPHER_TOUCH_CALIBRATE SPEED=1.5 must parse to 1.5, not truncated."""
+        mock = MockParams()
+        mock.params["SPEED"] = "1.5"
+        p = parse(
+            TouchCalibrateParams,
+            mock,
+            max_verify_range=0.020,
+        )
+        assert p.speed == 1.5

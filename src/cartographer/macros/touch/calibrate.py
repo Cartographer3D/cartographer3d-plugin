@@ -229,7 +229,7 @@ class TouchCalibrateParams:
 
     max_verify_range: float = param("Maximum verification range")
     model: str = param("Model name", default=DEFAULT_TOUCH_MODEL_NAME)
-    speed: int = param("Probing speed", default=2, min=1, max=5)
+    speed: float = param("Probing speed", default=2.0, min=1, max=5)
     threshold_start: int = param("Starting threshold", default=500, min=100, key="START")
     threshold_max: int = param("Maximum threshold", default=5000, min=100, key="MAX")
     verification_samples: int = param("Verification sample count", default=10, min=3, max=20)
@@ -282,7 +282,7 @@ class TouchCalibrateMacro(Macro):
         required_samples = self._config.touch.samples
 
         logger.info(
-            "Starting touch calibration (speed=%d, range=%d-%d)",
+            "Starting touch calibration (speed=%g, range=%d-%d)",
             p.speed,
             p.threshold_start,
             p.threshold_max,
@@ -415,11 +415,11 @@ class TouchCalibrateMacro(Macro):
         self,
         name: str,
         threshold: int,
-        speed: int,
+        speed: float,
     ) -> None:
         """Save the calibration result and log success."""
         logger.info(
-            "Calibration complete: threshold=%d, speed=%d",
+            "Calibration complete: threshold=%d, speed=%g",
             threshold,
             speed,
         )
