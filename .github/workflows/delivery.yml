@@ -5,16 +5,20 @@ on:
     tags:
       - v*
 
+permissions: {}
+
 jobs:
   build:
     name: Build distribution
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6.0.2
         with:
           persist-credentials: false
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v6.6.0
         with:
           enable-cache: true
       - name: Build
@@ -23,7 +27,7 @@ jobs:
           GIT_VERSION: ${{ github.ref_name }}
           COMMIT_SHA: ${{ github.sha }}
       - name: Store the distribution packages
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7.0.1
         with:
           name: python-package-distributions
           path: dist/
@@ -40,12 +44,12 @@ jobs:
       id-token: write # IMPORTANT: mandatory for trusted publishing
     steps:
       - name: Download all the dists
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: python-package-distributions
           path: dist/
       - name: Publish distribution to PyPI
-        uses: pypa/gh-action-pypi-publish@release/v1
+        uses: pypa/gh-action-pypi-publish@v1.14.2
 
   github-release:
     name: >-
@@ -61,21 +65,24 @@ jobs:
 
     steps:
       - name: Download all the dists
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8.0.1
         with:
           name: python-package-distributions
           path: dist/
       - name: Sign the dists with Sigstore
-        uses: sigstore/gh-action-sigstore-python@v3.0.0
+        uses: sigstore/gh-action-sigstore-python@v3.5.0
         with:
           inputs: >-
             ./dist/*.tar.gz
             ./dist/*.whl
       - name: Create GitHub Release
-        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: >-
+          gh release view
+          "$GITHUB_REF_NAME"
+          --repo "$GITHUB_REPOSITORY"
+          ||
           gh release create
           "$GITHUB_REF_NAME"
           --repo "$GITHUB_REPOSITORY"
@@ -89,5 +96,6 @@ jobs:
         # sigstore-produced signatures and certificates.
         run: >-
           gh release upload
-          "$GITHUB_REF_NAME" dist/**
+          "$GITHUB_REF_NAME" dist/*
           --repo "$GITHUB_REPOSITORY"
+          --clobber
