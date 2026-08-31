@@ -280,7 +280,7 @@ class PrinterCartographer:
                     ),
                     self._register_macro(
                         "TOUCH_PROBE",
-                        TouchProbeMacro(self.touch_mode, toolhead),
+                        TouchProbeMacro(self.touch_mode, toolhead, max_samples=self.config.touch.max_samples),
                     ),
                     self._register_macro(
                         "TOUCH_ACCURACY",

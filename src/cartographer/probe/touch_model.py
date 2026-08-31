@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from typing import final
 
 from typing_extensions import override
@@ -26,6 +28,14 @@ class TouchModel:
     @property
     def threshold(self) -> int:
         return self.config.threshold
+
+    @property
+    def samples(self) -> int | None:
+        return self.config.samples
+
+    @property
+    def sample_range(self) -> float | None:
+        return self.config.sample_range
 
 
 class TouchModelSelectorMixin(ModelSelectorMixin[TouchModel, TouchModelConfiguration]):

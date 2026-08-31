@@ -97,6 +97,10 @@ class KlipperConfiguration(Configuration):
         save(_key("threshold"), config.threshold)
         save(_key("speed"), config.speed)
         save(_key("z_offset"), round(config.z_offset, 3))
+        if config.samples is not None:
+            save(_key("samples"), config.samples)
+        if config.sample_range is not None:
+            save(_key("sample_range"), round(config.sample_range, 4))
 
         # Version info fields are part of ModelVersionInfo, not individual option() fields
         sw_version = __version__

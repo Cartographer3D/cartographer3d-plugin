@@ -179,3 +179,44 @@ def test_probe_outside_bounds(mocker: MockerFixture, toolhead: Toolhead, probe: 
 
     with pytest.raises(RuntimeError, match="outside .* boundaries"):
         _ = probe.touch.home_start(0)
+
+
+def test_increased_budget_permits_longer_sequence(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+    """An explicit max_samples override allows convergence that the config budget would exhaust.
+
+    With samples=5, max_noisy_samples=2 (window=7), and sample_range=0.010:
+    - 10 diverging values [1.0..1.9] prevent convergence within max_samples=10.
+    - Adding 5 more identical values (0.5) brings a clean 5-sample window at attempt 15,
+      which succeeds when the budget is raised to 15.
+    """
+    diverging = [round(1.0 + i * 0.1, 1) for i in range(10)]
+    converging = [0.5] * 5
+    side_effects = diverging + converging
+
+    toolhead.z_probing_move = mocker.Mock(side_effect=side_effects)
+    toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 5))
+
+    # Default budget (max_samples=10) exhausts before convergence.
+    with pytest.raises(RuntimeError, match="Unable to find"):
+        _ = probe.touch.perform_probe()
+
+    # Reset the mock for the second run.
+    toolhead.z_probing_move = mocker.Mock(side_effect=side_effects)
+
+    # Raising the budget to 15 reaches the clean 5-sample window and succeeds.
+    result = probe.touch.perform_probe(max_samples=15)
+    assert result == 0.5
+
+
+def test_impossible_budget_fails_before_z_probing_move(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+    """max_samples < effective_samples raises RuntimeError before any probing movement."""
+    toolhead.z_probing_move = mocker.Mock(return_value=0.5)
+    toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
+    move_spy = mocker.spy(toolhead, "move")
+
+    # effective samples = 5 (from config); passing max_samples=3 is impossible.
+    with pytest.raises(RuntimeError, match=r"max_samples \(3\) must be >= the effective samples \(5\)"):
+        _ = probe.touch.perform_probe(max_samples=3)
+
+    move_spy.assert_not_called()
+    toolhead.z_probing_move.assert_not_called()
