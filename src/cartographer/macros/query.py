@@ -33,7 +33,7 @@ class QueryParams:
 
 @final
 class QueryMacro(Macro):
-    description = "Query current cartographer state"
+    description: str = "Query current cartographer state"
 
     def __init__(self, mcu: Mcu, scan: ScanMode, touch: TouchMode) -> None:
         self._mcu = mcu

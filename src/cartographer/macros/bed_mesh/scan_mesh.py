@@ -240,7 +240,8 @@ class BedMeshCalibrateMacro(SupportsFallbackMacro):
         method = params.get("METHOD", "scan").lower()
         if method != "scan":
             if self._fallback is None:
-                return
+                msg = f"BED_MESH_CALIBRATE does not support METHOD={method!r} (no fallback configured)"
+                raise RuntimeError(msg)
             return self._fallback.run(params)
 
         # Parse parameters and validate
