@@ -28,12 +28,16 @@ class KalicoCartographerProbe:
         self.toolhead = toolhead
 
         self.lift_speed = config.lift_speed
+        self.min_edge_distance = config.min_edge_distance
         self.sample_count = 1
         self.samples_tolerance = 0.1
         self.samples_retries = 0
 
     def get_offsets(self) -> tuple[float, float, float]:
         return self.probe.offset.as_tuple()
+
+    def get_min_edge_distance(self) -> float | None:
+        return self.min_edge_distance
 
     def get_status(self, eventtime: float):
         del eventtime
