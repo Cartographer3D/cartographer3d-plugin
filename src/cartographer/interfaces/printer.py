@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from abc import ABC
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Callable, Literal, NamedTuple, Protocol, overload
+from typing import TYPE_CHECKING, Callable, Literal, NamedTuple, Protocol, overload, runtime_checkable
 
 if TYPE_CHECKING:
     from cartographer.stream import Session
@@ -120,27 +119,16 @@ class MacroParams(Protocol):
 
 
 class Macro(Protocol):
-    description: str | None
+    description: str
 
     def run(self, params: MacroParams) -> None: ...
 
 
-class SupportsFallbackMacro(Macro, ABC):
-    # Subclasses that must have a fallback set at registration time should set this to True.
-    requires_fallback: bool = False
+@runtime_checkable
+class SupportsFallbackMacro(Macro, Protocol):
+    requires_fallback: bool
 
-    @property
-    def fallback(self) -> Macro:
-        if self._fallback is None:
-            msg = f"Fallback for {type(self).__name__} not found."
-            raise RuntimeError(msg)
-        return self._fallback
-
-    def __init__(self):
-        self._fallback: Macro | None = None
-
-    def set_fallback_macro(self, macro: Macro) -> None:
-        self._fallback = macro
+    def set_fallback_macro(self, macro: Macro) -> None: ...
 
 
 class ProbeMode(Protocol):

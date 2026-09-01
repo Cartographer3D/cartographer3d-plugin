@@ -106,7 +106,7 @@ class KlipperLikeIntegrator(Integrator):
         if isinstance(macro, SupportsFallbackMacro):
             original = self._gcode.register_command(name, None)
             if original:
-                macro.set_fallback_macro(FallbackMacroAdapter(original))
+                macro.set_fallback_macro(FallbackMacroAdapter(name, original))
             elif macro.requires_fallback:
                 msg = f"No existing handler found for '{name}'; cannot register probe-method wrapper."
                 raise RuntimeError(msg)
@@ -173,12 +173,14 @@ def catch_macro_errors(func: Callable[[GCodeCommand], None]) -> Callable[[GCodeC
 
 @final
 class FallbackMacroAdapter(Macro):
-    description = None
-
-    def __init__(self, handler: Callable[[GCodeCommand], None]) -> None:
+    def __init__(self, name: str, handler: Callable[[GCodeCommand], None]) -> None:
+        self.description = f"Fallback for {name}."
+        self._name = name
         self._handler: Callable[[GCodeCommand], None] = handler
 
     @override
     def run(self, params: MacroParams) -> None:
-        assert isinstance(params, GCodeCommand), f"Invalid params type {type(params).__name__}, expected GCodeCommand"
+        assert isinstance(params, GCodeCommand), (
+            f"FallbackMacroAdapter({self._name!r}): expected GCodeCommand, got {type(params).__name__}"
+        )
         self._handler(params)

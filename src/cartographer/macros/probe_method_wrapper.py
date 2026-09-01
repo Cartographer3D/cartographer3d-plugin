@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
-from cartographer.interfaces.printer import GCodeDispatch, MacroParams, SupportsFallbackMacro
+from cartographer.interfaces.printer import GCodeDispatch, Macro, MacroParams, SupportsFallbackMacro
 
 if TYPE_CHECKING:
     from cartographer.probe import Probe
@@ -20,15 +20,26 @@ _VALID_PROBE_METHODS: frozenset[str] = frozenset({"scan", "touch"})
 
 @final
 class ProbeMethodWrapperMacro(SupportsFallbackMacro):
-    description = None
+    description = "Select probe method (scan/touch) for leveling commands."
     # Registration must fail if no existing handler is found.
-    requires_fallback = True
+    requires_fallback: bool = True
 
     def __init__(self, probe: Probe, gcode: GCodeDispatch, command_name: str) -> None:
-        super().__init__()
+        self._fallback: Macro | None = None
         self.probe = probe
         self.gcode = gcode
         self.command_name = command_name
+
+    @property
+    def fallback(self) -> Macro:
+        if self._fallback is None:
+            msg = f"Fallback for {type(self).__name__} not found."
+            raise RuntimeError(msg)
+        return self._fallback
+
+    @override
+    def set_fallback_macro(self, macro: Macro) -> None:
+        self._fallback = macro
 
     @override
     def run(self, params: MacroParams) -> None:

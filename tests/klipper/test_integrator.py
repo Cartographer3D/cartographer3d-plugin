@@ -8,6 +8,8 @@ import pytest
 from cartographer.adapters.klipper.endstop import KlipperEndstop, KlipperProbeEndstop
 from cartographer.adapters.klipper.homing import KlipperHomingChip
 from cartographer.adapters.klipper_like.integrator import KlipperLikeIntegrator
+from cartographer.core import MacroRegistration
+from cartographer.interfaces.printer import SupportsFallbackMacro
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
@@ -84,3 +86,32 @@ class TestRegisterProbe:
         integrator.register_probe(cartographer)
 
         adapters.printer.add_object.assert_called_once_with("probe", probe_class.return_value)
+
+
+class TestRegisterMacro:
+    def test_requires_fallback_with_no_handler_raises(self, integrator: KlipperLikeIntegrator, adapters: Mock) -> None:
+        """register_macro must raise when requires_fallback=True and no handler exists."""
+        gcode_mock: Mock = adapters.printer.lookup_object.return_value
+        gcode_mock.register_command.return_value = None
+
+        macro = Mock(spec=SupportsFallbackMacro)
+        macro.description = "A wrapper macro"
+        macro.requires_fallback = True
+
+        registration = MacroRegistration(name="BED_MESH_CALIBRATE", macro=macro)
+        with pytest.raises(RuntimeError, match="No existing handler found"):
+            integrator.register_macro(registration)
+
+    def test_requires_fallback_false_with_no_handler_succeeds(
+        self, integrator: KlipperLikeIntegrator, adapters: Mock
+    ) -> None:
+        """register_macro must not raise when requires_fallback=False, even without a handler."""
+        gcode_mock: Mock = adapters.printer.lookup_object.return_value
+        gcode_mock.register_command.return_value = None
+
+        macro = Mock(spec=SupportsFallbackMacro)
+        macro.description = "A scan macro"
+        macro.requires_fallback = False
+
+        registration = MacroRegistration(name="BED_MESH_CALIBRATE", macro=macro)
+        integrator.register_macro(registration)  # must not raise

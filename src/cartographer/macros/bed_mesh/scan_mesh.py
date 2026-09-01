@@ -11,6 +11,7 @@ from typing_extensions import override
 from cartographer.interfaces.configuration import BedMeshConfig, MeshDirection, MeshPath, ScanConfig
 from cartographer.interfaces.printer import (
     AxisTwistCompensation,
+    Macro,
     MacroParams,
     Position,
     Sample,
@@ -208,6 +209,7 @@ class MeshScanParams:
 @final
 class BedMeshCalibrateMacro(SupportsFallbackMacro):
     description = "Gather samples across the bed to calibrate the bed mesh."
+    requires_fallback: bool = False
 
     def __init__(
         self,
@@ -218,7 +220,7 @@ class BedMeshCalibrateMacro(SupportsFallbackMacro):
         task_executor: TaskExecutor,
         config: BedMeshCalibrateConfiguration,
     ):
-        super().__init__()
+        self._fallback: Macro | None = None
         self.probe = probe
         self.toolhead = toolhead
         self.adapter = adapter
@@ -228,12 +230,18 @@ class BedMeshCalibrateMacro(SupportsFallbackMacro):
         self.axis_twist_compensation = axis_twist_compensation
 
     @override
+    def set_fallback_macro(self, macro: Macro) -> None:
+        self._fallback = macro
+
+    @override
     def run(self, params: MacroParams) -> None:
         """Main entry point for bed mesh calibration."""
         # Handle fallback for non-scan methods
         method = params.get("METHOD", "scan").lower()
         if method != "scan":
-            return self.fallback.run(params)
+            if self._fallback is None:
+                return
+            return self._fallback.run(params)
 
         # Parse parameters and validate
         scan_params = MeshScanParams.from_macro_params(params, self.config, self.adapter)
