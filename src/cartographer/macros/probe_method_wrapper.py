@@ -9,8 +9,6 @@ from cartographer.interfaces.printer import GCodeDispatch, Macro, MacroParams, S
 if TYPE_CHECKING:
     from cartographer.probe import Probe
 
-_VALID_PROBE_METHODS: frozenset[str] = frozenset({"scan", "touch"})
-
 
 @final
 class ProbeMethodWrapperMacro(SupportsFallbackMacro):
@@ -39,8 +37,8 @@ class ProbeMethodWrapperMacro(SupportsFallbackMacro):
     def run(self, params: MacroParams) -> None:
         probe_method = params.get("PROBE_METHOD", "scan").lower()
 
-        if probe_method not in _VALID_PROBE_METHODS:
-            msg = f"Unknown PROBE_METHOD={probe_method!r}. Valid values: {sorted(_VALID_PROBE_METHODS)!r}"
+        if probe_method not in ("scan", "touch"):
+            msg = f"Unknown PROBE_METHOD={probe_method!r}. Valid values: ['scan', 'touch']"
             raise ValueError(msg)
 
         if probe_method != "touch":
