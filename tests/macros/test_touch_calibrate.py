@@ -519,7 +519,6 @@ class TestTouchCalibrateParams:
 
         saved = config.touch.models["default"]
         assert saved.samples == 7
-        assert saved.sample_range is not None
         assert abs(saved.sample_range - 0.008) < 1e-9
 
     def test_calibration_execution_uses_effective_samples(self, mocker: MockerFixture):

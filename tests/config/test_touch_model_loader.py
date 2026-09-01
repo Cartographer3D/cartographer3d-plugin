@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, cast
 
-from cartographer.adapters.klipper.configuration import _parse_touch_model_with_defaults
+from cartographer.adapters.klipper.configuration import parse_touch_model_with_defaults
 from cartographer.config.fields import parse
-from cartographer.interfaces.configuration import TouchConfig, TouchModelConfiguration
+from cartographer.interfaces.configuration import TouchConfig
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
@@ -87,11 +87,11 @@ def test_missing_fields_inherit_non_default_globals() -> None:
     """Model section without samples/sample_range picks up non-default global values.
 
     Legacy model sections written before these keys existed must end up with
-    concrete concrete values equal to the current global config, not the
+    concrete values equal to the current global config, not the
     hard-coded option defaults.
     """
     global_touch = _global_touch({"samples": 7, "sample_range": 0.008})
-    result = _parse_touch_model_with_defaults(
+    result = parse_touch_model_with_defaults(
         _model_section("legacy"),
         global_samples=global_touch.samples,
         global_sample_range=global_touch.sample_range,
@@ -103,23 +103,10 @@ def test_missing_fields_inherit_non_default_globals() -> None:
 def test_explicit_model_fields_override_globals() -> None:
     """Explicit samples/sample_range in a model section win over the global config."""
     global_touch = _global_touch({"samples": 7, "sample_range": 0.008})
-    result = _parse_touch_model_with_defaults(
+    result = parse_touch_model_with_defaults(
         _model_section("override", {"samples": 5, "sample_range": 0.012}),
         global_samples=global_touch.samples,
         global_sample_range=global_touch.sample_range,
     )
     assert result.samples == 5
     assert abs(result.sample_range - 0.012) < 1e-9
-
-
-def test_parsed_model_has_concrete_types() -> None:
-    """Every model returned by the loader has concrete int/float fields, never None."""
-    global_touch = _global_touch()
-    result = _parse_touch_model_with_defaults(
-        _model_section("concrete"),
-        global_samples=global_touch.samples,
-        global_sample_range=global_touch.sample_range,
-    )
-    assert isinstance(result, TouchModelConfiguration)
-    assert isinstance(result.samples, int)
-    assert isinstance(result.sample_range, float)

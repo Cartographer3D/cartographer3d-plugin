@@ -27,7 +27,7 @@ if TYPE_CHECKING:
     from cartographer.mcu.mcu import CartographerMcu
 
 
-def _parse_touch_model_with_defaults(
+def parse_touch_model_with_defaults(
     config: ConfigWrapper,
     *,
     global_samples: int,
@@ -76,7 +76,7 @@ class KlipperConfiguration(Configuration):
         # global values as fallbacks so every model has concrete samples/sample_range.
         _touch_global = parse(TouchConfig, config.getsection(f"{self.name} touch"), models={})
         touch_models = {
-            wrapper.get_name().split(" ")[-1]: _parse_touch_model_with_defaults(
+            wrapper.get_name().split(" ")[-1]: parse_touch_model_with_defaults(
                 wrapper,
                 global_samples=_touch_global.samples,
                 global_sample_range=_touch_global.sample_range,
