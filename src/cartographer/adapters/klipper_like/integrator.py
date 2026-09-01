@@ -174,13 +174,11 @@ def catch_macro_errors(func: Callable[[GCodeCommand], None]) -> Callable[[GCodeC
 @final
 class FallbackMacroAdapter(Macro):
     def __init__(self, name: str, handler: Callable[[GCodeCommand], None]) -> None:
+        self.name = name
         self.description = f"Fallback for {name}."
-        self._name = name
         self._handler: Callable[[GCodeCommand], None] = handler
 
     @override
     def run(self, params: MacroParams) -> None:
-        assert isinstance(params, GCodeCommand), (
-            f"FallbackMacroAdapter({self._name!r}): expected GCodeCommand, got {type(params).__name__}"
-        )
+        assert isinstance(params, GCodeCommand), f"Expected GCodeCommand, got {type(params).__name__}"
         self._handler(params)

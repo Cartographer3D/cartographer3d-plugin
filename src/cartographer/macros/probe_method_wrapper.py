@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
@@ -9,11 +8,6 @@ from cartographer.interfaces.printer import GCodeDispatch, Macro, MacroParams, S
 
 if TYPE_CHECKING:
     from cartographer.probe import Probe
-
-logger = logging.getLogger(__name__)
-
-# Commands for which the wrapper injects touch mesh params (METHOD and boundaries).
-_MESH_COMMANDS: frozenset[str] = frozenset({"BED_MESH_CALIBRATE"})
 
 _VALID_PROBE_METHODS: frozenset[str] = frozenset({"scan", "touch"})
 
@@ -55,7 +49,7 @@ class ProbeMethodWrapperMacro(SupportsFallbackMacro):
             return
 
         # Touch mode.
-        if self.command_name in _MESH_COMMANDS:
+        if self.command_name == "BED_MESH_CALIBRATE":
             self._run_touch_mesh(params)
         else:
             with self.probe.as_touch():

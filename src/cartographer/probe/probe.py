@@ -21,9 +21,6 @@ class Probe:
     def query_is_triggered(self) -> bool:
         return self.scan.query_is_triggered(0)
 
-    def perform_probe(self) -> float:
-        return self.current_mode.perform_probe()
-
     def perform_scan(self) -> float:
         return self.scan.perform_probe()
 
