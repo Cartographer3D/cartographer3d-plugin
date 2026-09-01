@@ -58,6 +58,8 @@ def calibrated_touch(touch: TouchMode, config: Configuration, toolhead: Toolhead
         threshold=1000,
         speed=3,
         z_offset=0.0,
+        samples=5,
+        sample_range=0.010,
     )
     touch.load_model("default")
     toolhead.get_axis_limits = mocker.Mock(return_value=(-5, 100))

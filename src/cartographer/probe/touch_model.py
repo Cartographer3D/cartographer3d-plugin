@@ -30,11 +30,11 @@ class TouchModel:
         return self.config.threshold
 
     @property
-    def samples(self) -> int | None:
+    def samples(self) -> int:
         return self.config.samples
 
     @property
-    def sample_range(self) -> float | None:
+    def sample_range(self) -> float:
         return self.config.sample_range
 
 

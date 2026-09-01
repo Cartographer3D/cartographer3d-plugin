@@ -103,6 +103,8 @@ def test_removes_touch_model_with_mcu_mismatch(config: MockConfiguration):
         threshold=1000,
         speed=3.0,
         z_offset=0.0,
+        samples=3,
+        sample_range=0.010,
         version_info=ModelVersionInfo(mcu_version="old_mcu", software_version="1.2.0"),
     )
 
@@ -186,6 +188,8 @@ def test_validates_multiple_models(config: MockConfiguration):
         threshold=1000,
         speed=3.0,
         z_offset=0.0,
+        samples=3,
+        sample_range=0.010,
         version_info=ModelVersionInfo(mcu_version="abc123", software_version="1.2.0"),
     )
     config.touch.models["bad_touch"] = TouchModelConfiguration(
@@ -193,6 +197,8 @@ def test_validates_multiple_models(config: MockConfiguration):
         threshold=1000,
         speed=3.0,
         z_offset=0.0,
+        samples=3,
+        sample_range=0.010,
         version_info=ModelVersionInfo(mcu_version="abc123", software_version="0.5.0"),
     )
 

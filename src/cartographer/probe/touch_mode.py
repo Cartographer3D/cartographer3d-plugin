@@ -239,7 +239,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             raise RuntimeError(msg)
 
         model = self.get_model()
-        effective_samples = model.samples if model.samples is not None else self._config.samples
+        effective_samples = model.samples
         effective_max = max_samples if max_samples is not None else self._config.max_samples
         if effective_max < effective_samples:
             msg = (
@@ -257,8 +257,8 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
 
     def _run_probe(self, max_samples: int | None = None) -> float:
         model = self.get_model()
-        samples = model.samples if model.samples is not None else self._config.samples
-        sample_range = model.sample_range if model.sample_range is not None else self._config.sample_range
+        samples = model.samples
+        sample_range = model.sample_range
         effective_max = max_samples if max_samples is not None else self._config.max_samples
         max_window = samples + self._config.max_noisy_samples
         return run_probe_sequence(

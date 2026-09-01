@@ -21,6 +21,8 @@ def configure_probe(probe: Probe, config: Configuration) -> None:
             speed=3,
             threshold=1000,
             z_offset=0,
+            samples=5,
+            sample_range=0.010,
         )
     )
     probe.touch.load_model("test_touch")
@@ -42,6 +44,8 @@ def test_probe_includes_z_offset(
             speed=3,
             threshold=1000,
             z_offset=-0.5,
+            samples=5,
+            sample_range=0.010,
         )
     )
     probe.touch.load_model("test_touch")

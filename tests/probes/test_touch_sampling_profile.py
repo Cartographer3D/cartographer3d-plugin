@@ -1,4 +1,4 @@
-"""Tests for model-specific sampling profile (samples / sample_range) with global fallback."""
+"""Tests for model-specific sampling profile (samples / sample_range) with loader inheritance."""
 
 from __future__ import annotations
 
@@ -23,26 +23,32 @@ if TYPE_CHECKING:
 
 @pytest.fixture(autouse=True)
 def base_model(probe: Probe, config: Configuration) -> None:
-    """Register a minimal model with no sampling overrides (legacy-style)."""
+    """Register a model whose samples/sample_range match the mock global config (5 / 0.010).
+
+    This simulates a model that was loaded with inherited global values (as KlipperConfiguration
+    would do at startup for a legacy model section without explicit keys).
+    """
     config.save_touch_model(
         TouchModelConfiguration(
             name="default_model",
             speed=3,
             threshold=1000,
             z_offset=0,
-            # samples and sample_range intentionally absent → None
+            # Concrete values matching MockConfiguration defaults (samples=5, sample_range=0.010)
+            samples=5,
+            sample_range=0.010,
         )
     )
     probe.touch.load_model("default_model")
 
 
 # ---------------------------------------------------------------------------
-# Legacy fallback: model without samples/sample_range uses global config
+# Baseline: model carrying inherited global values behaves like global config
 # ---------------------------------------------------------------------------
 
 
-def test_legacy_model_uses_global_samples(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
-    """A model with samples=None falls back to global samples (5 from MockConfiguration)."""
+def test_inherited_samples_used(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+    """A model with samples=5 (inherited from global) requires 5 agreeing samples."""
     # Global config has samples=5; supply exactly 5 agreeing touches after 2 noisy ones
     # (window = 5 + 2 = 7; first 2 noisy, then 5 consistent → success)
     toolhead.z_probing_move = mocker.Mock(side_effect=[1.0, 2.0, 0.5, 0.5, 0.5, 0.5, 0.5])
@@ -52,8 +58,8 @@ def test_legacy_model_uses_global_samples(mocker: MockerFixture, toolhead: Toolh
     assert result == 0.5
 
 
-def test_legacy_model_uses_global_sample_range(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
-    """A model with sample_range=None falls back to global sample_range (0.010)."""
+def test_inherited_sample_range_used(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+    """A model with sample_range=0.010 (inherited) rejects spreads wider than 0.010."""
     # 10 monotone values, each 0.003 apart: best-5-in-window-7 = range 0.012 > 0.010
     side = [round(0.500 + i * 0.003, 4) for i in range(10)]
     toolhead.z_probing_move = mocker.Mock(side_effect=side)
@@ -64,7 +70,7 @@ def test_legacy_model_uses_global_sample_range(mocker: MockerFixture, toolhead: 
 
 
 # ---------------------------------------------------------------------------
-# Model-specific overrides: stored values override global config
+# Model-specific overrides: stored values override inherited defaults
 # ---------------------------------------------------------------------------
 
 
@@ -79,6 +85,7 @@ def test_model_samples_override_used(
             threshold=1000,
             z_offset=0,
             samples=3,
+            sample_range=0.010,
         )
     )
     probe.touch.load_model("tight_samples")
@@ -101,6 +108,7 @@ def test_model_sample_range_override_used(
             speed=3,
             threshold=1000,
             z_offset=0,
+            samples=5,
             sample_range=0.005,
         )
     )
@@ -126,6 +134,7 @@ def test_model_sample_range_override_accepts_tight_spread(
             speed=3,
             threshold=1000,
             z_offset=0,
+            samples=5,
             sample_range=0.015,
         )
     )
@@ -157,6 +166,7 @@ def test_model_samples_window_anti_cherry_picking(
             threshold=1000,
             z_offset=0,
             samples=3,
+            sample_range=0.010,
         )
     )
     probe.touch.load_model("window_check")
@@ -184,6 +194,7 @@ def test_model_samples_window_succeeds_consecutive(
             threshold=1000,
             z_offset=0,
             samples=3,
+            sample_range=0.010,
         )
     )
     probe.touch.load_model("window_consecutive")
