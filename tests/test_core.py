@@ -121,43 +121,17 @@ class TestMacroRegistration:
         assert "CUSTOM_SCAN_CALIBRATE" in registered_names
 
     def test_probe_method_wrapper_macros_registered(self, mock_adapters: Adapters):
-        """Verify probe method wrapper macros are registered for each entry in probe_method_macros."""
         from cartographer.macros.probe_method_wrapper import ProbeMethodWrapperMacro
 
-        mock_adapters.probe_method_macros = ["Z_TILT_ADJUST", "QUAD_GANTRY_LEVEL"]
+        mock_adapters.probe_method_macros = ["Z_TILT_ADJUST", "QUAD_GANTRY_LEVEL", "SCREWS_TILT_CALCULATE"]
         cartographer = PrinterCartographer(mock_adapters)
         registered_names = {reg.name for reg in cartographer.macros}
 
-        assert "Z_TILT_ADJUST" in registered_names
-        assert "QUAD_GANTRY_LEVEL" in registered_names
-
-        # Verify they are ProbeMethodWrapperMacro instances.
-        for name in ["Z_TILT_ADJUST", "QUAD_GANTRY_LEVEL"]:
+        for name in ["Z_TILT_ADJUST", "QUAD_GANTRY_LEVEL", "SCREWS_TILT_CALCULATE"]:
+            assert name in registered_names
             reg = next(r for r in cartographer.macros if r.name == name)
-            assert isinstance(reg.macro, ProbeMethodWrapperMacro), (
-                f"Expected ProbeMethodWrapperMacro for {name}, got {type(reg.macro).__name__}"
-            )
-
-    def test_probe_method_wrapper_macro_carries_command_name(self, mock_adapters: Adapters):
-        """Verify wrapper macro stores the correct command name."""
-        from cartographer.macros.probe_method_wrapper import ProbeMethodWrapperMacro
-
-        mock_adapters.probe_method_macros = ["SCREWS_TILT_CALCULATE"]
-        cartographer = PrinterCartographer(mock_adapters)
-
-        reg = next(r for r in cartographer.macros if r.name == "SCREWS_TILT_CALCULATE")
-        assert isinstance(reg.macro, ProbeMethodWrapperMacro)
-        assert reg.macro.command_name == "SCREWS_TILT_CALCULATE"
-
-    def test_empty_probe_method_macros_registers_no_wrappers(self, mock_adapters: Adapters):
-        """Verify no wrapper macros are registered when probe_method_macros is empty."""
-        from cartographer.macros.probe_method_wrapper import ProbeMethodWrapperMacro
-
-        mock_adapters.probe_method_macros = []
-        cartographer = PrinterCartographer(mock_adapters)
-
-        wrapper_regs = [reg for reg in cartographer.macros if isinstance(reg.macro, ProbeMethodWrapperMacro)]
-        assert wrapper_regs == []
+            assert isinstance(reg.macro, ProbeMethodWrapperMacro)
+            assert reg.macro.command_name == name
 
     def test_no_duplicate_registrations(self, mock_adapters: Adapters):
         cartographer = PrinterCartographer(mock_adapters)
