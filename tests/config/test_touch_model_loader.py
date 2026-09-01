@@ -15,6 +15,9 @@ if TYPE_CHECKING:
 class _FakeSection:
     """Minimal structural stub for the Klipper ConfigWrapper section interface."""
 
+    _name: str
+    _values: dict[str, object]
+
     def __init__(self, name: str, values: dict[str, object]) -> None:
         self._name = name
         self._values = values
@@ -26,8 +29,9 @@ class _FakeSection:
         return self._values.get(key, default)
 
     def getint(self, key: str, default: object = None, minval: int | None = None, maxval: int | None = None) -> object:
+        _ = (minval, maxval)
         val = self._values.get(key, default)
-        return int(val) if val is not None else default
+        return int(val) if isinstance(val, (int, float, str)) else default
 
     def getfloat(
         self,
@@ -37,19 +41,23 @@ class _FakeSection:
         maxval: float | None = None,
         note_valid: bool = True,
     ) -> object:
+        _ = (minval, maxval, note_valid)
         val = self._values.get(key, default)
-        return float(val) if val is not None else default
+        return float(val) if isinstance(val, (int, float, str)) else default
 
     def getboolean(self, key: str, default: object = None) -> object:
         return self._values.get(key, default)
 
     def getfloatlist(self, key: str, count: int | None = None, default: object = None) -> object:
+        _ = count
         return self._values.get(key, default)
 
     def getintlist(self, key: str, count: int | None = None, default: object = None) -> object:
+        _ = count
         return self._values.get(key, default)
 
     def getchoice(self, key: str, choices: dict[str, str], default: object = None) -> object:
+        _ = choices
         val = self._values.get(key, default)
         return str(val) if val is not None else default
 
@@ -67,7 +75,7 @@ def _global_touch(overrides: dict[str, object] | None = None) -> TouchConfig:
     }
     if overrides:
         base.update(overrides)
-    section = cast("ConfigWrapper", _FakeSection("cartographer touch", base))
+    section = cast("ConfigWrapper", cast("object", _FakeSection("cartographer touch", base)))
     return parse(TouchConfig, section, models={})
 
 
@@ -80,7 +88,7 @@ def _model_section(name: str, overrides: dict[str, object] | None = None) -> Con
     }
     if overrides:
         base.update(overrides)
-    return cast("ConfigWrapper", _FakeSection(f"cartographer touch_model {name}", base))
+    return cast("ConfigWrapper", cast("object", _FakeSection(f"cartographer touch_model {name}", base)))
 
 
 def test_missing_fields_inherit_non_default_globals() -> None:
