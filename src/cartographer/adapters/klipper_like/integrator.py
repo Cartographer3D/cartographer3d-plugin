@@ -107,6 +107,9 @@ class KlipperLikeIntegrator(Integrator):
             original = self._gcode.register_command(name, None)
             if original:
                 macro.set_fallback_macro(FallbackMacroAdapter(original))
+            elif macro.requires_fallback:
+                msg = f"No existing handler found for '{name}'; cannot register probe-method wrapper."
+                raise RuntimeError(msg)
             else:
                 logger.warning("No original macro found to fallback to for '%s'", name)
 

@@ -171,7 +171,7 @@ class PrinterCartographer:
 
         registrations.extend(
             chain.from_iterable(
-                self._register_macro(macro, ProbeMethodWrapperMacro(probe, adapters.gcode), use_prefix=False)
+                self._register_macro(macro, ProbeMethodWrapperMacro(probe, adapters.gcode, macro), use_prefix=False)
                 for macro in adapters.probe_method_macros
             )
         )

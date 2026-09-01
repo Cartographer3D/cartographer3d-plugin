@@ -126,6 +126,9 @@ class Macro(Protocol):
 
 
 class SupportsFallbackMacro(Macro, ABC):
+    # Subclasses that must have a fallback set at registration time should set this to True.
+    requires_fallback: bool = False
+
     @property
     def fallback(self) -> Macro:
         if self._fallback is None:
