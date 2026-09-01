@@ -20,6 +20,7 @@ def mock_adapters(config: Configuration):
     adapters.bed_mesh = Mock()
     adapters.task_executor = Mock()
     adapters.gcode = Mock()
+    adapters.probe_method_macros = []
 
     # Add other necessary mock configurations
     return adapters
@@ -119,8 +120,20 @@ class TestMacroRegistration:
         assert "CUSTOM_QUERY" in registered_names
         assert "CUSTOM_SCAN_CALIBRATE" in registered_names
 
+    def test_probe_method_wrapper_macros_registered(self, mock_adapters: Adapters):
+        from cartographer.macros.probe_method_wrapper import ProbeMethodWrapperMacro
+
+        mock_adapters.probe_method_macros = ["Z_TILT_ADJUST", "QUAD_GANTRY_LEVEL", "SCREWS_TILT_CALCULATE"]
+        cartographer = PrinterCartographer(mock_adapters)
+        registered_names = {reg.name for reg in cartographer.macros}
+
+        for name in ["Z_TILT_ADJUST", "QUAD_GANTRY_LEVEL", "SCREWS_TILT_CALCULATE"]:
+            assert name in registered_names
+            reg = next(r for r in cartographer.macros if r.name == name)
+            assert isinstance(reg.macro, ProbeMethodWrapperMacro)
+            assert reg.macro.command_name == name
+
     def test_no_duplicate_registrations(self, mock_adapters: Adapters):
-        """Verify no macros are registered twice."""
         cartographer = PrinterCartographer(mock_adapters)
         registered_names = [reg.name for reg in cartographer.macros]
 

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from functools import wraps
-from typing import TYPE_CHECKING, Callable, TypeVar
+from typing import TYPE_CHECKING, Callable, Sequence, TypeVar
 
 from gcode import CommandError
 from gcode import Coord as GCodeCoord
@@ -11,6 +11,10 @@ from cartographer.interfaces.errors import PrinterShutdownError, ProbeTriggerErr
 
 if TYPE_CHECKING:
     from cartographer.interfaces.printer import Position
+
+if TYPE_CHECKING:
+    from configfile import ConfigWrapper
+    from klippy import Printer
 
 P = ParamSpec("P")
 R = TypeVar("R")
@@ -82,3 +86,31 @@ def reraise_from_klipper(
             raise RuntimeError(error_message) from e
 
     return wrapper
+
+
+def try_load_object(printer: Printer, config: ConfigWrapper, section: str) -> bool:
+    if not config.has_section(section):
+        return False
+    _ = printer.load_object(config.getsection(section), section)
+    return True
+
+
+def build_probe_method_macros(
+    printer: Printer,
+    config: ConfigWrapper,
+    z_tilt_sections: Sequence[str] = ("z_tilt",),
+) -> list[str]:
+    """Build the probe-method macro list from printer configuration.
+
+    Always includes BED_MESH_CALIBRATE. Adds Z_TILT_ADJUST if any of
+    *z_tilt_sections* is configured (at most once). Adds QUAD_GANTRY_LEVEL
+    and SCREWS_TILT_CALCULATE when the corresponding sections are present.
+    """
+    macros: list[str] = ["BED_MESH_CALIBRATE"]
+    if any(try_load_object(printer, config, s) for s in z_tilt_sections):
+        macros.append("Z_TILT_ADJUST")
+    if try_load_object(printer, config, "quad_gantry_level"):
+        macros.append("QUAD_GANTRY_LEVEL")
+    if try_load_object(printer, config, "screws_tilt_adjust"):
+        macros.append("SCREWS_TILT_CALCULATE")
+    return macros

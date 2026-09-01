@@ -311,6 +311,13 @@ class TestBedMeshIntegration:
         with pytest.raises(ValueError):
             bed_mesh_macro.run(params)
 
+    def test_non_scan_method_without_fallback_raises(self, bed_mesh_macro: BedMeshCalibrateMacro, params: MockParams):
+        """Non-scan METHOD with no fallback configured must raise RuntimeError, never return silently."""
+        params.params = {"METHOD": "touch"}
+        # No fallback has been set on the macro
+        with pytest.raises(RuntimeError, match="METHOD='touch'"):
+            bed_mesh_macro.run(params)
+
     def test_adaptive_mesh_boundary_and_coordinate_transformation(
         self,
         mocker: MockerFixture,
