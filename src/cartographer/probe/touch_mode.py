@@ -39,7 +39,7 @@ _TOUCH_FLOOR_TOLERANCE = 0.001
 class TouchModeConfiguration:
     samples: int
     max_samples: int
-    max_window: int
+    max_noisy_samples: int
 
     x_offset: float
     y_offset: float
@@ -53,11 +53,11 @@ class TouchModeConfiguration:
     sample_range: float
 
     @staticmethod
-    def from_config(config: Configuration):
+    def from_config(config: Configuration) -> TouchModeConfiguration:
         return TouchModeConfiguration(
             samples=config.touch.samples,
             max_samples=config.touch.max_samples,
-            max_window=config.touch.samples + config.touch.max_noisy_samples,
+            max_noisy_samples=config.touch.max_noisy_samples,
             models=config.touch.models,
             x_offset=config.general.x_offset,
             y_offset=config.general.y_offset,
@@ -233,25 +233,40 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         }
 
     @override
-    def perform_probe(self) -> float:
+    def perform_probe(self, max_samples: int | None = None) -> float:
         if not self._toolhead.is_homed("z"):
             msg = "Z axis must be homed before probing"
+            raise RuntimeError(msg)
+
+        model = self.get_model()
+        effective_samples = model.samples
+        effective_max = max_samples if max_samples is not None else self._config.max_samples
+        if effective_max < effective_samples:
+            msg = (
+                f"max_samples ({effective_max}) must be >= the effective samples ({effective_samples}) "
+                f"required by the current model"
+            )
             raise RuntimeError(msg)
 
         if self._toolhead.get_position().z < self._config.retract_distance:
             self._toolhead.move(z=self._config.retract_distance, speed=self._config.lift_speed)
         self._toolhead.wait_moves()
 
-        self.last_z_result = self._run_probe()
+        self.last_z_result = self._run_probe(max_samples=max_samples)
         return self.last_z_result
 
-    def _run_probe(self) -> float:
+    def _run_probe(self, max_samples: int | None = None) -> float:
+        model = self.get_model()
+        samples = model.samples
+        sample_range = model.sample_range
+        effective_max = max_samples if max_samples is not None else self._config.max_samples
+        max_window = samples + self._config.max_noisy_samples
         return run_probe_sequence(
             self._perform_single_probe,
-            samples=self._config.samples,
-            max_samples=self._config.max_samples,
-            max_window=self._config.max_window,
-            sample_range=self._config.sample_range,
+            samples=samples,
+            max_samples=effective_max,
+            max_window=max_window,
+            sample_range=sample_range,
         )
 
     def _perform_single_probe(self) -> float:

@@ -9,6 +9,7 @@ from typing_extensions import TypeAlias
 from cartographer.interfaces.printer import MacroParams, Position, Toolhead
 from cartographer.macros.touch import TouchAccuracyMacro, TouchHomeMacro, TouchProbeMacro
 from cartographer.probe.touch_mode import TouchMode, TouchModeConfiguration
+from tests.mocks.params import MockParams
 
 if TYPE_CHECKING:
     from pytest import LogCaptureFixture
@@ -39,13 +40,45 @@ def test_touch_macro_output(
     params: MacroParams,
     toolhead: Toolhead,
 ):
-    macro = TouchProbeMacro(probe, toolhead)
+    macro = TouchProbeMacro(probe, toolhead, max_samples=10)
     probe.perform_probe = mocker.Mock(return_value=5.0)
 
     with caplog.at_level(logging.INFO):
         macro.run(params)
 
     assert "Result: at 10.000,10.000 estimate contact at z=5.000000" in caplog.messages
+
+
+def test_touch_probe_macro_omitted_max_samples_uses_configured_default(
+    mocker: MockerFixture,
+    probe: Probe,
+    params: MacroParams,
+    toolhead: Toolhead,
+):
+    """When MAX_SAMPLES is not supplied, the configured default is passed to perform_probe."""
+    macro = TouchProbeMacro(probe, toolhead, max_samples=7)
+    probe.perform_probe = mocker.Mock(return_value=0.5)
+
+    macro.run(params)
+
+    probe.perform_probe.assert_called_once_with(max_samples=7)
+
+
+def test_touch_probe_macro_explicit_max_samples_overrides_configured_default(
+    mocker: MockerFixture,
+    probe: Probe,
+    toolhead: Toolhead,
+):
+    """When MAX_SAMPLES is supplied, it overrides the configured default."""
+    explicit_params = MockParams()
+    explicit_params.params["MAX_SAMPLES"] = "20"
+
+    macro = TouchProbeMacro(probe, toolhead, max_samples=7)
+    probe.perform_probe = mocker.Mock(return_value=0.5)
+
+    macro.run(explicit_params)
+
+    probe.perform_probe.assert_called_once_with(max_samples=20)
 
 
 def test_touch_accuracy_macro_output(
@@ -62,7 +95,8 @@ def test_touch_accuracy_macro_output(
     i = -1
     measurements: list[float] = [50 + i * 10 for i in range(10)]
 
-    def mock_probe(**_) -> float:
+    def mock_probe(max_samples: int | None = None) -> float:
+        _ = max_samples
         nonlocal i
         i += 1
         return measurements[i]
@@ -95,7 +129,8 @@ def test_touch_accuracy_macro_sample_count(
     i = -1
     measurements: list[float] = [50 + i * 10 for i in range(10)]
 
-    def mock_probe(**_) -> float:
+    def mock_probe(max_samples: int | None = None) -> float:
+        _ = max_samples
         nonlocal i
         i += 1
         return measurements[i]

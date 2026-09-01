@@ -311,6 +311,8 @@ class TouchModelConfiguration:
     speed: float = option(min=1)
     z_offset: float = option(max=0)
     threshold: int = option(default=100)
+    samples: int = option(default=3, min=3)
+    sample_range: float = option(default=0.010, min=0.001, max=0.015)
     version_info: ModelVersionInfo = option(
         default=ModelVersionInfo(),
         parse_fn=_parse_version_info,

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import TYPE_CHECKING
+
 import pytest
 from typing_extensions import final
 
@@ -9,13 +11,18 @@ from cartographer.macros.touch.calibrate import (
     ScreeningResult,
     ThresholdScreener,
     ThresholdVerifier,
+    TouchCalibrateMacro,
     TouchCalibrateParams,
     VerificationResult,
     calculate_step,
     format_distance,
 )
 from cartographer.probe.touch_mode import TouchError
+from tests.mocks.config import MockConfiguration
 from tests.mocks.params import MockParams
+
+if TYPE_CHECKING:
+    from pytest_mock import MockerFixture
 
 # --- Fake probe for testing ---
 
@@ -39,7 +46,7 @@ class FakeCalibrationProbe:
         self._probe_results = list(probe_results or [])
         self.thresholds_set: list[int] = []
 
-    def collect_samples(self, threshold: int, sample_count: int) -> tuple[float, ...]:  # noqa: ARG002
+    def collect_samples(self, threshold: int, sample_count: int) -> tuple[float, ...]:
         _ = threshold, sample_count
         result = self._samples_results.pop(0)
         if isinstance(result, ProbeTriggerError):
@@ -278,7 +285,7 @@ class TestThresholdVerifier:
         result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=3)
 
         assert result is not None
-        assert result.median_range == pytest.approx(0.010)  # pyright: ignore[reportUnknownMemberType]
+        assert abs(result.median_range - 0.010) < 1e-9
         assert result.probe_medians == [1.000, 1.010, 1.005]
 
 
@@ -333,6 +340,207 @@ class TestTouchCalibrateParams:
         p = parse(
             TouchCalibrateParams,
             mock,
+            samples=3,
+            sample_range=0.010,
             max_verify_range=0.020,
         )
         assert p.speed == 1.5
+
+    def test_samples_defaults_from_config(self):
+        """SAMPLES defaults to the value supplied via config defaults."""
+        mock = MockParams()
+        p = parse(
+            TouchCalibrateParams,
+            mock,
+            samples=5,
+            sample_range=0.010,
+            max_verify_range=0.020,
+        )
+        assert p.samples == 5
+
+    def test_samples_explicit_override(self):
+        """Explicit SAMPLES= overrides the config default."""
+        mock = MockParams()
+        mock.params["SAMPLES"] = "7"
+        p = parse(
+            TouchCalibrateParams,
+            mock,
+            samples=5,
+            sample_range=0.010,
+            max_verify_range=0.020,
+        )
+        assert p.samples == 7
+
+    def test_sample_range_defaults_from_config(self):
+        """SAMPLE_RANGE defaults to the value supplied via config defaults."""
+        mock = MockParams()
+        p = parse(
+            TouchCalibrateParams,
+            mock,
+            samples=5,
+            sample_range=0.008,
+            max_verify_range=0.016,
+        )
+        assert abs(p.sample_range - 0.008) < 1e-9
+
+    def test_sample_range_explicit_override(self):
+        """Explicit SAMPLE_RANGE= overrides the config default."""
+        mock = MockParams()
+        mock.params["SAMPLE_RANGE"] = "0.005"
+        p = parse(
+            TouchCalibrateParams,
+            mock,
+            samples=5,
+            sample_range=0.010,
+            max_verify_range=0.020,
+        )
+        assert abs(p.sample_range - 0.005) < 1e-9
+
+    def test_max_verify_range_uses_effective_sample_range_default(self, mocker: MockerFixture):
+        """MAX_VERIFY_RANGE defaults to 2× effective SAMPLE_RANGE."""
+        config = MockConfiguration()
+        probe = mocker.Mock()
+        mcu = mocker.Mock()
+        toolhead = mocker.Mock()
+        task_executor = mocker.Mock()
+        macro = TouchCalibrateMacro(probe, mcu, toolhead, config, task_executor)
+
+        # Patch _find_threshold to return a threshold immediately so run() completes.
+        find_threshold_spy = mocker.patch.object(macro, "_find_threshold", return_value=1500)
+        _ = mocker.patch.object(macro, "_move_to_calibration_position")
+        toolhead.is_homed.return_value = True
+
+        params = MockParams()
+        # Do not set MAX_VERIFY_RANGE; it should default to 2× config.sample_range (0.010)
+        macro.run(params)
+
+        # Prove _find_threshold was called with max_verify_range = 2× effective sample_range
+        call_args = find_threshold_spy.call_args
+        args = call_args.args
+        # args[4] = sample_range, args[5] = max_verify_range
+        assert abs(args[4] - config.touch.sample_range) < 1e-9
+        assert abs(args[5] - args[4] * 2) < 1e-9
+
+    def test_max_verify_range_scaled_by_explicit_sample_range(self, mocker: MockerFixture):
+        """MAX_VERIFY_RANGE defaults to 2× the explicit SAMPLE_RANGE parameter."""
+        config = MockConfiguration()
+        probe = mocker.Mock()
+        mcu = mocker.Mock()
+        toolhead = mocker.Mock()
+        task_executor = mocker.Mock()
+        macro = TouchCalibrateMacro(probe, mcu, toolhead, config, task_executor)
+
+        find_threshold_spy = mocker.patch.object(macro, "_find_threshold", return_value=1500)
+        _ = mocker.patch.object(macro, "_move_to_calibration_position")
+        toolhead.is_homed.return_value = True
+
+        params = MockParams()
+        params.params["SAMPLE_RANGE"] = "0.005"
+        # MAX_VERIFY_RANGE not supplied — should default to 2× 0.005 = 0.010
+        macro.run(params)
+
+        # Prove _find_threshold was called with max_verify_range = 2× explicit SAMPLE_RANGE
+        call_args = find_threshold_spy.call_args
+        args = call_args.args
+        # args[4] = sample_range, args[5] = max_verify_range
+        assert abs(args[4] - 0.005) < 1e-9
+        assert abs(args[5] - args[4] * 2) < 1e-9
+
+    def test_max_verify_range_below_sample_range_raises(self, mocker: MockerFixture):
+        """MAX_VERIFY_RANGE below SAMPLE_RANGE must raise RuntimeError."""
+        config = MockConfiguration()
+        probe = mocker.Mock()
+        mcu = mocker.Mock()
+        toolhead = mocker.Mock()
+        task_executor = mocker.Mock()
+        macro = TouchCalibrateMacro(probe, mcu, toolhead, config, task_executor)
+
+        params = MockParams()
+        # sample_range = 0.010 (config default); set max_verify_range below it
+        params.params["MAX_VERIFY_RANGE"] = "0.008"
+
+        with pytest.raises(RuntimeError, match="MAX_VERIFY_RANGE"):
+            macro.run(params)
+
+    def test_max_verify_range_above_4x_sample_range_raises(self, mocker: MockerFixture):
+        """MAX_VERIFY_RANGE above 4× SAMPLE_RANGE must raise RuntimeError."""
+        config = MockConfiguration()
+        probe = mocker.Mock()
+        mcu = mocker.Mock()
+        toolhead = mocker.Mock()
+        task_executor = mocker.Mock()
+        macro = TouchCalibrateMacro(probe, mcu, toolhead, config, task_executor)
+
+        params = MockParams()
+        # sample_range = 0.010 (config default); 4× = 0.040; set above it
+        params.params["MAX_VERIFY_RANGE"] = "0.050"
+
+        with pytest.raises(RuntimeError, match="MAX_VERIFY_RANGE"):
+            macro.run(params)
+
+    def test_samples_exceeding_max_samples_raises_before_movement(self, mocker: MockerFixture):
+        """SAMPLES > config.touch.max_samples must raise RuntimeError before any movement."""
+        config = MockConfiguration()  # default: max_samples=10
+        probe = mocker.Mock()
+        mcu = mocker.Mock()
+        toolhead = mocker.Mock()
+        task_executor = mocker.Mock()
+        macro = TouchCalibrateMacro(probe, mcu, toolhead, config, task_executor)
+
+        # Patch _move_to_calibration_position to assert it is never called.
+        move_spy = mocker.patch.object(macro, "_move_to_calibration_position")
+
+        params = MockParams()
+        params.params["SAMPLES"] = "11"  # exceeds max_samples=10
+
+        with pytest.raises(RuntimeError, match="SAMPLES"):
+            macro.run(params)
+
+        move_spy.assert_not_called()
+        toolhead.move.assert_not_called()
+
+    def test_saved_model_stores_samples_and_sample_range(self, mocker: MockerFixture):
+        """Calibration result must persist effective samples and sample_range."""
+        config = MockConfiguration()
+        probe = mocker.Mock()
+        mcu = mocker.Mock()
+        toolhead = mocker.Mock()
+        task_executor = mocker.Mock()
+        macro = TouchCalibrateMacro(probe, mcu, toolhead, config, task_executor)
+
+        _ = mocker.patch.object(macro, "_find_threshold", return_value=2000)
+        _ = mocker.patch.object(macro, "_move_to_calibration_position")
+        toolhead.is_homed.return_value = True
+
+        params = MockParams()
+        params.params["SAMPLES"] = "7"
+        params.params["SAMPLE_RANGE"] = "0.008"
+        macro.run(params)
+
+        saved = config.touch.models["default"]
+        assert saved.samples == 7
+        assert abs(saved.sample_range - 0.008) < 1e-9
+
+    def test_calibration_execution_uses_effective_samples(self, mocker: MockerFixture):
+        """The effective SAMPLES value drives screening_samples passed to _find_threshold."""
+        config = MockConfiguration()  # default: samples=5, max_noisy_samples=2
+        probe = mocker.Mock()
+        mcu = mocker.Mock()
+        toolhead = mocker.Mock()
+        task_executor = mocker.Mock()
+        macro = TouchCalibrateMacro(probe, mcu, toolhead, config, task_executor)
+
+        find_threshold_spy = mocker.patch.object(macro, "_find_threshold", return_value=1500)
+        _ = mocker.patch.object(macro, "_move_to_calibration_position")
+        toolhead.is_homed.return_value = True
+
+        params = MockParams()
+        params.params["SAMPLES"] = "4"  # override config default of 5
+        macro.run(params)
+
+        # _find_threshold receives screening_samples = SAMPLES + max_noisy_samples = 4 + 2 = 6
+        call_args = find_threshold_spy.call_args
+        # positional args: screener, verifier, start, max, sample_range,
+        # max_verify, verify_samples, screening_samples
+        args = call_args.args
+        assert args[7] == 6  # screening_samples at position index 7

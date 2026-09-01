@@ -26,6 +26,34 @@ _PARAM_METADATA_KEY = "_macro_param"
 
 
 @dataclass(frozen=True)
+class ComputedDefault:
+    """Sentinel marking a macro param default as dynamically computed at runtime.
+
+    At parse time the actual value is supplied via ``**defaults``; this sentinel
+    carries only a human-readable expression so docs can render
+    ``computed: <display>`` instead of marking the parameter as required.
+    """
+
+    display: str
+
+
+def computed_default(display: str) -> ComputedDefault:
+    """Create a computed-default sentinel for a macro param.
+
+    The returned sentinel marks a parameter whose default is computed
+    dynamically at runtime (e.g. derived from another parameter's value).
+    Docs will render ``computed: <display>`` so callers understand what
+    drives the value.  The actual runtime default must still be provided
+    via ``parse(..., **defaults)``.
+
+    Args:
+        display: Human-readable expression describing the computation,
+            e.g. ``"2 × effective SAMPLE_RANGE"``.
+    """
+    return ComputedDefault(display=display)
+
+
+@dataclass(frozen=True)
 class ConfigRef:
     """Sentinel marking a macro param default as derived from a config option.
 
@@ -94,6 +122,17 @@ class _ParamMeta:
             max=self.max,
             key=self.key,
         )
+
+
+@overload
+def param(
+    description: str | None = ...,
+    *,
+    default: ComputedDefault,
+    key: str | None = ...,
+    min: float | None = ...,
+    max: float | None = ...,
+) -> Any: ...
 
 
 @overload
@@ -341,9 +380,9 @@ def parse(cls: type[T], params: MacroParams, **defaults: Any) -> T:
         effective_meta = meta.field_meta
         if f.name in defaults:
             effective_meta = dataclasses.replace(effective_meta, default=defaults[f.name])
-        elif isinstance(meta.default, ConfigRef):
-            # ConfigRef is a docs sentinel — at runtime the caller MUST supply the
-            # actual config value via **defaults.  Treat as required if missing.
+        elif isinstance(meta.default, (ConfigRef, ComputedDefault)):
+            # ConfigRef / ComputedDefault are docs sentinels — at runtime the caller
+            # MUST supply the actual value via **defaults.  Treat as required if missing.
             effective_meta = dataclasses.replace(effective_meta, default=MISSING)
 
         type_hint = hints[f.name]

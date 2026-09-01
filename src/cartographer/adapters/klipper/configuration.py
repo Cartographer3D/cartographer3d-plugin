@@ -27,6 +27,25 @@ if TYPE_CHECKING:
     from cartographer.mcu.mcu import CartographerMcu
 
 
+def parse_touch_model_with_defaults(
+    config: ConfigWrapper,
+    *,
+    global_samples: int,
+    global_sample_range: float,
+) -> TouchModelConfiguration:
+    """Parse a touch model section, inheriting global touch defaults for missing keys.
+
+    Reads ``samples`` and ``sample_range`` from the model section directly using the
+    same constraints as the global ``[cartographer touch]`` definition.  When a key is
+    absent the global value is used, so every in-memory model always carries concrete
+    (non-None) values regardless of whether the config file was written before these
+    options were introduced.
+    """
+    samples = config.getint("samples", default=global_samples, minval=3)
+    sample_range = config.getfloat("sample_range", default=global_sample_range, minval=0.001, maxval=0.015)
+    return parse(TouchModelConfiguration, config, samples=samples, sample_range=sample_range)
+
+
 @final
 class KlipperConfiguration(Configuration):
     def __init__(self, config: ConfigWrapper, mcu: CartographerMcu, general: GeneralConfig) -> None:
@@ -52,11 +71,19 @@ class KlipperConfiguration(Configuration):
         self.scan = parse(ScanConfig, config.getsection(f"{self.name} scan"), models=scan_models)
 
         self.touch_model_prefix = f"{self.name} touch_model"
+        # Parse global touch section first to obtain inherited defaults, with an
+        # empty models dict. Model sections are parsed below with the resolved
+        # global values as fallbacks so every model has concrete samples/sample_range.
+        _touch_global = parse(TouchConfig, config.getsection(f"{self.name} touch"), models={})
         touch_models = {
-            wrapper.get_name().split(" ")[-1]: parse(TouchModelConfiguration, wrapper)
+            wrapper.get_name().split(" ")[-1]: parse_touch_model_with_defaults(
+                wrapper,
+                global_samples=_touch_global.samples,
+                global_sample_range=_touch_global.sample_range,
+            )
             for wrapper in config.get_prefix_sections(self.touch_model_prefix)
         }
-        self.touch = parse(TouchConfig, config.getsection(f"{self.name} touch"), models=touch_models)
+        self.touch = replace(_touch_global, models=touch_models)
 
     @override
     def save_scan_model(self, config: ScanModelConfiguration) -> None:
@@ -97,6 +124,8 @@ class KlipperConfiguration(Configuration):
         save(_key("threshold"), config.threshold)
         save(_key("speed"), config.speed)
         save(_key("z_offset"), round(config.z_offset, 3))
+        save(_key("samples"), config.samples)
+        save(_key("sample_range"), round(config.sample_range, 4))
 
         # Version info fields are part of ModelVersionInfo, not individual option() fields
         sw_version = __version__
