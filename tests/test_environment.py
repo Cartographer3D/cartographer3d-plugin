@@ -19,29 +19,30 @@ class TestDetectEnvironment:
 
         assert detect_environment(None) == Environment.Kalico
 
-    def test_detects_klipper_v12_when_trigger_dispatch_missing(self, mocker: MockerFixture) -> None:
-        """When mcu module exists but lacks TriggerDispatch, detect KlipperV12."""
+    def test_detects_klipper_v12_when_start_probe_session_missing(self, mocker: MockerFixture) -> None:
+        """When PrinterProbe lacks start_probe_session, detect KlipperV12."""
         # Stub klippy without APP_NAME (or not Kalico)
         klippy_mock = MagicMock(spec=[])
         mocker.patch.dict(sys.modules, {"klippy": klippy_mock})
 
-        # Stub mcu module without TriggerDispatch
-        mcu_mock = MagicMock(spec=["MCU", "MCU_trsync", "get_printer_mcu"])
-        mocker.patch.dict(sys.modules, {"mcu": mcu_mock})
+        # Stub extras.probe with PrinterProbe that lacks start_probe_session
+        probe_mock = MagicMock()
+        probe_mock.PrinterProbe = type("PrinterProbe", (), {})
+        mocker.patch.dict(sys.modules, {"extras": MagicMock(), "extras.probe": probe_mock})
 
         from cartographer.runtime.environment import Environment, detect_environment
 
         assert detect_environment(None) == Environment.KlipperV12
 
-    def test_detects_klipper_when_trigger_dispatch_present(self, mocker: MockerFixture) -> None:
-        """When mcu.TriggerDispatch exists, detect modern Klipper."""
+    def test_detects_klipper_when_start_probe_session_present(self, mocker: MockerFixture) -> None:
+        """When PrinterProbe has start_probe_session, detect modern Klipper."""
         klippy_mock = MagicMock(spec=[])
         mocker.patch.dict(sys.modules, {"klippy": klippy_mock})
 
-        # Stub mcu module WITH TriggerDispatch
-        mcu_mock = MagicMock()
-        mcu_mock.TriggerDispatch = MagicMock()
-        mocker.patch.dict(sys.modules, {"mcu": mcu_mock})
+        # Stub extras.probe with PrinterProbe that has start_probe_session
+        probe_mock = MagicMock()
+        probe_mock.PrinterProbe = type("PrinterProbe", (), {"start_probe_session": None})
+        mocker.patch.dict(sys.modules, {"extras": MagicMock(), "extras.probe": probe_mock})
 
         from cartographer.runtime.environment import Environment, detect_environment
 
