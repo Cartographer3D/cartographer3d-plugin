@@ -11,6 +11,10 @@ class MockParams(MacroParams):
     def __init__(self) -> None:
         self.params: dict[str, str] = {}
 
+    @override
+    def get_command_parameters(self) -> dict[str, str]:
+        return self.params
+
     @overload
     def get(self, name: str, default: str = ...) -> str: ...
     @overload

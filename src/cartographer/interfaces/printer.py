@@ -85,6 +85,7 @@ class Mcu(Protocol):
 
 
 class MacroParams(Protocol):
+    def get_command_parameters(self) -> dict[str, str]: ...
     @overload
     def get(self, name: str, default: str = ...) -> str: ...
     @overload
@@ -117,15 +118,17 @@ class MacroParams(Protocol):
     ) -> int | None: ...
 
 
-@runtime_checkable
-class SupportsFallbackMacro(Protocol):
-    def set_fallback_macro(self, macro: Macro) -> None: ...
-
-
 class Macro(Protocol):
     description: str
 
     def run(self, params: MacroParams) -> None: ...
+
+
+@runtime_checkable
+class SupportsFallbackMacro(Macro, Protocol):
+    requires_fallback: bool
+
+    def set_fallback_macro(self, macro: Macro) -> None: ...
 
 
 class ProbeMode(Protocol):
@@ -151,6 +154,8 @@ class GCodeDispatch(Protocol):
     def run_gcode(self, script: str) -> None:
         """Run the given gcode script."""
         ...
+
+    def clone_params(self, params: MacroParams, overrides: dict[str, str]) -> MacroParams: ...
 
 
 class AxisTwistCompensation(Protocol):

@@ -10,6 +10,7 @@ from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
 from cartographer.adapters.klipper.mcu_platform import KlipperMcuPlatform
 from cartographer.adapters.klipper.toolhead import KlipperToolhead
 from cartographer.adapters.klipper_like.scheduler import KlipperScheduler
+from cartographer.adapters.klipper_like.utils import build_probe_method_macros
 from cartographer.config.fields import parse
 from cartographer.interfaces.configuration import GeneralConfig
 from cartographer.mcu.mcu import CartographerMcu
@@ -40,3 +41,5 @@ class KlipperAdapters(Adapters):
         self.axis_twist_compensation = None
         if config.has_section("axis_twist_compensation"):
             self.axis_twist_compensation = KlipperAxisTwistCompensationAdapter(config)
+
+        self.probe_method_macros = build_probe_method_macros(self.printer, config)

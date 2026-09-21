@@ -207,8 +207,9 @@ class MeshScanParams:
 
 
 @final
-class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
+class BedMeshCalibrateMacro(SupportsFallbackMacro):
     description = "Gather samples across the bed to calibrate the bed mesh."
+    requires_fallback: bool = False
 
     def __init__(
         self,
@@ -219,6 +220,7 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         task_executor: TaskExecutor,
         config: BedMeshCalibrateConfiguration,
     ):
+        self._fallback: Macro | None = None
         self.probe = probe
         self.toolhead = toolhead
         self.adapter = adapter
@@ -226,7 +228,6 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         self.config = config
         self.coordinate_transformer = CoordinateTransformer(probe.scan.offset)
         self.axis_twist_compensation = axis_twist_compensation
-        self._fallback: Macro | None = None
 
     @override
     def set_fallback_macro(self, macro: Macro) -> None:
@@ -236,10 +237,10 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
     def run(self, params: MacroParams) -> None:
         """Main entry point for bed mesh calibration."""
         # Handle fallback for non-scan methods
-        method = params.get("METHOD", "scan")
-        if method.lower() != "scan":
+        method = params.get("METHOD", "scan").lower()
+        if method != "scan":
             if self._fallback is None:
-                msg = f"Bed mesh calibration method '{method}' not supported"
+                msg = f"BED_MESH_CALIBRATE does not support METHOD={method!r} (no fallback configured)"
                 raise RuntimeError(msg)
             return self._fallback.run(params)
 

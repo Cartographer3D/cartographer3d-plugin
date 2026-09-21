@@ -10,6 +10,7 @@ from cartographer.adapters.klipper.bed_mesh import KlipperBedMesh
 from cartographer.adapters.klipper.configuration import KlipperConfiguration
 from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
 from cartographer.adapters.klipper_like.scheduler import KlipperScheduler
+from cartographer.adapters.klipper_like.utils import build_probe_method_macros
 from cartographer.config.fields import parse
 from cartographer.interfaces.configuration import GeneralConfig
 from cartographer.mcu.mcu import CartographerMcu
@@ -40,3 +41,7 @@ class KalicoAdapters(Adapters):
         self.axis_twist_compensation = None
         if config.has_section("axis_twist_compensation"):
             self.axis_twist_compensation = KalicoAxisTwistCompensationAdapter(config)
+
+        self.probe_method_macros = build_probe_method_macros(
+            self.printer, config, z_tilt_sections=("z_tilt", "z_tilt_ng")
+        )
