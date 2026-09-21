@@ -46,7 +46,6 @@ class ScanAccuracyMacro(Macro):
         p = parse(ScanAccuracyParams, params)
         early_check_count = min(EARLY_CHECK_SAMPLE_COUNT, p.samples)
         position = self._toolhead.get_position()
-        position = self._toolhead.get_position()
 
         logger.info(
             "scan accuracy at X:%.3f Y:%.3f Z:%.3f (readings=%d, samples=%d)",
