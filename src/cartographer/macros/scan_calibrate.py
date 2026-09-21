@@ -79,11 +79,7 @@ class ScanCalibrateMacro(Macro):
 
         x_offset = self._config.general.x_offset
         y_offset = self._config.general.y_offset
-        self._toolhead.move(
-                x=pos.x - x_offset,
-                y=pos.y - y_offset,
-                speed=self._config.general.travel_speed
-        )
+        self._toolhead.move(x=pos.x - x_offset, y=pos.y - y_offset, speed=self._config.general.travel_speed)
         self._toolhead.wait_moves()
 
         self._calibrate(name)
