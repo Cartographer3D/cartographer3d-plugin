@@ -149,7 +149,7 @@ def collection_targets(start: float, max_temp: int, touch_step: float) -> list[f
 class TemperatureCalibrateParams:
     """Parameters for CARTOGRAPHER_CALIBRATE_TEMPERATURE."""
 
-    min_temp: int = param("Minimum coil temperature", default=40, min=40, max=50)
+    min_temp: int = param("Minimum coil temperature", default=40, min=25, max=50)
     max_temp: int = param("Maximum coil temperature", default=60, min=60, max=90)
     bed_temp: int = param("Bed temperature target", default=90, min=90, max=120)
     z_speed: int = param("Z movement speed", default=5, min=1)
@@ -311,10 +311,13 @@ class TemperatureCalibrateMacro(Macro):
         per_height: dict[float, list[Sample]],
         touches: list[TouchRecord],
     ) -> None:
-        logger.info("Starting heaters: bed=%d°C, cycling heights %s", p.bed_temp, heights)
-        self.gcode.run_gcode(f"M140 S{p.bed_temp}\nM106 S0")
+        logger.info(
+            "Moving to z %.1f, then starting heaters: bed=%d°C, cycling heights %s", heights[0], p.bed_temp, heights
+        )
         self.toolhead.move(z=heights[0], speed=p.z_speed)
         self.toolhead.wait_moves()
+        # Heat only once at height (see _heat_up_phase).
+        self.gcode.run_gcode(f"M140 S{p.bed_temp}\nM106 S0")
         self._wait_for_temperature(target_temp=p.min_temp - 1, cooling=False)
 
         progress = _HeatProgress()
@@ -383,11 +386,12 @@ class TemperatureCalibrateMacro(Macro):
         touches: list[TouchRecord] | None = None,
     ) -> None:
         """Heat up and collect samples during temperature rise."""
-        logger.info("Starting heaters: bed=%d°C, moving to z %.1f", bed_temp, height)
-        self.gcode.run_gcode(f"M140 S{bed_temp}\nM106 S0")
-
+        logger.info("Moving to z %.1f, then starting heaters: bed=%d°C", height, bed_temp)
         self.toolhead.move(z=height, speed=z_speed)
         self.toolhead.wait_moves()
+        # Heat only once at height: heating during the long descent from the cooling height
+        # warmed the coil past MIN_TEMP before collection could start.
+        self.gcode.run_gcode(f"M140 S{bed_temp}\nM106 S0")
 
         self._wait_for_temperature(target_temp=min_temp - 1, cooling=False)
 

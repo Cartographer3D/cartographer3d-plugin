@@ -295,3 +295,39 @@ def test_fit_is_uncorrected_without_a_scan_model(mocker: MockerFixture) -> None:
 
     data = rig.task_executor.run.call_args.args[1]
     assert all(s.frequency == 3e6 for s in data[1])
+
+
+@pytest.mark.parametrize("interleave", ["0", "1"])
+def test_bed_heats_only_after_reaching_the_first_height(mocker: MockerFixture, interleave: str) -> None:
+    events: list[str] = []
+
+    def move(**kwargs: float) -> None:
+        events.append(f"move z={kwargs['z']:g}" if "z" in kwargs else "move xy")
+
+    def run_gcode(script: str) -> None:
+        events.append(" ".join(script.split()[:2]))
+
+    def wait_temperature(**_: object) -> None:
+        events.append("wait temp")
+
+    toolhead = mocker.Mock()
+    toolhead.get_position = mocker.Mock(return_value=Position(175, 175, 1.0))
+    toolhead.get_axis_limits = mocker.Mock(return_value=(0, 300))
+    toolhead.get_last_move_time = mocker.Mock(return_value=0.0)
+    toolhead.move = mocker.Mock(side_effect=move)
+    toolhead.wait_moves = mocker.Mock(side_effect=lambda: events.append("wait"))
+    gcode = mocker.Mock()
+    gcode.run_gcode = mocker.Mock(side_effect=run_gcode)
+    config = mocker.Mock()
+    config.bed_mesh.zero_reference_position = (175, 175)
+    macro = TemperatureCalibrateMacro(mocker.MagicMock(), toolhead, config, gcode, mocker.Mock(), mocker.Mock())
+    _ = mocker.patch("cartographer.macros.temperature_calibrate.scipy_helpers.raise_if_curve_fit_unavailable")
+    _ = mocker.patch("cartographer.macros.temperature_calibrate.write_samples_to_csv")
+    _ = mocker.patch.object(macro, "_wait_for_temperature", side_effect=wait_temperature)
+    _ = mocker.patch.object(macro, "_dwell", return_value=True)
+    macro_params = MockParams()
+    macro_params.params = {"MIN_TEMP": "30", "MAX_TEMP": "60", "BED_TEMP": "110", "INTERLEAVE": interleave}
+    macro.run(macro_params)
+
+    first_heat = events.index("M140 S110")
+    assert events[first_heat - 2 : first_heat] == ["move z=1", "wait"]
