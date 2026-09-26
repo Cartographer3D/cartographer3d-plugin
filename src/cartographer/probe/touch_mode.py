@@ -235,7 +235,8 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         }
 
     @override
-    def perform_probe(self, max_samples: int | None = None) -> float:
+    def perform_probe(self, max_samples: int | None = None, *, speed: float | None = None) -> float:
+        del speed  # touch always runs at the model's speed: its threshold was calibrated there
         if not self._toolhead.is_homed("z"):
             msg = "Z axis must be homed before probing"
             raise RuntimeError(msg)

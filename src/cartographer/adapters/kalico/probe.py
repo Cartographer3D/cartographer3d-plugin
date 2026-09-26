@@ -51,9 +51,9 @@ class KalicoCartographerProbe:
 
     @reraise_for_klipper
     def run_probe(self, gcmd: GCodeCommand, *args: object, **kwargs: object) -> list[float]:
-        del gcmd, args, kwargs
+        del args, kwargs
         pos = self.toolhead.get_position()
-        trigger_pos = self.probe.perform_probe()
+        trigger_pos = self.probe.perform_probe(speed=gcmd.get_float("PROBE_SPEED", None, above=0.0))
         return [pos.x, pos.y, trigger_pos]
 
     def multi_probe_begin(self):

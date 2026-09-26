@@ -42,6 +42,16 @@ class TestRunProbe:
 
         probe_mode.perform_probe.assert_called_once()
 
+    def test_passes_probe_speed(self, session: KlipperProbeSession, probe_mode: Mock) -> None:
+        # Homing via probe:z_virtual_endstop sends stepper_z homing_speed as PROBE_SPEED.
+        gcmd = Mock()
+        gcmd.get = Mock(return_value=None)
+        gcmd.get_float = Mock(side_effect=lambda name, default=None, **_: 20.0 if name == "PROBE_SPEED" else default)
+
+        session.run_probe(gcmd)
+
+        probe_mode.perform_probe.assert_called_once_with(speed=20.0)
+
     def test_stores_result(self, session: KlipperProbeSession) -> None:
         gcmd = Mock()
         gcmd.get = Mock(return_value=None)

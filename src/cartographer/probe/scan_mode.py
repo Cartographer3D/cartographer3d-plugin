@@ -95,7 +95,8 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         }
 
     @override
-    def perform_probe(self) -> float:
+    def perform_probe(self, *, speed: float | None = None) -> float:
+        speed = speed if speed is not None else self._config.probe_speed
         if not self._toolhead.is_homed("z"):
             msg = "Z axis must be homed before probing"
             raise RuntimeError(msg)
@@ -103,9 +104,9 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         dist = self.measure_distance()
         if dist > self.probe_height + 0.5:
             # Safely move downwards
-            _ = self._toolhead.z_probing_move(self, speed=self._config.probe_speed)
+            _ = self._toolhead.z_probing_move(self, speed=speed)
         elif self._toolhead.get_position().z < self.probe_height:
-            self._toolhead.move(z=self.probe_height, speed=self._config.probe_speed)
+            self._toolhead.move(z=self.probe_height, speed=speed)
             self._toolhead.wait_moves()
 
         delta = self.probe_height - self.measure_distance()
