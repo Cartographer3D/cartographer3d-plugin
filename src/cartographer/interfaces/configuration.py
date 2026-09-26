@@ -101,14 +101,19 @@ def _parse_faulty_regions(config: ConfigWrapper) -> list[Region]:
 
 
 def _parse_coil_calibration(config: ConfigWrapper) -> CoilCalibrationConfiguration | None:
-    calibration: list[float] | None = config.getfloatlist("calibration", count=4, default=None)
+    calibration: list[float] | None = config.getfloatlist("calibration", default=None)
     if calibration is None:
         return None
+    # 4 values: the model only. 6 values: plus the coil temperature range it was calibrated over.
+    if len(calibration) not in (4, 6):
+        msg = f"Coil calibration needs 4 or 6 values, got {len(calibration)}"
+        raise config.error(msg)
     return CoilCalibrationConfiguration(
         a_a=calibration[0],
         a_b=calibration[1],
         b_a=calibration[2],
         b_b=calibration[3],
+        temperature_range=(calibration[4], calibration[5]) if len(calibration) == 6 else None,
     )
 
 
@@ -334,6 +339,15 @@ class CoilCalibrationConfiguration:
     a_b: float
     b_a: float
     b_b: float
+    # Coil temperatures the model was fitted over. Outside it, compensation continues along the
+    # curve's slope at the nearer end instead of extrapolating the quadratic. None: old configs.
+    temperature_range: tuple[float, float] | None = None
+
+    def as_config_values(self) -> list[float]:
+        values = [self.a_a, self.a_b, self.b_a, self.b_b]
+        if self.temperature_range is not None:
+            values += list(self.temperature_range)
+        return values
 
 
 @dataclass(frozen=True)
