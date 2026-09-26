@@ -5,7 +5,12 @@ from typing import TYPE_CHECKING
 import pytest
 
 from cartographer.interfaces.printer import Position, Sample
-from cartographer.macros.temperature_calibrate import TemperatureCalibrateMacro, collection_targets
+from cartographer.macros.temperature_calibrate import (
+    TemperatureCalibrateMacro,
+    TouchRecord,
+    collection_targets,
+    correct_for_growth,
+)
 from tests.mocks.params import MockParams
 
 if TYPE_CHECKING:
@@ -162,6 +167,7 @@ class _Rig:
         self.mcu.unregister_callback = mocker.Mock(side_effect=self.callbacks.remove)
         self.mcu.get_last_sample = mocker.Mock(side_effect=lambda: self._sample())
         self.scheduler: Mock = mocker.Mock()
+        self.task_executor: Mock = mocker.Mock()
         self.scheduler.sleep = mocker.Mock(side_effect=self._sleep)
         fake_time = mocker.Mock()
         fake_time.monotonic = mocker.Mock(side_effect=lambda: self.now)
@@ -180,11 +186,14 @@ class _Rig:
             callback(self._sample())
 
 
-def _run_interleaved(mocker: MockerFixture, rig: _Rig, touch: Mock | None, **params: str) -> tuple[Mock, Mock]:
+def _run_interleaved(
+    mocker: MockerFixture, rig: _Rig, touch: Mock | None, scan: Mock | None = None, **params: str
+) -> tuple[Mock, Mock]:
     config = mocker.Mock()
     config.bed_mesh.zero_reference_position = (175, 175)
+    rig.task_executor = mocker.Mock()
     macro = TemperatureCalibrateMacro(
-        rig.mcu, rig.toolhead, config, mocker.Mock(), mocker.Mock(), rig.scheduler, touch=touch
+        rig.mcu, rig.toolhead, config, mocker.Mock(), rig.task_executor, rig.scheduler, touch=touch, scan=scan
     )
     _ = mocker.patch("cartographer.macros.temperature_calibrate.scipy_helpers.raise_if_curve_fit_unavailable")
     _ = mocker.patch("cartographer.macros.temperature_calibrate._write_touches")
@@ -223,3 +232,66 @@ def test_interleave_aborts_on_stall(mocker: MockerFixture) -> None:
     with pytest.raises(TemperatureStallError):
         _ = _run_interleaved(mocker, rig, None)
     assert rig.now >= 300
+
+
+def _linear_freq(distance: float) -> float:
+    return 1000.0 - 100.0 * distance  # 100 Hz per mm, falling with distance
+
+
+def _sample(t: float, f: float = 500.0) -> Sample:
+    return Sample(frequency=f, time=t, position=None, temperature=50.0, raw_count=0)
+
+
+def test_correct_for_growth_interpolates_between_touches() -> None:
+    # The bed rose 0.02 mm between the start and the touch at t=10, and 0.04 mm more by t=20.
+    touches = [TouchRecord(10.0, 2, 50.0, 0.02, 0.02), TouchRecord(20.0, 2, 55.0, 0.04, 0.06)]
+    samples = [_sample(t) for t in (0.0, 5.0, 10.0, 15.0, 20.0)]
+
+    corrected = correct_for_growth(samples, 2.0, touches, _linear_freq)
+
+    # gap = 2 - trigger * fraction; the shift is nominal - freq_at(gap) = -100 * trigger * fraction
+    assert [round(c.frequency - 500.0, 6) for c in corrected] == [0.0, -1.0, -2.0, -2.0, -4.0]
+    assert [c.time for c in corrected] == [s.time for s in samples]
+
+
+def test_correct_for_growth_ignores_touches_before_the_data() -> None:
+    touches = [TouchRecord(1.0, 1, 40.0, 0.5, 0.5), TouchRecord(20.0, 1, 50.0, 0.02, 0.52)]
+    samples = [_sample(t) for t in (10.0, 15.0)]
+
+    corrected = correct_for_growth(samples, 1.0, touches, _linear_freq)
+
+    # the first touch predates the data: the interval runs 10 -> 20 with the second touch's 0.02
+    assert [round(c.frequency - 500.0, 6) for c in corrected] == [0.0, -1.0]
+
+
+def test_interleaved_fit_receives_growth_corrected_samples(mocker: MockerFixture) -> None:
+    rig = _Rig(mocker, rate=0.2)
+    touch = mocker.Mock()
+    touch.perform_probe = mocker.Mock(return_value=0.01)
+    scan = mocker.Mock()
+    scan.has_model = mocker.Mock(return_value=True)
+    scan.get_model.return_value.config.reference_temperature = 28.0
+
+    def distance_to_frequency(distance: float, temperature: float) -> float:
+        _ = temperature
+        return _linear_freq(distance)
+
+    scan.get_model.return_value.distance_to_frequency = mocker.Mock(side_effect=distance_to_frequency)
+
+    _ = _run_interleaved(mocker, rig, touch, scan, TOUCH_STEP="10", DWELL="3")
+
+    data = rig.task_executor.run.call_args.args[1]
+    shifted = [s.frequency - 3e6 for s in data[1]]
+    assert min(shifted) < -0.5  # samples late in an interval are shifted by up to 100 Hz/mm * 0.01 mm
+    assert max(shifted) <= 0.0
+
+
+def test_fit_is_uncorrected_without_a_scan_model(mocker: MockerFixture) -> None:
+    rig = _Rig(mocker, rate=0.2)
+    touch = mocker.Mock()
+    touch.perform_probe = mocker.Mock(return_value=0.01)
+
+    _ = _run_interleaved(mocker, rig, touch, None, TOUCH_STEP="10", DWELL="3")
+
+    data = rig.task_executor.run.call_args.args[1]
+    assert all(s.frequency == 3e6 for s in data[1])

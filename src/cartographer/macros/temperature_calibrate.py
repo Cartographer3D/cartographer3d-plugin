@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
@@ -16,10 +16,11 @@ from cartographer.lib.log import log_duration
 from cartographer.macros.fields import param, parse
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     from cartographer.interfaces.configuration import Configuration
     from cartographer.interfaces.multiprocessing import Scheduler, TaskExecutor
+    from cartographer.probe.scan_mode import ScanMode
 
 logger = logging.getLogger(__name__)
 
@@ -76,6 +77,36 @@ class _HeatProgress:
         if now - self._start >= MAX_PHASE_TIME:
             msg = f"Interleaved heating exceeded {MAX_PHASE_TIME / 60:.0f} minutes at {temperature:.1f}°C"
             raise TemperatureStallError(msg)
+
+
+def correct_for_growth(
+    samples: list[Sample], height: float, touches: Sequence[TouchRecord], freq_at: Callable[[float], float]
+) -> list[Sample]:
+    """
+    Shift each sample's frequency to what it would read at the nominal `height`.
+
+    Each touch reset Z to the contact, so touch k's trigger is how far the bed moved since the
+    previous re-reference. Between touches the gap is taken as `height - trigger * elapsed/interval`
+    (growth accruing linearly in time), which removes the sawtooth left by growth between touches.
+    Only touches after the first sample are used, so other phases' touches don't apply.
+    """
+    if not samples:
+        return samples
+    start = samples[0].time
+    relevant = [t for t in touches if t.time > start]
+    if not relevant:
+        return samples
+    edges = [start] + [t.time for t in relevant]
+    nominal = freq_at(height)
+    corrected: list[Sample] = []
+    k = 1
+    for sample in samples:
+        while k < len(edges) - 1 and sample.time > edges[k]:
+            k += 1
+        fraction = min(max((sample.time - edges[k - 1]) / (edges[k] - edges[k - 1]), 0.0), 1.0)
+        gap = height - relevant[k - 1].trigger * fraction
+        corrected.append(replace(sample, frequency=sample.frequency + nominal - freq_at(gap)))
+    return corrected
 
 
 def _write_samples(samples: list[Sample], label: str) -> list[str]:
@@ -150,8 +181,10 @@ class TemperatureCalibrateMacro(Macro):
         task_executor: TaskExecutor,
         scheduler: Scheduler,
         touch: ProbeMode | None = None,
+        scan: ScanMode | None = None,
     ) -> None:
         self.touch = touch
+        self.scan = scan
         self.mcu = mcu
         self.toolhead = toolhead
         self.config = config
@@ -232,6 +265,8 @@ class TemperatureCalibrateMacro(Macro):
         self.gcode.run_gcode("M140 S0")
         self.toolhead.move(z=cooling_height, speed=p.z_speed)
 
+        if touches:
+            data_per_height = self._correct_for_growth(data_per_height, touches)
         model = self.task_executor.run(fit_coil_temperature_model, data_per_height, self.mcu.get_coil_reference())
 
         self.config.save_coil_model(model)
@@ -426,6 +461,24 @@ class TemperatureCalibrateMacro(Macro):
         self.toolhead.move(z=height, speed=z_speed)
         self.toolhead.wait_moves()
         return trigger_pos is not None
+
+    def _correct_for_growth(
+        self, data_per_height: dict[float, list[Sample]], touches: list[TouchRecord]
+    ) -> dict[float, list[Sample]]:
+        if self.scan is None or not self.scan.has_model():
+            logger.warning("No scan model loaded: fitting without correcting for growth between touches")
+            return data_per_height
+        model = self.scan.get_model()
+        reference = model.config.reference_temperature
+
+        def freq_at(distance: float) -> float:
+            # At the model's reference temperature, so no coil compensation is applied.
+            return model.distance_to_frequency(distance, temperature=reference)
+
+        logger.info(
+            "Correcting %d touch intervals for bed growth (%.4f mm total)", len(touches), touches[-1].cumulative
+        )
+        return {h: correct_for_growth(samples, h, touches, freq_at) for h, samples in data_per_height.items()}
 
     def _get_current_temperature(self) -> float | None:
         """Get the current coil temperature from the last sample."""
