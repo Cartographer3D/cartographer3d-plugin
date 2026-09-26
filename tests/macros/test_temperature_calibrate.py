@@ -331,3 +331,17 @@ def test_bed_heats_only_after_reaching_the_first_height(mocker: MockerFixture, i
 
     first_heat = events.index("M140 S110")
     assert events[first_heat - 2 : first_heat] == ["move z=1", "wait"]
+
+
+def test_correct_for_growth_evaluates_the_scan_model_a_constant_number_of_times() -> None:
+    # Per-sample model evaluation blocked the reactor for 10 s on a real 19k-sample run.
+    calls: list[float] = []
+
+    def freq_at(distance: float) -> float:
+        calls.append(distance)
+        return _linear_freq(distance)
+
+    touches = [TouchRecord(100.0, 1, 50.0, 0.02, 0.02)]
+    _ = correct_for_growth([_sample(t / 10) for t in range(1000)], 1.0, touches, freq_at)
+
+    assert len(calls) <= 3

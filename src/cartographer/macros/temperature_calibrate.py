@@ -89,6 +89,9 @@ def correct_for_growth(
     previous re-reference. Between touches the gap is taken as `height - trigger * elapsed/interval`
     (growth accruing linearly in time), which removes the sawtooth left by growth between touches.
     Only touches after the first sample are used, so other phases' touches don't apply.
+
+    The frequency-distance curve is linearised at `height`: the gaps involved are within ~0.1 mm
+    of it, and evaluating the scan model per sample (thousands) blocked the reactor for seconds.
     """
     if not samples:
         return samples
@@ -97,15 +100,16 @@ def correct_for_growth(
     if not relevant:
         return samples
     edges = [start] + [t.time for t in relevant]
-    nominal = freq_at(height)
+    half_span = 0.05
+    slope = (freq_at(height + half_span) - freq_at(height - half_span)) / (2 * half_span)  # Hz per mm
     corrected: list[Sample] = []
     k = 1
     for sample in samples:
         while k < len(edges) - 1 and sample.time > edges[k]:
             k += 1
         fraction = min(max((sample.time - edges[k - 1]) / (edges[k] - edges[k - 1]), 0.0), 1.0)
-        gap = height - relevant[k - 1].trigger * fraction
-        corrected.append(replace(sample, frequency=sample.frequency + nominal - freq_at(gap)))
+        shortfall = relevant[k - 1].trigger * fraction  # the true gap is height - shortfall
+        corrected.append(replace(sample, frequency=sample.frequency + slope * shortfall))
     return corrected
 
 
