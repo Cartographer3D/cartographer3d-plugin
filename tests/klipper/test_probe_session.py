@@ -46,7 +46,11 @@ class TestRunProbe:
         # Homing via probe:z_virtual_endstop sends stepper_z homing_speed as PROBE_SPEED.
         gcmd = Mock()
         gcmd.get = Mock(return_value=None)
-        gcmd.get_float = Mock(side_effect=lambda name, default=None, **_: 20.0 if name == "PROBE_SPEED" else default)
+
+        def get_float(name: str, default: float | None = None, **_: float) -> float | None:
+            return 20.0 if name == "PROBE_SPEED" else default
+
+        gcmd.get_float = Mock(side_effect=get_float)
 
         session.run_probe(gcmd)
 
