@@ -47,9 +47,8 @@ class KlipperV12CartographerProbe:
     @reraise_for_klipper
     def run_probe(self, gcmd: GCodeCommand) -> list[float]:
         """Execute a single probe and return [x, y, z] position list."""
-        del gcmd
         pos = self.toolhead.get_position()
-        trigger_pos = self.probe.perform_probe()
+        trigger_pos = self.probe.perform_probe(speed=gcmd.get_float("PROBE_SPEED", None, above=0.0))
         return [pos.x, pos.y, trigger_pos]
 
     def get_status(self, eventtime: float) -> dict[str, object]:

@@ -50,11 +50,13 @@ def fit_coil_temperature_model(
     # Fit linear relationship: coefficient_b = linear_a * (freq - min_freq) + linear_b
     linear_params_b, _ = curve_fit(param_linear, freq_array, coefficients_b, maxfev=100000, ftol=1e-10, xtol=1e-10)
 
+    temperatures = [s.temperature for samples in data_per_height.values() for s in samples]
     return CoilCalibrationConfiguration(
         a_a=linear_params_a[0],  # Slope for 'a' coefficient vs frequency
         a_b=linear_params_a[1],  # Intercept for 'a' coefficient vs frequency
         b_a=linear_params_b[0],  # Slope for 'b' coefficient vs frequency
         b_b=linear_params_b[1],  # Intercept for 'b' coefficient vs frequency
+        temperature_range=(round(min(temperatures), 2), round(max(temperatures), 2)),
     )
 
 

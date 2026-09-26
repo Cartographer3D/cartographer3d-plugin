@@ -34,6 +34,7 @@ class CoilTemperatureCompensationModel(TemperatureCompensationModel):
         self.a_b = config.a_b
         self.b_a = config.b_a
         self.b_b = config.b_b
+        self.temperature_range = config.temperature_range
 
     @override
     def compensate(self, frequency: float, temp_source: float, temp_target: float) -> float:
@@ -49,9 +50,37 @@ class CoilTemperatureCompensationModel(TemperatureCompensationModel):
         discriminant = self._calculate_discriminant(quad_coeffs)
 
         if discriminant < 0:
-            return self._apply_linear_compensation(frequency, temp_source, temp_target, param_a_interp, param_b_interp)
+            param_a, param_b = param_a_interp, param_b_interp
         else:
+            param_a, param_b = self._curve_parameters(discriminant, quad_coeffs)
+        if self.temperature_range is None:
+            if discriminant < 0:
+                return self._apply_linear_compensation(frequency, temp_source, temp_target, param_a, param_b)
             return self._apply_quadratic_compensation(temp_target, discriminant, quad_coeffs)
+        # Move along the selected curve from source to target temperature. Inside the calibrated
+        # range this equals the quadratic evaluation above; outside it the curve continues along
+        # its slope at the nearer end. Extrapolating the quadratic itself runs away: its curvature,
+        # fitted over a limited range, keeps steepening past the data.
+        return (
+            frequency
+            + self._curve(temp_target, param_a, param_b, self.temperature_range)
+            - self._curve(temp_source, param_a, param_b, self.temperature_range)
+        )
+
+    def _curve_parameters(self, discriminant: float, quad_coeffs: tuple[float, float, float]) -> tuple[float, float]:
+        """The quadratic's a and b for the curve through the given point (same solution as below)."""
+        quad_a, quad_b, _ = quad_coeffs
+        ax = (np.sqrt(discriminant) - quad_b) / (2 * quad_a)
+        return param_linear(ax, self.a_a, self.a_b), param_linear(ax, self.b_a, self.b_b)
+
+    @staticmethod
+    def _curve(temp: float, param_a: float, param_b: float, temperature_range: tuple[float, float]) -> float:
+        """a*t^2 + b*t inside the range; tangent-line continuation outside it."""
+        low, high = temperature_range
+        edge = min(max(temp, low), high)
+        value = param_a * edge**2 + param_b * edge
+        slope = 2 * param_a * edge + param_b
+        return value + slope * (temp - edge)
 
     def _interpolate_parameters(self, freq_offset: float) -> tuple[float, float]:
         """Calculate interpolated parameters for the given frequency offset."""

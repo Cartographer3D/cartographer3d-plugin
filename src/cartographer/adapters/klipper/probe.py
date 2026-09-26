@@ -23,7 +23,8 @@ class KlipperProbeSession:
     @reraise_for_klipper
     def run_probe(self, gcmd: GCodeCommand) -> None:
         pos = self.toolhead.get_position()
-        trigger_pos = self._probe.perform_probe()
+        # Homing via probe:z_virtual_endstop sends the stepper's homing_speed here.
+        trigger_pos = self._probe.perform_probe(speed=gcmd.get_float("PROBE_SPEED", None, above=0.0))
         self._results.append([pos.x, pos.y, trigger_pos])
 
         # In new Klipper's _do_home_z_via_probe path, the gcmd contains HOME_ATTEMPT_NUM.
