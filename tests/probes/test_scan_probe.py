@@ -163,3 +163,16 @@ def test_probe_uses_given_speed_over_config(mocker: MockerFixture, toolhead: Too
     _ = probe.scan.perform_probe(speed=20)
 
     toolhead.z_probing_move.assert_called_once_with(probe.scan, speed=20)
+
+
+def test_probe_speed_is_capped_to_stop_above_bed(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+    from cartographer.probe.scan_mode import max_safe_probe_speed
+
+    probe.scan.measure_distance = mocker.Mock(side_effect=[10.0, 2.0])
+    toolhead.z_probing_move = mocker.Mock(return_value=2.0)
+
+    _ = probe.scan.perform_probe(speed=500)
+
+    cap = max_safe_probe_speed(probe.scan.probe_height)
+    assert 20 < cap < 50  # 2 mm trigger: ~33 mm/s
+    toolhead.z_probing_move.assert_called_once_with(probe.scan, speed=cap)
