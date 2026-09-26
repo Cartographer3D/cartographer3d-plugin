@@ -175,8 +175,10 @@ class CartographerMcu(Mcu, CartographerStreamMcu):
         if result != MCU_trsync.REASON_ENDSTOP_HIT:
             return 0.0
 
-        # TODO: Use a query state command for actual end time
-        return home_end_time
+        trigger_clock = self.commands.query_trigger_clock()
+        if trigger_clock is None:
+            return home_end_time
+        return self._platform.clock_to_print_time(self._platform.clock32_to_clock64(trigger_clock))
 
     @override
     def start_session(self, start_condition: Callable[[Sample], bool] | None = None) -> Session[Sample]:

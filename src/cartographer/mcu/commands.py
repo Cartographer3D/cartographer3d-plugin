@@ -5,7 +5,7 @@ from enum import IntEnum
 from typing import TYPE_CHECKING, NamedTuple, final
 
 if TYPE_CHECKING:
-    from mcu import CommandWrapper
+    from mcu import CommandQueryWrapper, CommandWrapper
 
     from cartographer.interfaces.mcu_platform import McuPlatform
 
@@ -39,6 +39,7 @@ class CartographerCommands:
         self._set_threshold_command: CommandWrapper | None = None
         self._start_home_command: CommandWrapper | None = None
         self._stop_home_command: CommandWrapper | None = None
+        self._query_home_command: CommandQueryWrapper | None = None
 
     def initialize(self) -> None:
         cq = self._command_queue
@@ -51,6 +52,12 @@ class CartographerCommands:
             cq=cq,
         )
         self._stop_home_command = self._platform.lookup_command("cartographer_stop_home", cq=cq)
+        try:
+            self._query_home_command = self._platform.lookup_query_command(
+                "cartographer_query_home", "cartographer_home_state triggered=%c trigger_clock=%u", cq=cq
+            )
+        except Exception:  # firmware without trigger-clock reporting
+            self._query_home_command = None
 
     def _ensure_initialized(self, command: CommandWrapper | None, name: str) -> CommandWrapper:
         if command is None:
@@ -77,3 +84,10 @@ class CartographerCommands:
         cmd = self._ensure_initialized(self._stop_home_command, "stop home command")
         logger.debug("Sending stop home command")
         cmd.send()
+
+    def query_trigger_clock(self) -> int | None:
+        """MCU clock (32-bit) of the sample that fired the last home, if the firmware reports it."""
+        if self._query_home_command is None:
+            return None
+        params = self._query_home_command.send()
+        return params["trigger_clock"] if params["triggered"] else None
