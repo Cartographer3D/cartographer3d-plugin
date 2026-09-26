@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING, final
 from typing_extensions import override
 
 from cartographer.coil.calibration import fit_coil_temperature_model
+from cartographer.interfaces.errors import McuDisconnectedError, PrinterShutdownError
 from cartographer.interfaces.printer import GCodeDispatch, Macro, MacroParams, Mcu, ProbeMode, Sample, Toolhead
 from cartographer.lib import scipy_helpers
 from cartographer.lib.csv import generate_filepath, write_samples_to_csv
@@ -30,6 +31,40 @@ MAX_PHASE_TIME = 5400.0  #  Abort after 90 minutes for any single phase
 
 class TemperatureStallError(RuntimeError):
     """Raised when temperature stops making progress toward the target."""
+
+
+@dataclass(frozen=True)
+class TouchRecord:
+    """One touch re-reference: where the bed was found, relative to the Z frame before it."""
+
+    time: float
+    height: float
+    coil_temperature: float
+    trigger: float
+    cumulative: float  # total Z correction since the calibration's starting home
+
+
+def _write_samples(samples: list[Sample], label: str) -> list[str]:
+    if not samples:
+        return []
+    path = generate_filepath(label)
+    try:
+        write_samples_to_csv(samples, path)
+    except Exception as e:
+        logger.warning("Failed to write samples to CSV: %s", e)
+        return []
+    logger.info("Wrote raw data to: %s", path)
+    return [path]
+
+
+def _write_touches(touches: list[TouchRecord], path: str) -> None:
+    try:
+        with open(path, "w", newline="") as f:
+            _ = f.write("time,height,coil_temperature,trigger,cumulative\n")
+            for t in touches:
+                _ = f.write(f"{t.time},{t.height},{t.coil_temperature},{t.trigger},{t.cumulative}\n")
+    except Exception as e:
+        logger.warning("Failed to write touch log: %s", e)
 
 
 def collection_targets(start: float, max_temp: int, touch_step: float) -> list[float]:
@@ -124,21 +159,28 @@ class TemperatureCalibrateMacro(Macro):
         data_per_height: dict[float, list[Sample]] = {}
         heights = [1, 2, 3]
         csv_files: list[str] = []
+        touches: list[TouchRecord] = []
+        touches_path = generate_filepath("temp_calib_touches") if p.touch_step else None
 
         for phase, height in enumerate(heights, 1):
             logger.info("Starting Phase %d of %d (height=%.1fmm)", phase, len(heights), height)
-            self._cool_down_phase(cooling_height, p.min_temp, p.z_speed)
-            samples = self._heat_up_phase(height, p.bed_temp, p.min_temp, p.max_temp, p.z_speed, p.touch_step)
-            data_per_height[height] = samples
-
-            logger.info("Phase %d complete: collected %d samples", phase, len(samples))
-            path = generate_filepath(f"temp_calib_h{height}mm")
+            cool_samples: list[Sample] = []
+            samples: list[Sample] = []
+            # Written even if the phase aborts, so hours of data are never lost with it.
             try:
-                write_samples_to_csv(samples, path)
-                logger.info("Wrote raw data to: %s", path)
-                csv_files.append(path)
-            except Exception as e:
-                logger.warning("Failed to write samples to CSV: %s", e)
+                self._cool_down_phase(cooling_height, p.min_temp, p.z_speed, cool_samples)
+                self._heat_up_phase(
+                    height, p.bed_temp, p.min_temp, p.max_temp, p.z_speed, samples, p.touch_step, touches
+                )
+            finally:
+                csv_files += _write_samples(cool_samples, f"temp_calib_cool_before_h{height}mm")
+                csv_files += _write_samples(samples, f"temp_calib_h{height}mm")
+                if touches_path is not None and touches:
+                    _write_touches(touches, touches_path)
+            data_per_height[height] = samples
+            logger.info("Phase %d complete: collected %d samples", phase, len(samples))
+        if touches_path is not None:
+            csv_files.append(touches_path)
 
         self.gcode.run_gcode("M140 S0")
         self.toolhead.move(z=cooling_height, speed=p.z_speed)
@@ -155,8 +197,8 @@ class TemperatureCalibrateMacro(Macro):
         )
 
     @log_duration("Cooldown phase")
-    def _cool_down_phase(self, height: float, min_temp: int, z_speed: int) -> None:
-        """Cool down the probe to minimum temperature."""
+    def _cool_down_phase(self, height: float, min_temp: int, z_speed: int, samples: list[Sample]) -> None:
+        """Cool down the probe to minimum temperature, recording free-air samples on the way."""
         logger.info("Cooling probe to %d°C, moving to z %.1f", min_temp, height)
 
         self.toolhead.move(z=height, speed=z_speed)
@@ -164,12 +206,20 @@ class TemperatureCalibrateMacro(Macro):
         self.gcode.run_gcode("M140 S0\nM106 S255")
 
         logger.info("Waiting for coil temperature to reach %d°C", min_temp)
-        self._wait_for_temperature(target_temp=min_temp, cooling=True)
+        self._collect(samples, target_temp=min_temp, cooling=True)
 
     @log_duration("Heat up phase")
     def _heat_up_phase(
-        self, height: float, bed_temp: int, min_temp: int, max_temp: int, z_speed: int, touch_step: float = 0
-    ) -> list[Sample]:
+        self,
+        height: float,
+        bed_temp: int,
+        min_temp: int,
+        max_temp: int,
+        z_speed: int,
+        samples: list[Sample],
+        touch_step: float = 0,
+        touches: list[TouchRecord] | None = None,
+    ) -> None:
         """Heat up and collect samples during temperature rise."""
         logger.info("Starting heaters: bed=%d°C, moving to z %.1f", bed_temp, height)
         self.gcode.run_gcode(f"M140 S{bed_temp}\nM106 S0")
@@ -180,34 +230,69 @@ class TemperatureCalibrateMacro(Macro):
         self._wait_for_temperature(target_temp=min_temp - 1, cooling=False)
 
         logger.info("Collecting data for height %.1f", height)
-        samples: list[Sample] = []
         phase_start = time.monotonic()
+        touching = bool(touch_step)
 
-        for target in collection_targets(min_temp - 1, max_temp, touch_step):
-            if touch_step:
+        for target in collection_targets(min_temp, max_temp, touch_step):
+            if touching:
                 # Not recording while touching: the coil leaves the phase height.
-                self._touch_rereference(height, z_speed)
-            self.mcu.register_callback(samples.append)
-            try:
-                self._wait_for_temperature(target_temp=target, cooling=False, phase_start_time=phase_start)
-            finally:
-                self.mcu.unregister_callback(samples.append)
+                touching = self._touch_rereference(height, z_speed, touches)
+            self._collect(samples, target_temp=target, cooling=False, phase_start_time=phase_start)
+        if touching:
+            # Close the last step too, so drift within every step is bracketed.
+            _ = self._touch_rereference(height, z_speed, touches)
 
-        return samples
+    def _collect(
+        self, samples: list[Sample], target_temp: float, cooling: bool, phase_start_time: float | None = None
+    ) -> None:
+        """Record samples until the coil reaches target_temp, skipping any from before the last move ended."""
+        since = self.toolhead.get_last_move_time()
 
-    def _touch_rereference(self, height: float, z_speed: int) -> None:
-        """Touch the bed, reset Z to the measured contact, and return to the phase height."""
+        def collect(sample: Sample) -> None:
+            if sample.time >= since:
+                samples.append(sample)
+
+        self.mcu.register_callback(collect)
+        try:
+            self._wait_for_temperature(target_temp=target_temp, cooling=cooling, phase_start_time=phase_start_time)
+        finally:
+            self.mcu.unregister_callback(collect)
+
+    def _touch_rereference(self, height: float, z_speed: int, touches: list[TouchRecord] | None) -> bool:
+        """
+        Touch the bed, reset Z to the measured contact, and return to the phase height.
+
+        Returns False if touching failed twice, so the phase carries on without it
+        rather than losing its data.
+        """
         assert self.touch is not None
-        trigger_pos = self.touch.perform_probe()
-        pos = self.toolhead.get_position()
-        self.toolhead.set_z_position(pos.z - trigger_pos)
-        logger.info(
-            "Touch re-reference at coil %.1f°C: bed measured %.4f mm from expected",
-            self._get_current_temperature() or float("nan"),
-            trigger_pos,
-        )
+        trigger_pos: float | None = None
+        for attempt in (1, 2):
+            try:
+                trigger_pos = self.touch.perform_probe()
+                break
+            except (PrinterShutdownError, McuDisconnectedError):
+                raise
+            except Exception as e:
+                logger.warning("Touch re-reference attempt %d failed: %s", attempt, e)
+
+        if trigger_pos is None:
+            logger.warning("Continuing this phase without touch re-referencing")
+        else:
+            pos = self.toolhead.get_position()
+            self.toolhead.set_z_position(pos.z - trigger_pos)
+            temperature = self._get_current_temperature() or float("nan")
+            logger.info(
+                "Touch re-reference at coil %.1f°C: bed measured %.4f mm from expected", temperature, trigger_pos
+            )
+            if touches is not None:
+                cumulative = (touches[-1].cumulative if touches else 0.0) + trigger_pos
+                touches.append(
+                    TouchRecord(self.toolhead.get_last_move_time(), height, temperature, trigger_pos, cumulative)
+                )
         self.toolhead.move(z=height, speed=z_speed)
         self.toolhead.wait_moves()
+        return trigger_pos is not None
 
     def _get_current_temperature(self) -> float | None:
         """Get the current coil temperature from the last sample."""
