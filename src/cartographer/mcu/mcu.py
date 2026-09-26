@@ -148,7 +148,7 @@ class CartographerMcu(Mcu, CartographerStreamMcu):
         return completion
 
     @override
-    def start_homing_touch(self, print_time: float, threshold: int) -> ReactorCompletion:
+    def start_homing_touch(self, print_time: float, threshold: int, hold_ms: int = 0) -> ReactorCompletion:
         self._ensure_sensor_ready()
 
         completion = self.dispatch.start(print_time)
@@ -159,7 +159,8 @@ class CartographerMcu(Mcu, CartographerStreamMcu):
                 trigger_reason=MCU_trsync.REASON_ENDSTOP_HIT,
                 trigger_invert=0,
                 threshold=threshold,
-                trigger_method=TriggerMethod.TOUCH,
+                # Hold rides in the upper bits: firmware without it only tests for non-zero.
+                trigger_method=TriggerMethod.TOUCH | (hold_ms << 8),
             )
         )
         return completion

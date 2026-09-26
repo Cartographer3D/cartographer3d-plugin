@@ -22,7 +22,7 @@ class HomeCommand(NamedTuple):
     trigger_reason: int
     trigger_invert: int
     threshold: int
-    trigger_method: TriggerMethod
+    trigger_method: int  # TriggerMethod in the low byte; touch hold (ms) above it
 
 
 class ThresholdCommand(NamedTuple):

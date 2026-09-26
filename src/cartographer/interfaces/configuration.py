@@ -246,6 +246,15 @@ class TouchConfig:
     )
     retract_distance: float = option("Retract distance (in mm) between touch samples.", default=2.0, min=1.0)
     sample_range: float = option("Acceptable range (in mm) between touch samples.", default=0.010, min=0.001, max=0.015)
+    hold_distance: float = option(
+        "Distance (in mm) the approach must keep slowing before touch triggers."
+        " Rejects short dips from Z motor ripple, which recover; contact does not."
+        " Adds this much press depth but does not shift the result. 0 disables."
+        " Needs firmware support (ignored otherwise). Recalibrate after changing.",
+        default=0.0,
+        min=0.0,
+        max=0.2,
+    )
     models: dict[str, TouchModelConfiguration] = field(default_factory=dict)  # provided via override
 
 
