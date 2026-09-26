@@ -99,6 +99,8 @@ def test_phase_data_is_written_when_the_phase_aborts(mocker: MockerFixture) -> N
             callback = mcu.register_callback.call_args.args[0]
             callback(mocker.Mock(time=-1.0))  # from before the move ended: dropped
             callback(mocker.Mock(time=1.0))
+            callback(mocker.Mock(time=1.05))  # within SAMPLE_INTERVAL of the last kept: dropped
+            callback(mocker.Mock(time=1.1))
             return
         msg = "stalled"
         raise TemperatureStallError(msg)
@@ -111,7 +113,7 @@ def test_phase_data_is_written_when_the_phase_aborts(mocker: MockerFixture) -> N
         macro.run(macro_params)
 
     assert write.call_count == 1  # the cooldown samples of the aborted phase
-    assert len(write.call_args.args[0]) == 1
+    assert [sample.time for sample in write.call_args.args[0]] == [1.0, 1.1]
 
 
 def test_stream_is_kept_open_for_the_whole_run(mocker: MockerFixture) -> None:

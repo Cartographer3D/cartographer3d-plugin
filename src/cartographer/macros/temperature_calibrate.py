@@ -27,6 +27,11 @@ PROGRESS_LOG_INTERVAL = 30.0  # Log progress every 30 seconds
 STALL_WARNING_TIME = 60.0  # Warn after 60 seconds of no progress
 STALL_ABORT_TIME = 300.0  # Abort after 5 minutes of no progress
 MAX_PHASE_TIME = 5400.0  #  Abort after 90 minutes for any single phase
+# Keep one sample per interval. Coil temperature moves over minutes, so ~10 Hz is ample
+# for the fit, whereas keeping every sample (~600 Hz) piles up enough objects over a
+# phase that Klipper's garbage collection blocked the reactor for 0.38 s and the main
+# MCU shut down with "Timer too close".
+SAMPLE_INTERVAL = 0.1
 
 
 class TemperatureStallError(RuntimeError):
@@ -249,12 +254,18 @@ class TemperatureCalibrateMacro(Macro):
     def _collect(
         self, samples: list[Sample], target_temp: float, cooling: bool, phase_start_time: float | None = None
     ) -> None:
-        """Record samples until the coil reaches target_temp, skipping any from before the last move ended."""
-        since = self.toolhead.get_last_move_time()
+        """
+        Record samples until the coil reaches target_temp.
+
+        Skips samples from before the last move ended, and keeps one per SAMPLE_INTERVAL.
+        """
+        next_time = self.toolhead.get_last_move_time()
 
         def collect(sample: Sample) -> None:
-            if sample.time >= since:
+            nonlocal next_time
+            if sample.time >= next_time:
                 samples.append(sample)
+                next_time = sample.time + SAMPLE_INTERVAL
 
         self.mcu.register_callback(collect)
         try:
