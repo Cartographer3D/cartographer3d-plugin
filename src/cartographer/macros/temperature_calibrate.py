@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING, final
 from typing_extensions import override
 
 from cartographer.coil.calibration import fit_coil_temperature_model
-from cartographer.interfaces.printer import GCodeDispatch, Macro, MacroParams, Mcu, Sample, Toolhead
+from cartographer.interfaces.printer import GCodeDispatch, Macro, MacroParams, Mcu, ProbeMode, Sample, Toolhead
 from cartographer.lib import scipy_helpers
 from cartographer.lib.csv import generate_filepath, write_samples_to_csv
 from cartographer.lib.log import log_duration
@@ -32,6 +32,19 @@ class TemperatureStallError(RuntimeError):
     """Raised when temperature stops making progress toward the target."""
 
 
+def collection_targets(start: float, max_temp: int, touch_step: float) -> list[float]:
+    """Coil temperatures a heating phase collects through, with a touch re-reference before each."""
+    if not touch_step:
+        return [max_temp]
+    targets: list[float] = []
+    target = start + touch_step
+    while target < max_temp:
+        targets.append(target)
+        target += touch_step
+    targets.append(max_temp)
+    return targets
+
+
 @dataclass(frozen=True)
 class TemperatureCalibrateParams:
     """Parameters for CARTOGRAPHER_CALIBRATE_TEMPERATURE."""
@@ -40,6 +53,13 @@ class TemperatureCalibrateParams:
     max_temp: int = param("Maximum coil temperature", default=60, min=60, max=90)
     bed_temp: int = param("Bed temperature target", default=90, min=90, max=120)
     z_speed: int = param("Z movement speed", default=5, min=1)
+    touch_step: float = param(
+        "Coil temperature rise (C) between touch re-references of Z while heating. 0 disables."
+        " Keeps each phase at its true height as the bed and frame grow, so that growth is not"
+        " folded into the coil model.",
+        default=0,
+        min=0,
+    )
 
 
 @final
@@ -54,7 +74,9 @@ class TemperatureCalibrateMacro(Macro):
         gcode: GCodeDispatch,
         task_executor: TaskExecutor,
         scheduler: Scheduler,
+        touch: ProbeMode | None = None,
     ) -> None:
+        self.touch = touch
         self.mcu = mcu
         self.toolhead = toolhead
         self.config = config
@@ -75,6 +97,9 @@ class TemperatureCalibrateMacro(Macro):
             msg = f"BED_TEMP ({p.bed_temp}) must be at least MAX_TEMP ({p.max_temp})"
             raise RuntimeError(msg)
 
+        if p.touch_step and self.touch is None:
+            msg = "TOUCH_STEP needs touch probing, which is not available"
+            raise RuntimeError(msg)
         if not self.toolhead.is_homed("x") or not self.toolhead.is_homed("y") or not self.toolhead.is_homed("z"):
             msg = "Must home axes before temperature calibration"
             raise RuntimeError(msg)
@@ -103,7 +128,7 @@ class TemperatureCalibrateMacro(Macro):
         for phase, height in enumerate(heights, 1):
             logger.info("Starting Phase %d of %d (height=%.1fmm)", phase, len(heights), height)
             self._cool_down_phase(cooling_height, p.min_temp, p.z_speed)
-            samples = self._heat_up_phase(height, p.bed_temp, p.min_temp, p.max_temp, p.z_speed)
+            samples = self._heat_up_phase(height, p.bed_temp, p.min_temp, p.max_temp, p.z_speed, p.touch_step)
             data_per_height[height] = samples
 
             logger.info("Phase %d complete: collected %d samples", phase, len(samples))
@@ -142,7 +167,9 @@ class TemperatureCalibrateMacro(Macro):
         self._wait_for_temperature(target_temp=min_temp, cooling=True)
 
     @log_duration("Heat up phase")
-    def _heat_up_phase(self, height: float, bed_temp: int, min_temp: int, max_temp: int, z_speed: int) -> list[Sample]:
+    def _heat_up_phase(
+        self, height: float, bed_temp: int, min_temp: int, max_temp: int, z_speed: int, touch_step: float = 0
+    ) -> list[Sample]:
         """Heat up and collect samples during temperature rise."""
         logger.info("Starting heaters: bed=%d°C, moving to z %.1f", bed_temp, height)
         self.gcode.run_gcode(f"M140 S{bed_temp}\nM106 S0")
@@ -154,21 +181,40 @@ class TemperatureCalibrateMacro(Macro):
 
         logger.info("Collecting data for height %.1f", height)
         samples: list[Sample] = []
+        phase_start = time.monotonic()
 
-        self.mcu.register_callback(samples.append)
-        try:
-            self._wait_for_temperature(target_temp=max_temp, cooling=False)
-        finally:
-            self.mcu.unregister_callback(samples.append)
+        for target in collection_targets(min_temp - 1, max_temp, touch_step):
+            if touch_step:
+                # Not recording while touching: the coil leaves the phase height.
+                self._touch_rereference(height, z_speed)
+            self.mcu.register_callback(samples.append)
+            try:
+                self._wait_for_temperature(target_temp=target, cooling=False, phase_start_time=phase_start)
+            finally:
+                self.mcu.unregister_callback(samples.append)
 
         return samples
+
+    def _touch_rereference(self, height: float, z_speed: int) -> None:
+        """Touch the bed, reset Z to the measured contact, and return to the phase height."""
+        assert self.touch is not None
+        trigger_pos = self.touch.perform_probe()
+        pos = self.toolhead.get_position()
+        self.toolhead.set_z_position(pos.z - trigger_pos)
+        logger.info(
+            "Touch re-reference at coil %.1f°C: bed measured %.4f mm from expected",
+            self._get_current_temperature() or float("nan"),
+            trigger_pos,
+        )
+        self.toolhead.move(z=height, speed=z_speed)
+        self.toolhead.wait_moves()
 
     def _get_current_temperature(self) -> float | None:
         """Get the current coil temperature from the last sample."""
         sample = self.mcu.get_last_sample()
         return sample.temperature if sample is not None else None
 
-    def _wait_for_temperature(self, target_temp: int, cooling: bool) -> None:
+    def _wait_for_temperature(self, target_temp: float, cooling: bool, phase_start_time: float | None = None) -> None:
         """
         Wait for coil temperature with progress monitoring.
 
@@ -187,7 +233,8 @@ class TemperatureCalibrateMacro(Macro):
         last_log_time: float = 0.0
         warning_logged = False
         phase = "cool to" if cooling else "heat to"
-        phase_start_time: float = time.monotonic()
+        if phase_start_time is None:
+            phase_start_time = time.monotonic()
 
         while True:
             self.scheduler.sleep(TEMP_CHECK_INTERVAL)
@@ -252,7 +299,7 @@ class TemperatureCalibrateMacro(Macro):
         stall_duration: float,
         current_temp: float,
         best_remaining: float,
-        target_temp: int,
+        target_temp: float,
         cooling: bool,
         warning_logged: bool,
     ) -> bool:
