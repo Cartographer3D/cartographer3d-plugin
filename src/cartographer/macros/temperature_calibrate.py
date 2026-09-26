@@ -162,23 +162,27 @@ class TemperatureCalibrateMacro(Macro):
         touches: list[TouchRecord] = []
         touches_path = generate_filepath("temp_calib_touches") if p.touch_step else None
 
-        for phase, height in enumerate(heights, 1):
-            logger.info("Starting Phase %d of %d (height=%.1fmm)", phase, len(heights), height)
-            cool_samples: list[Sample] = []
-            samples: list[Sample] = []
-            # Written even if the phase aborts, so hours of data are never lost with it.
-            try:
-                self._cool_down_phase(cooling_height, p.min_temp, p.z_speed, cool_samples)
-                self._heat_up_phase(
-                    height, p.bed_temp, p.min_temp, p.max_temp, p.z_speed, samples, p.touch_step, touches
-                )
-            finally:
-                csv_files += _write_samples(cool_samples, f"temp_calib_cool_before_h{height}mm")
-                csv_files += _write_samples(samples, f"temp_calib_h{height}mm")
-                if touches_path is not None and touches:
-                    _write_touches(touches, touches_path)
-            data_per_height[height] = samples
-            logger.info("Phase %d complete: collected %d samples", phase, len(samples))
+        # The MCU only streams while a session is open, and callbacks alone do not open one:
+        # without this, coil temperature stays frozen at the last sample and every wait
+        # stalls. The session never starts collecting, so it keeps nothing in memory.
+        with self.mcu.start_session(lambda _: False):
+            for phase, height in enumerate(heights, 1):
+                logger.info("Starting Phase %d of %d (height=%.1fmm)", phase, len(heights), height)
+                cool_samples: list[Sample] = []
+                samples: list[Sample] = []
+                # Written even if the phase aborts, so hours of data are never lost with it.
+                try:
+                    self._cool_down_phase(cooling_height, p.min_temp, p.z_speed, cool_samples)
+                    self._heat_up_phase(
+                        height, p.bed_temp, p.min_temp, p.max_temp, p.z_speed, samples, p.touch_step, touches
+                    )
+                finally:
+                    csv_files += _write_samples(cool_samples, f"temp_calib_cool_before_h{height}mm")
+                    csv_files += _write_samples(samples, f"temp_calib_h{height}mm")
+                    if touches_path is not None and touches:
+                        _write_touches(touches, touches_path)
+                data_per_height[height] = samples
+                logger.info("Phase %d complete: collected %d samples", phase, len(samples))
         if touches_path is not None:
             csv_files.append(touches_path)
 

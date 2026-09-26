@@ -26,9 +26,8 @@ def _run(mocker: MockerFixture, touch: Mock | None, **params: str) -> tuple[Mock
     toolhead.get_axis_limits = mocker.Mock(return_value=(0, 300))
     config = mocker.Mock()
     config.bed_mesh.zero_reference_position = (175, 175)
-    macro = TemperatureCalibrateMacro(
-        mocker.Mock(), toolhead, config, mocker.Mock(), mocker.Mock(), mocker.Mock(), touch=touch
-    )
+    mcu = mocker.MagicMock()
+    macro = TemperatureCalibrateMacro(mcu, toolhead, config, mocker.Mock(), mocker.Mock(), mocker.Mock(), touch=touch)
     _ = mocker.patch("cartographer.macros.temperature_calibrate.scipy_helpers.raise_if_curve_fit_unavailable")
     write = mocker.patch("cartographer.macros.temperature_calibrate.write_samples_to_csv")
     _ = mocker.patch("cartographer.macros.temperature_calibrate._write_touches")
@@ -87,7 +86,7 @@ def test_phase_data_is_written_when_the_phase_aborts(mocker: MockerFixture) -> N
     toolhead.get_position = mocker.Mock(return_value=Position(175, 175, 1.2))
     toolhead.get_axis_limits = mocker.Mock(return_value=(0, 300))
     toolhead.get_last_move_time = mocker.Mock(return_value=0.0)
-    mcu = mocker.Mock()
+    mcu = mocker.MagicMock()
     config = mocker.Mock()
     config.bed_mesh.zero_reference_position = (175, 175)
     macro = TemperatureCalibrateMacro(mcu, toolhead, config, mocker.Mock(), mocker.Mock(), mocker.Mock())
@@ -113,3 +112,32 @@ def test_phase_data_is_written_when_the_phase_aborts(mocker: MockerFixture) -> N
 
     assert write.call_count == 1  # the cooldown samples of the aborted phase
     assert len(write.call_args.args[0]) == 1
+
+
+def test_stream_is_kept_open_for_the_whole_run(mocker: MockerFixture) -> None:
+    # Callbacks alone do not make the MCU stream; without an open session the coil
+    # temperature freezes at the last sample and every wait stalls.
+    toolhead = mocker.Mock()
+    toolhead.get_position = mocker.Mock(return_value=Position(175, 175, 1.2))
+    toolhead.get_axis_limits = mocker.Mock(return_value=(0, 300))
+    mcu = mocker.MagicMock()
+    config = mocker.Mock()
+    config.bed_mesh.zero_reference_position = (175, 175)
+    macro = TemperatureCalibrateMacro(mcu, toolhead, config, mocker.Mock(), mocker.Mock(), mocker.Mock())
+    _ = mocker.patch("cartographer.macros.temperature_calibrate.scipy_helpers.raise_if_curve_fit_unavailable")
+    _ = mocker.patch("cartographer.macros.temperature_calibrate.write_samples_to_csv")
+    session = mcu.start_session.return_value
+
+    def wait(target_temp: float, cooling: bool, phase_start_time: float | None = None) -> None:
+        _ = target_temp, cooling, phase_start_time
+        session.__enter__.assert_called_once()
+        session.__exit__.assert_not_called()
+
+    _ = mocker.patch.object(macro, "_wait_for_temperature", side_effect=wait)
+    macro_params = MockParams()
+    macro_params.params = {"MIN_TEMP": "40", "MAX_TEMP": "60", "BED_TEMP": "110"}
+    macro.run(macro_params)
+
+    start_condition = mcu.start_session.call_args.args[0]
+    assert start_condition(mocker.Mock()) is False  # streams, but never stores samples
+    session.__exit__.assert_called_once()
