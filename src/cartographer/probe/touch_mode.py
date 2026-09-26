@@ -234,6 +234,11 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             "last_z_result": round(self.last_z_result, 6) if self.last_z_result is not None else None,
         }
 
+    @property
+    def approach_height(self) -> float:
+        """Height each touch starts from: touches below it lift back up to it first."""
+        return self._config.retract_distance
+
     @override
     def perform_probe(self, max_samples: int | None = None, *, speed: float | None = None) -> float:
         del speed  # touch always runs at the model's speed: its threshold was calibrated there
