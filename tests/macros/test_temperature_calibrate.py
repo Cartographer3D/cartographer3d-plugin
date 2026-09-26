@@ -34,7 +34,7 @@ def _run(mocker: MockerFixture, touch: Mock | None, **params: str) -> tuple[Mock
     _ = mocker.patch("cartographer.macros.temperature_calibrate._write_touches")
     wait = mocker.patch.object(macro, "_wait_for_temperature")
     macro_params = MockParams()
-    macro_params.params = {"MIN_TEMP": "40", "MAX_TEMP": "60", "BED_TEMP": "110", **params}
+    macro_params.params = {"MIN_TEMP": "40", "MAX_TEMP": "60", "BED_TEMP": "110", "INTERLEAVE": "0", **params}
     macro.run(macro_params)
     return toolhead, wait, write
 
@@ -108,7 +108,7 @@ def test_phase_data_is_written_when_the_phase_aborts(mocker: MockerFixture) -> N
 
     _ = mocker.patch.object(macro, "_wait_for_temperature", side_effect=wait)
     macro_params = MockParams()
-    macro_params.params = {"MIN_TEMP": "40", "MAX_TEMP": "60", "BED_TEMP": "110"}
+    macro_params.params = {"MIN_TEMP": "40", "MAX_TEMP": "60", "BED_TEMP": "110", "INTERLEAVE": "0"}
 
     with pytest.raises(TemperatureStallError):
         macro.run(macro_params)
@@ -138,7 +138,7 @@ def test_stream_is_kept_open_for_the_whole_run(mocker: MockerFixture) -> None:
 
     _ = mocker.patch.object(macro, "_wait_for_temperature", side_effect=wait)
     macro_params = MockParams()
-    macro_params.params = {"MIN_TEMP": "40", "MAX_TEMP": "60", "BED_TEMP": "110"}
+    macro_params.params = {"MIN_TEMP": "40", "MAX_TEMP": "60", "BED_TEMP": "110", "INTERLEAVE": "0"}
     macro.run(macro_params)
 
     start_condition = mcu.start_session.call_args.args[0]
@@ -191,7 +191,7 @@ def _run_interleaved(mocker: MockerFixture, rig: _Rig, touch: Mock | None, **par
     write = mocker.patch("cartographer.macros.temperature_calibrate.write_samples_to_csv")
     wait = mocker.patch.object(macro, "_wait_for_temperature")  # cooldown and the initial min-1 wait
     macro_params = MockParams()
-    macro_params.params = {"MIN_TEMP": "40", "MAX_TEMP": "60", "BED_TEMP": "110", "INTERLEAVE": "1", **params}
+    macro_params.params = {"MIN_TEMP": "40", "MAX_TEMP": "60", "BED_TEMP": "110", **params}  # interleave is the default
     macro.run(macro_params)
     return wait, write
 

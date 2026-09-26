@@ -131,8 +131,8 @@ class TemperatureCalibrateParams:
     )
     interleave: bool = param(
         "Cycle through all heights during ONE heating ramp instead of cooling and reheating"
-        " once per height. Much faster, and every height sees the same thermal state.",
-        default=False,
+        " once per height (0). Several times faster, and every height sees the same thermal state.",
+        default=True,
     )
     dwell: float = param("Seconds at each height per cycle when interleaving", default=3.0, min=0.5)
 
