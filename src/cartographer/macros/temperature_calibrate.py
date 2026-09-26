@@ -16,6 +16,8 @@ from cartographer.lib.log import log_duration
 from cartographer.macros.fields import param, parse
 
 if TYPE_CHECKING:
+    from collections.abc import Sequence
+
     from cartographer.interfaces.configuration import Configuration
     from cartographer.interfaces.multiprocessing import Scheduler, TaskExecutor
 
@@ -32,6 +34,8 @@ MAX_PHASE_TIME = 5400.0  #  Abort after 90 minutes for any single phase
 # phase that Klipper's garbage collection blocked the reactor for 0.38 s and the main
 # MCU shut down with "Timer too close".
 SAMPLE_INTERVAL = 0.1
+# Interleaved mode: samples within this long after a move are dropped (coil settling).
+SETTLE_TIME = 0.2
 
 
 class TemperatureStallError(RuntimeError):
@@ -47,6 +51,31 @@ class TouchRecord:
     coil_temperature: float
     trigger: float
     cumulative: float  # total Z correction since the calibration's starting home
+
+
+class _HeatProgress:
+    """Stall and timeout guard for the interleaved ramp, with the same limits as a phase."""
+
+    def __init__(self) -> None:
+        self._start: float = time.monotonic()
+        self._best: float | None = None
+        self._last_progress: float = self._start
+        self._last_log: float = 0.0
+
+    def update(self, temperature: float, target: float) -> None:
+        now = time.monotonic()
+        if self._best is None or temperature > self._best:
+            self._best = temperature
+            self._last_progress = now
+        if now - self._last_log >= PROGRESS_LOG_INTERVAL:
+            logger.info("Temperature: %.1f°C (heat to %.0f°C, interleaved)", temperature, target)
+            self._last_log = now
+        if now - self._last_progress >= STALL_ABORT_TIME:
+            msg = f"Coil temperature stalled at {temperature:.1f}°C (target {target:.0f}°C)"
+            raise TemperatureStallError(msg)
+        if now - self._start >= MAX_PHASE_TIME:
+            msg = f"Interleaved heating exceeded {MAX_PHASE_TIME / 60:.0f} minutes at {temperature:.1f}°C"
+            raise TemperatureStallError(msg)
 
 
 def _write_samples(samples: list[Sample], label: str) -> list[str]:
@@ -100,6 +129,12 @@ class TemperatureCalibrateParams:
         default=0,
         min=0,
     )
+    interleave: bool = param(
+        "Cycle through all heights during ONE heating ramp instead of cooling and reheating"
+        " once per height. Much faster, and every height sees the same thermal state.",
+        default=False,
+    )
+    dwell: float = param("Seconds at each height per cycle when interleaving", default=3.0, min=0.5)
 
 
 @final
@@ -171,23 +206,26 @@ class TemperatureCalibrateMacro(Macro):
         # without this, coil temperature stays frozen at the last sample and every wait
         # stalls. The session never starts collecting, so it keeps nothing in memory.
         with self.mcu.start_session(lambda _: False):
-            for phase, height in enumerate(heights, 1):
-                logger.info("Starting Phase %d of %d (height=%.1fmm)", phase, len(heights), height)
-                cool_samples: list[Sample] = []
-                samples: list[Sample] = []
-                # Written even if the phase aborts, so hours of data are never lost with it.
-                try:
-                    self._cool_down_phase(cooling_height, p.min_temp, p.z_speed, cool_samples)
-                    self._heat_up_phase(
-                        height, p.bed_temp, p.min_temp, p.max_temp, p.z_speed, samples, p.touch_step, touches
-                    )
-                finally:
-                    csv_files += _write_samples(cool_samples, f"temp_calib_cool_before_h{height}mm")
-                    csv_files += _write_samples(samples, f"temp_calib_h{height}mm")
-                    if touches_path is not None and touches:
-                        _write_touches(touches, touches_path)
-                data_per_height[height] = samples
-                logger.info("Phase %d complete: collected %d samples", phase, len(samples))
+            if p.interleave:
+                data_per_height = self._run_interleaved(heights, cooling_height, p, touches, touches_path, csv_files)
+            else:
+                for phase, height in enumerate(heights, 1):
+                    logger.info("Starting Phase %d of %d (height=%.1fmm)", phase, len(heights), height)
+                    cool_samples: list[Sample] = []
+                    samples: list[Sample] = []
+                    # Written even if the phase aborts, so hours of data are never lost with it.
+                    try:
+                        self._cool_down_phase(cooling_height, p.min_temp, p.z_speed, cool_samples)
+                        self._heat_up_phase(
+                            height, p.bed_temp, p.min_temp, p.max_temp, p.z_speed, samples, p.touch_step, touches
+                        )
+                    finally:
+                        csv_files += _write_samples(cool_samples, f"temp_calib_cool_before_h{height}mm")
+                        csv_files += _write_samples(samples, f"temp_calib_h{height}mm")
+                        if touches_path is not None and touches:
+                            _write_touches(touches, touches_path)
+                    data_per_height[height] = samples
+                    logger.info("Phase %d complete: collected %d samples", phase, len(samples))
         if touches_path is not None:
             csv_files.append(touches_path)
 
@@ -204,6 +242,86 @@ class TemperatureCalibrateMacro(Macro):
             "Raw calibration data can be found in the following files:\n%s",
             "\n".join(csv_files),
         )
+
+    def _run_interleaved(
+        self,
+        heights: Sequence[float],
+        cooling_height: float,
+        p: TemperatureCalibrateParams,
+        touches: list[TouchRecord],
+        touches_path: str | None,
+        csv_files: list[str],
+    ) -> dict[float, list[Sample]]:
+        """One cooldown, then one heating ramp that cycles through every height."""
+        cool_samples: list[Sample] = []
+        per_height: dict[float, list[Sample]] = {h: [] for h in heights}
+        try:
+            self._cool_down_phase(cooling_height, p.min_temp, p.z_speed, cool_samples)
+            self._heat_up_interleaved(heights, p, per_height, touches)
+        finally:
+            csv_files += _write_samples(cool_samples, "temp_calib_cool_before")
+            for h in heights:
+                csv_files += _write_samples(per_height[h], f"temp_calib_h{h}mm")
+            if touches_path is not None and touches:
+                _write_touches(touches, touches_path)
+        for h in heights:
+            logger.info("Height %.1fmm: collected %d samples", h, len(per_height[h]))
+        return per_height
+
+    @log_duration("Interleaved heat up")
+    def _heat_up_interleaved(
+        self,
+        heights: Sequence[float],
+        p: TemperatureCalibrateParams,
+        per_height: dict[float, list[Sample]],
+        touches: list[TouchRecord],
+    ) -> None:
+        logger.info("Starting heaters: bed=%d°C, cycling heights %s", p.bed_temp, heights)
+        self.gcode.run_gcode(f"M140 S{p.bed_temp}\nM106 S0")
+        self.toolhead.move(z=heights[0], speed=p.z_speed)
+        self.toolhead.wait_moves()
+        self._wait_for_temperature(target_temp=p.min_temp - 1, cooling=False)
+
+        progress = _HeatProgress()
+        touching = bool(p.touch_step)
+        for target in collection_targets(p.min_temp, p.max_temp, p.touch_step):
+            if touching:
+                touching = self._touch_rereference(heights[0], p.z_speed, touches)
+            reached = False
+            while not reached:
+                for height in heights:
+                    self.toolhead.move(z=height, speed=p.z_speed)
+                    self.toolhead.wait_moves()
+                    reached = self._dwell(per_height[height], p.dwell, target, progress)
+                    if reached:
+                        break
+        if touching:
+            _ = self._touch_rereference(heights[0], p.z_speed, touches)
+
+    def _dwell(self, samples: list[Sample], seconds: float, target: float, progress: _HeatProgress) -> bool:
+        """Collect at the current height for up to `seconds`; True once the coil reaches `target`."""
+        next_time = self.toolhead.get_last_move_time() + SETTLE_TIME
+
+        def collect(sample: Sample) -> None:
+            nonlocal next_time
+            if sample.time >= next_time:
+                samples.append(sample)
+                next_time = sample.time + SAMPLE_INTERVAL
+
+        self.mcu.register_callback(collect)
+        try:
+            end = time.monotonic() + seconds
+            while time.monotonic() < end:
+                self.scheduler.sleep(SAMPLE_INTERVAL)
+                temperature = self._get_current_temperature()
+                if temperature is None:
+                    continue
+                progress.update(temperature, target)
+                if temperature >= target:
+                    return True
+        finally:
+            self.mcu.unregister_callback(collect)
+        return False
 
     @log_duration("Cooldown phase")
     def _cool_down_phase(self, height: float, min_temp: int, z_speed: int, samples: list[Sample]) -> None:
