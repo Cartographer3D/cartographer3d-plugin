@@ -27,6 +27,7 @@ class KalicoCartographerProbe:
         printer: Printer | None = None,
         mcu_probe: KlipperEndstop | None = None,
     ) -> None:
+        self.name = "cartographer"
         self.probe_name = "cartographer"
         self.is_default_probe = config.register_as_probe
         self.printer = printer

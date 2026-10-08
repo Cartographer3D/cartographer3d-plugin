@@ -30,6 +30,7 @@ class GCodeCommand(MockParams):
         self.command = command
         self.commandline = commandline
         self.params = params
+        self.respond_info = Mock()
 
     def get_command(self) -> str:
         return self.command
@@ -844,48 +845,85 @@ def test_mesh_named_scan_without_native_handler(
     macro.set_fallback_macro.assert_not_called()
 
 
-@pytest.mark.parametrize("is_default", [True, False])
+@pytest.mark.parametrize(("is_default", "selector"), [(True, None), (True, "cartographer"), (False, "cartographer")])
 def test_native_point_consumers_and_rapid_scan_fallback(
     mocker: MockerFixture,
     adapters: Mock,
     runnable_cartographer: PrinterCartographer,
     registry_module: ModuleType,
     is_default: bool,
+    selector: str | None,
 ) -> None:
-    del registry_module, is_default
+    del registry_module
     device = runnable_cartographer
     integrator = KalicoIntegrator(adapters)
     before = adapters.mcu.mock_calls.copy()
     integrator.register_probe(device)
     assert adapters.mcu.mock_calls == before
-    probe = adapters.printer.lookup_object("probe_list").probes["cartographer"]
+    registry = adapters.printer.lookup_object("probe_list")
+    probe = registry.probes["cartographer"]
+    assert registry.get_default_probe() is (probe if is_default else None)
     assert type(probe.mcu_probe) is KlipperEndstop
     assert probe.mcu_probe.mcu is adapters.mcu
     assert probe.mcu_probe.endstop is device.scan_mode
     assert not hasattr(probe.mcu_probe, "begin_collect_distance")
-    # Native rapid_scan decides capability before any motion, then uses automatic.
-    method = "rapid_scan"
-    if method == "rapid_scan" and not hasattr(probe.mcu_probe, "begin_collect_distance"):
-        method = "automatic"
-    assert method == "automatic"
-    adapters.toolhead.move.assert_not_called()
-    assert probe.get_offsets() == device.scan_mode.offset.as_tuple()
-    assert probe.get_lift_speed() == device.config.general.lift_speed
-    command = GCodeCommand("BED_MESH_CALIBRATE", "automatic", {"LIFT_SPEED": "8"})
-    assert probe.get_lift_speed(command) == 8
+    params = {"METHOD": "rapid_scan", "LIFT_SPEED": "8"}
+    if selector is not None:
+        params["PROBE"] = selector
+    command = GCodeCommand("BED_MESH_CALIBRATE", "rapid_scan", params)
     scan = mocker.patch.object(device.scan_mode, "perform_probe", side_effect=[1.5, 2.5, 3.5])
+    lift = mocker.spy(probe, "get_lift_speed")
+    offsets = mocker.spy(probe, "get_offsets")
     begin = mocker.spy(probe, "multi_probe_begin")
+    run = mocker.spy(probe, "run_probe")
     end = mocker.spy(probe, "multi_probe_end")
     retry_session = object()
-    probe.multi_probe_begin()
-    positions: list[list[float]] = []
-    for x, y in [(10, 20), (30, 40)]:
-        adapters.toolhead.get_position.return_value = Position(x, y, 5)
-        positions.append(probe.run_probe(command, retry_session))
-    probe.multi_probe_end()
-    assert positions == [[10, 20, 1.5], [30, 40, 2.5]]
+
+    def before_automatic(message: str) -> None:
+        assert message == "METHOD=rapid_scan not supported for probe cartographer, using automatic"
+        for call in (lift, offsets, begin, run, end, scan):
+            call.assert_not_called()
+        adapters.toolhead.move.assert_not_called()
+
+    command.respond_info.side_effect = before_automatic
+
+    def native_start_probe(gcmd: GCodeCommand) -> list[list[float]]:
+        # Minimal start_probe consumer contract from Kalico extras/probe.py:1146.
+        selected = registry.get_command_probe(gcmd, None)
+        method = gcmd.get("METHOD", "automatic").lower()
+        if selected is not None and method == "rapid_scan":
+            mcu_probe = selected.mcu_probe
+            can_scan = hasattr(mcu_probe, "begin_collect_distance")
+            if can_scan:
+                message = "Unexpected native rapid-scan capability"
+                raise AssertionError(message)
+            else:
+                gcmd.respond_info(f"METHOD=rapid_scan not supported for probe {selected.name}, using automatic")
+                method = "automatic"
+        assert selected is probe
+        assert method == "automatic"
+        assert selected.get_lift_speed(gcmd) == 8
+        assert selected.get_offsets() == device.scan_mode.offset.as_tuple()
+        selected.multi_probe_begin()
+        positions: list[list[float]] = []
+        for x, y in [(10, 20), (30, 40)]:
+            adapters.toolhead.get_position.return_value = Position(x, y, 5)
+            positions.append(selected.run_probe(gcmd, retry_session))
+        selected.multi_probe_end()
+        return positions
+
+    assert native_start_probe(command) == [[10, 20, 1.5], [30, 40, 2.5]]
+    assert registry.selections == [(command, None)]
+    command.respond_info.assert_called_once_with(
+        "METHOD=rapid_scan not supported for probe cartographer, using automatic"
+    )
+    lift.assert_called_once_with(command)
+    offsets.assert_called_once_with()
     begin.assert_called_once_with()
+    assert run.call_args_list == [((command, retry_session),), ((command, retry_session),)]
     end.assert_called_once_with()
+    assert probe.probe_name == "cartographer"
+    assert probe.get_lift_speed() == device.config.general.lift_speed
     # Axis twist consumes the same single-probe position semantics.
     assert probe.run_probe(command) == [30, 40, 3.5]
     assert scan.call_count == 3
