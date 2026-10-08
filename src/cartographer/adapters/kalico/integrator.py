@@ -6,13 +6,18 @@ from typing import TYPE_CHECKING, Protocol, cast, final
 from typing_extensions import override
 
 from cartographer.adapters.kalico.probe import KalicoCartographerProbe
-from cartographer.adapters.klipper_like.integrator import KlipperLikeAdapters, KlipperLikeIntegrator
+from cartographer.adapters.klipper_like.integrator import (
+    KlipperLikeAdapters,
+    KlipperLikeIntegrator,
+    catch_macro_errors,
+)
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
+    from gcode import GCodeCommand
     from klippy import Printer
 
-    from cartographer.core import PrinterCartographer
+    from cartographer.core import MacroRegistration, PrinterCartographer
 
 
 class _ProbeRegistry(Protocol):
@@ -28,6 +33,7 @@ class KalicoIntegrator(KlipperLikeIntegrator):
     def __init__(self, adapters: KlipperLikeAdapters) -> None:
         super().__init__(adapters, KalicoCartographerProbe)
         self._probe_list: _ProbeList | None = None
+        self._registry_probe: KalicoCartographerProbe | None = None
         try:
             probe_module = import_module("extras.probe")
         except ModuleNotFoundError as error:
@@ -56,3 +62,41 @@ class KalicoIntegrator(KlipperLikeIntegrator):
         )
         registry = self._probe_list.get_list(self._printer)
         _ = registry.add_probe_object(probe, self._config.wrapper)
+        self._registry_probe = probe
+        if not probe.is_default_probe:
+            for registration in cartographer.probe_macros:
+                self.register_macro(registration)
+
+    @override
+    def register_macro(self, registration: MacroRegistration) -> None:
+        probe = self._registry_probe
+        if probe is None or registration.name not in (
+            "PROBE",
+            "PROBE_ACCURACY",
+            "QUERY_PROBE",
+            "Z_OFFSET_APPLY_PROBE",
+        ):
+            super().register_macro(registration)
+            return
+
+        def run(gcmd: GCodeCommand) -> None:
+            params = {key: value for key, value in gcmd.get_command_parameters().items() if key != "PROBE"}
+            command = self._gcode.create_gcode_command(gcmd.get_command(), gcmd.get_commandline(), params)
+            registration.macro.run(command)
+
+        handler = catch_macro_errors(run)
+        self._gcode.register_mux_command(
+            registration.name,
+            "PROBE",
+            probe.probe_name,
+            handler,
+            desc=registration.macro.description,
+        )
+        if probe.is_default_probe:
+            self._gcode.register_mux_command(
+                registration.name,
+                "PROBE",
+                None,
+                handler,
+                desc=registration.macro.description,
+            )

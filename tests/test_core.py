@@ -1,12 +1,17 @@
+from __future__ import annotations
+
 from dataclasses import replace
+from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
 
 from cartographer.core import PrinterCartographer
-from cartographer.interfaces.configuration import Configuration
 from cartographer.macros.message import MessageMacro
-from cartographer.runtime.adapters import Adapters
+
+if TYPE_CHECKING:
+    from cartographer.interfaces.configuration import Configuration
+    from cartographer.runtime.adapters import Adapters
 
 
 @pytest.fixture
@@ -35,6 +40,21 @@ class TestMacroRegistration:
 
         expected = {"PROBE", "PROBE_ACCURACY", "QUERY_PROBE", "Z_OFFSET_APPLY_PROBE"}
         assert expected.issubset(registered_names), f"Missing core probe macros: {expected - registered_names}"
+
+    @pytest.mark.parametrize("is_default", [True, False])
+    def test_reusable_probe_macros(self, mock_adapters: Adapters, is_default: bool):
+        mock_adapters.config.general = replace(mock_adapters.config.general, register_as_probe=is_default)
+        cartographer = PrinterCartographer(mock_adapters)
+        group = {reg.name: reg.macro for reg in cartographer.probe_macros}
+        assert set(group) == {"PROBE", "PROBE_ACCURACY", "QUERY_PROBE", "Z_OFFSET_APPLY_PROBE"}
+        assert group["PROBE"] is cartographer.probe_macro
+        assert group["QUERY_PROBE"] is cartographer.query_probe_macro
+        visible = {reg.name: reg.macro for reg in cartographer.macros}
+        if is_default:
+            assert all(visible[name] is macro for name, macro in group.items())
+        else:
+            assert set(group).isdisjoint(visible)
+        assert visible["CARTOGRAPHER_SCAN_PROBE"] is cartographer.probe_macro
 
     def test_cartographer_prefixed_macros_registered(self, mock_adapters: Adapters):
         """Verify all CARTOGRAPHER_ prefixed macros are registered."""
