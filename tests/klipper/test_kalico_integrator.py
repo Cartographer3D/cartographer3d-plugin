@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from types import ModuleType
-from typing import TYPE_CHECKING, Callable, final
+from typing import TYPE_CHECKING, Callable, cast, final
 from unittest.mock import Mock
 
 import pytest
@@ -13,6 +13,7 @@ from cartographer.core import MacroRegistration, PrinterCartographer
 from cartographer.extra import load_config
 from cartographer.interfaces.configuration import Configuration, ScanModelConfiguration
 from cartographer.interfaces.printer import Position
+from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateMacro
 from tests.mocks.params import MockParams
 
 if TYPE_CHECKING:
@@ -47,11 +48,13 @@ class GCodeDispatch:
         self.mux_commands: dict[str, tuple[str, dict[str | None, Callable[[GCodeCommand], None]]]] = {}
         self.clones: list[GCodeCommand] = []
         self.descriptions: dict[str, str | None] = {}
+        self.removals: list[str] = []
 
     def register_command(
         self, name: str, handler: Callable[[GCodeCommand], None] | None, desc: str | None = None
     ) -> Callable[[GCodeCommand], None] | None:
         if handler is None:
+            self.removals.append(name)
             return self.commands.pop(name, None)
         if name in self.commands:
             message = "Command already registered"
@@ -100,13 +103,17 @@ class GCodeDispatch:
         return gcmd
 
 
+_MISSING_DEFAULT = object()
+
+
 class ProbeList:
     """Registration-shaped registry; the registry alone owns the default alias."""
 
     def __init__(self) -> None:
-        self.probes: dict[str, KalicoCartographerProbe] = {}
-        self.default_probe: KalicoCartographerProbe | None = None
+        self.probes: dict[str, object] = {}
+        self.default_probe: object | None = None
         self.configs: list[Mock] = []
+        self.selections: list[tuple[GCodeCommand, object]] = []
 
     @staticmethod
     def get_list(printer: Mock) -> ProbeList:
@@ -131,11 +138,26 @@ class ProbeList:
         self.configs.append(config)
         return obj
 
-    def get_all(self) -> dict[str, KalicoCartographerProbe]:
+    def get_all(self) -> dict[str, object]:
         return self.probes
 
-    def get_default_probe(self) -> KalicoCartographerProbe | None:
+    def get_default_probe(self) -> object | None:
         return self.default_probe
+
+    def get_command_probe(self, gcmd: GCodeCommand, default: object = _MISSING_DEFAULT) -> object | None:
+        self.selections.append((gcmd, default))
+        name = gcmd.get("PROBE", None)
+        if name is not None:
+            if name not in self.probes:
+                message = f"Invalid PROBE: {name}"
+                raise gcmd.error(message)
+            return self.probes[name]
+        if self.default_probe is not None:
+            return self.default_probe
+        if default is _MISSING_DEFAULT:
+            message = "No default probe configured"
+            raise gcmd.error(message)
+        return default
 
 
 @pytest.fixture
@@ -210,12 +232,12 @@ def test_registers_actual_probe_during_config_load(
 
 
 @pytest.mark.parametrize("is_default", [True, False])
-@pytest.mark.parametrize("missing", ["module", "class", "get_list", "add_probe_object"])
+@pytest.mark.parametrize("missing", ["module", "class", "get_list", "add_probe_object", "get_command_probe"])
 def test_missing_registry_uses_legacy_registration(
     mocker: MockerFixture, adapters: Mock, cartographer: Mock, is_default: bool, missing: str
 ) -> None:
     module = ModuleType("extras.probe")
-    if missing in ("get_list", "add_probe_object"):
+    if missing in ("get_list", "add_probe_object", "get_command_probe"):
         module.__dict__["ProbeList"] = type("IncompleteProbeList", (ProbeList,), {missing: None})
     importer = mocker.patch("cartographer.adapters.kalico.integrator.import_module", return_value=module)
     if missing == "module":
@@ -475,3 +497,320 @@ def test_existing_default_alias_error_propagates(
 
     assert adapters.printer.lookup_object("probe") is existing_probe
     assert adapters.printer.lookup_object("probe_list").get_all() == {}
+
+
+@pytest.fixture
+def mesh_routing(
+    mocker: MockerFixture,
+    adapters: Mock,
+    cartographer: Mock,
+    registry_module: ModuleType,
+    is_default: bool,
+) -> tuple[BedMeshCalibrateMacro, Mock, Mock]:
+    del registry_module
+    cartographer.config.general.register_as_probe = is_default
+    integrator = KalicoIntegrator(adapters)
+    integrator.register_probe(cartographer)
+    macro = BedMeshCalibrateMacro(Mock(), adapters.toolhead, Mock(), None, Mock(), Mock())
+    scan = Mock()
+    original_run = macro.run
+
+    def run(command: GCodeCommand) -> None:
+        if command.get("METHOD", "scan").lower() == "scan":
+            scan(command)
+        else:
+            original_run(command)
+
+    _ = mocker.patch.object(macro, "run", side_effect=run)
+    _ = mocker.patch("cartographer.adapters.klipper_like.integrator.GCodeCommand", GCodeCommand)
+    native = Mock()
+    gcode = adapters.printer.lookup_object("gcode")
+    _ = gcode.register_command("BED_MESH_CALIBRATE", native)
+    integrator.register_macro(MacroRegistration("BED_MESH_CALIBRATE", macro))
+    assert gcode.removals == ["BED_MESH_CALIBRATE"]
+    return macro, scan, native
+
+
+@pytest.mark.parametrize(("is_default", "selector"), [(True, None), (True, "cartographer"), (False, "cartographer")])
+@pytest.mark.parametrize("method", [None, "scan", "SCAN"])
+def test_mesh_cartographer_scan_consumes_only_selector(
+    adapters: Mock,
+    mesh_routing: tuple[BedMeshCalibrateMacro, Mock, Mock],
+    is_default: bool,
+    selector: str | None,
+    method: str | None,
+) -> None:
+    del is_default
+    macro, scan, native = mesh_routing
+    gcode = adapters.printer.lookup_object("gcode")
+    registry = adapters.printer.lookup_object("probe_list")
+    params = {"PROFILE": "selected"}
+    if selector is not None:
+        params["PROBE"] = selector
+    if method is not None:
+        params["METHOD"] = method
+    original = params.copy()
+
+    command = gcode.dispatch("BED_MESH_CALIBRATE", params)
+
+    clone = gcode.clones[-1]
+    assert clone is not command
+    assert clone.params is not params
+    assert clone.params == {key: value for key, value in original.items() if key != "PROBE"}
+    assert clone.command == command.command
+    assert clone.commandline == command.commandline
+    assert command.params is params
+    assert params == original
+    assert registry.selections == [(command, None)]
+    cast("Mock", macro.run).assert_called_once_with(clone)
+    assert scan.call_args.args[0] is clone
+    native.assert_not_called()
+    adapters.toolhead.move.assert_not_called()
+
+
+@pytest.mark.parametrize("is_default", [True, False])
+def test_mesh_cartographer_automatic_fallback_retains_original(
+    adapters: Mock, mesh_routing: tuple[BedMeshCalibrateMacro, Mock, Mock], is_default: bool
+) -> None:
+    del is_default
+    macro, scan, native = mesh_routing
+    gcode = adapters.printer.lookup_object("gcode")
+    registry = adapters.printer.lookup_object("probe_list")
+    selected: list[object | None] = []
+
+    def native_run(command: GCodeCommand) -> None:
+        selected.append(registry.get_command_probe(command))
+
+    native.side_effect = native_run
+    params = {"PROBE": "cartographer", "METHOD": "automatic", "PROFILE": "retained"}
+    original = params.copy()
+
+    command = gcode.dispatch("BED_MESH_CALIBRATE", params)
+
+    assert cast("Mock", macro.run).call_args.args[0] is command
+    assert native.call_args.args[0] is command
+    assert selected == [registry.probes["cartographer"]]
+    assert selected[0] is registry.probes["cartographer"]
+    assert command.params is params
+    assert params == original
+    assert not gcode.clones
+    scan.assert_not_called()
+
+
+@pytest.mark.parametrize("is_default", [False])
+@pytest.mark.parametrize("selector", [None, "other"])
+@pytest.mark.parametrize("method", [None, "automatic", "manual"])
+def test_mesh_other_probe_delegates_untouched(
+    adapters: Mock,
+    mesh_routing: tuple[BedMeshCalibrateMacro, Mock, Mock],
+    is_default: bool,
+    selector: str | None,
+    method: str | None,
+) -> None:
+    del is_default
+    macro, scan, native = mesh_routing
+    gcode = adapters.printer.lookup_object("gcode")
+    registry = adapters.printer.lookup_object("probe_list")
+    other = object()
+    registry.probes["other"] = other
+    registry.default_probe = other
+    params = {"PROFILE": "native"}
+    if selector is not None:
+        params["PROBE"] = selector
+    if method is not None:
+        params["METHOD"] = method
+    original = params.copy()
+    selected: list[object | None] = []
+
+    def native_run(command: GCodeCommand) -> None:
+        selected.append(registry.get_command_probe(command))
+
+    native.side_effect = native_run
+
+    command = gcode.dispatch("BED_MESH_CALIBRATE", params)
+
+    assert native.call_args.args[0] is command
+    assert selected[0] is other
+    assert command.params is params
+    assert params == original
+    assert not gcode.clones
+    cast("Mock", macro.run).assert_not_called()
+    scan.assert_not_called()
+    adapters.toolhead.move.assert_not_called()
+
+
+@pytest.mark.parametrize("is_default", [False])
+@pytest.mark.parametrize(
+    ("params", "error"),
+    [
+        ({"PROBE": "other", "METHOD": "scan"}, "scan.*Cartographer"),
+        ({"PROBE": "unknown"}, "Invalid PROBE"),
+        ({"PROBE": "unknown", "METHOD": "manual"}, "Invalid PROBE"),
+        ({}, "No default probe"),
+        ({"METHOD": "scan"}, "No default probe"),
+        ({"METHOD": "automatic"}, "No default probe"),
+    ],
+)
+def test_mesh_selection_errors_precede_work(
+    adapters: Mock,
+    mesh_routing: tuple[BedMeshCalibrateMacro, Mock, Mock],
+    is_default: bool,
+    params: dict[str, str],
+    error: str,
+) -> None:
+    del is_default
+    macro, scan, native = mesh_routing
+    registry = adapters.printer.lookup_object("probe_list")
+    registry.probes["other"] = object()
+    gcode = adapters.printer.lookup_object("gcode")
+    original = params.copy()
+
+    with pytest.raises(ValueError, match=error):
+        gcode.dispatch("BED_MESH_CALIBRATE", params)
+
+    assert params == original
+    if "PROBE" not in params:
+        assert [default for _, default in registry.selections] == [None, _MISSING_DEFAULT]
+        assert registry.selections[0][0] is registry.selections[1][0]
+    cast("Mock", macro.run).assert_not_called()
+    native.assert_not_called()
+    scan.assert_not_called()
+    assert not gcode.clones
+    adapters.toolhead.move.assert_not_called()
+    cast("Mock", macro.adapter).clear_mesh.assert_not_called()
+    cast("Mock", macro.adapter).apply_mesh.assert_not_called()
+
+
+@pytest.mark.parametrize("is_default", [False])
+@pytest.mark.parametrize("selector", [None, "cartographer", "other"])
+def test_mesh_manual_without_default_validates_then_delegates(
+    adapters: Mock,
+    mesh_routing: tuple[BedMeshCalibrateMacro, Mock, Mock],
+    is_default: bool,
+    selector: str | None,
+) -> None:
+    del is_default
+    macro, scan, native = mesh_routing
+    registry = adapters.printer.lookup_object("probe_list")
+    registry.probes["other"] = object()
+    gcode = adapters.printer.lookup_object("gcode")
+    params = {"METHOD": "manual"}
+    if selector is not None:
+        params["PROBE"] = selector
+    original = params.copy()
+
+    command = gcode.dispatch("BED_MESH_CALIBRATE", params)
+
+    assert registry.selections == [(command, None)]
+    assert native.call_args.args[0] is command
+    assert command.params is params
+    assert params == original
+    cast("Mock", macro.run).assert_not_called()
+    scan.assert_not_called()
+    assert not gcode.clones
+
+
+@pytest.mark.parametrize(
+    ("is_default", "params", "error"),
+    [
+        (True, {"METHOD": "manual"}, "native BED_MESH_CALIBRATE.*unavailable"),
+        (True, {"PROBE": "other"}, "native BED_MESH_CALIBRATE.*unavailable"),
+        (True, {"PROBE": "other", "METHOD": "automatic"}, "native BED_MESH_CALIBRATE.*unavailable"),
+        (True, {"PROBE": "cartographer", "METHOD": "automatic"}, "native BED_MESH_CALIBRATE.*unavailable"),
+        (False, {}, "No default probe"),
+        (False, {"METHOD": "scan"}, "No default probe"),
+        (False, {"METHOD": "automatic"}, "No default probe"),
+    ],
+)
+def test_mesh_missing_native_handler_errors_before_work(
+    adapters: Mock,
+    cartographer: Mock,
+    registry_module: ModuleType,
+    is_default: bool,
+    params: dict[str, str],
+    error: str,
+) -> None:
+    del registry_module
+    cartographer.config.general.register_as_probe = is_default
+    integrator = KalicoIntegrator(adapters)
+    integrator.register_probe(cartographer)
+    registry = adapters.printer.lookup_object("probe_list")
+    registry.probes["other"] = object()
+    macro = Mock()
+    integrator.register_macro(MacroRegistration("BED_MESH_CALIBRATE", macro))
+    gcode = adapters.printer.lookup_object("gcode")
+    original = params.copy()
+
+    with pytest.raises(ValueError, match=error):
+        gcode.dispatch("BED_MESH_CALIBRATE", params)
+
+    assert params == original
+    assert gcode.removals == ["BED_MESH_CALIBRATE"]
+    assert not gcode.clones
+    cast("Mock", macro.run).assert_not_called()
+    adapters.toolhead.move.assert_not_called()
+
+
+@pytest.mark.parametrize("method", [None, "scan", "automatic", "manual"])
+def test_legacy_mesh_routing_unchanged(
+    mocker: MockerFixture, adapters: Mock, cartographer: Mock, method: str | None
+) -> None:
+    _ = mocker.patch(
+        "cartographer.adapters.kalico.integrator.import_module",
+        side_effect=ModuleNotFoundError(name="extras.probe"),
+    )
+    _ = mocker.patch("cartographer.adapters.klipper_like.integrator.GCodeCommand", GCodeCommand)
+    integrator = KalicoIntegrator(adapters)
+    integrator.register_probe(cartographer)
+    macro = BedMeshCalibrateMacro(Mock(), adapters.toolhead, Mock(), None, Mock(), Mock())
+    scan = mocker.patch(
+        "cartographer.macros.bed_mesh.scan_mesh.MeshScanParams.from_macro_params",
+        side_effect=RuntimeError("legacy scan reached"),
+    )
+    native = Mock()
+    gcode = adapters.printer.lookup_object("gcode")
+    _ = gcode.register_command("BED_MESH_CALIBRATE", native)
+    integrator.register_macro(MacroRegistration("BED_MESH_CALIBRATE", macro))
+    params = {"PROBE": "untouched"}
+    if method is not None:
+        params["METHOD"] = method
+    original = params.copy()
+    if method in (None, "scan"):
+        with pytest.raises(ValueError, match="legacy scan reached"):
+            gcode.dispatch("BED_MESH_CALIBRATE", params)
+        scan.assert_called_once()
+        native.assert_not_called()
+    else:
+        command = gcode.dispatch("BED_MESH_CALIBRATE", params)
+        assert native.call_args.args[0] is command
+        assert command.params is params
+        scan.assert_not_called()
+    assert params == original
+    assert not gcode.clones
+
+
+@pytest.mark.parametrize("fails", [False, True])
+def test_mesh_named_scan_without_native_handler(
+    adapters: Mock, cartographer: Mock, registry_module: ModuleType, fails: bool
+) -> None:
+    del registry_module
+    cartographer.config.general.register_as_probe = False
+    integrator = KalicoIntegrator(adapters)
+    integrator.register_probe(cartographer)
+    macro = Mock()
+    integrator.register_macro(MacroRegistration("BED_MESH_CALIBRATE", macro))
+    gcode = adapters.printer.lookup_object("gcode")
+    params = {"PROBE": "cartographer", "METHOD": "scan"}
+    original = params.copy()
+    if fails:
+        macro.run.side_effect = RuntimeError("scan failed")
+        with pytest.raises(ValueError, match="scan failed"):
+            gcode.dispatch("BED_MESH_CALIBRATE", params)
+    else:
+        command = gcode.dispatch("BED_MESH_CALIBRATE", params)
+        assert macro.run.call_args.args[0] is not command
+    assert macro.run.call_args.args[0] is gcode.clones[-1]
+    assert gcode.clones[-1].params == {"METHOD": "scan"}
+    assert params == original
+    assert gcode.removals == ["BED_MESH_CALIBRATE"]
+    macro.set_fallback_macro.assert_not_called()
