@@ -1,11 +1,12 @@
 from __future__ import annotations
 
 from importlib import import_module
-from typing import TYPE_CHECKING, Protocol, cast, final
+from typing import TYPE_CHECKING, Callable, Protocol, cast, final
 
 from typing_extensions import override
 
 from cartographer.adapters.kalico.probe import KalicoCartographerProbe
+from cartographer.adapters.klipper.endstop import KlipperEndstop
 from cartographer.adapters.klipper_like.integrator import (
     FallbackMacroAdapter,
     KlipperLikeAdapters,
@@ -31,6 +32,10 @@ class _ProbeList(Protocol):
     def get_list(self, printer: Printer) -> _ProbeRegistry: ...
 
 
+class _NativeZCalibration(Protocol):
+    load_probe: Callable[[object], object]
+
+
 @final
 class KalicoIntegrator(KlipperLikeIntegrator):
     def __init__(self, adapters: KlipperLikeAdapters) -> None:
@@ -51,6 +56,33 @@ class KalicoIntegrator(KlipperLikeIntegrator):
                 self._probe_list = cast("_ProbeList", probe_list)
 
     @override
+    def setup(self) -> None:
+        super().setup()
+        if self._probe_list is not None:
+            self._printer.register_event_handler("klippy:connect", self._guard_native_z_calibration)
+
+    def _guard_native_z_calibration(self) -> None:
+        if not self._config.wrapper.has_section("z_calibration"):
+            return
+        lookup = cast("Callable[[str, object], object]", self._printer.lookup_object)
+        helper = lookup("z_calibration", None)
+        if not callable(getattr(helper, "load_probe", None)):
+            msg = "Configured [z_calibration] helper requires a callable load_probe"
+            raise self._config.wrapper.error(msg)
+        native = cast("_NativeZCalibration", helper)
+        original = native.load_probe
+        probe = self._registry_probe
+
+        def load_probe(selected: object) -> object:
+            if probe is not None and selected is probe:
+                msg = "Cartographer native Z calibration is unsupported; use Cartographer calibration instead"
+                raise self._printer.command_error(msg)
+            return original(selected)
+
+        # Guard the shared helper boundary, including renamed commands and direct callers.
+        native.load_probe = load_probe
+
+    @override
     def register_probe(self, cartographer: PrinterCartographer) -> None:
         if self._probe_list is None:
             super().register_probe(cartographer)
@@ -63,7 +95,14 @@ class KalicoIntegrator(KlipperLikeIntegrator):
             cartographer.query_probe_macro,
             cartographer.config.general,
             printer=self._printer,
+            mcu_probe=KlipperEndstop(self._mcu, cartographer.scan_mode),
         )
+        if self._config.wrapper.has_section("nozzle_cleanup"):
+            section = self._config.wrapper.getsection("nozzle_cleanup")
+            selected = section.get("probe", None)
+            if selected == probe.probe_name or (selected is None and probe.is_default_probe):
+                msg = "[nozzle_cleanup] is unsupported with Cartographer; select another probe"
+                raise section.error(msg)
         registry = self._probe_list.get_list(self._printer)
         _ = registry.add_probe_object(probe, self._config.wrapper)
         self._registry_probe = probe

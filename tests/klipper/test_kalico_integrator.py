@@ -9,6 +9,7 @@ import pytest
 
 from cartographer.adapters.kalico.integrator import KalicoIntegrator
 from cartographer.adapters.kalico.probe import KalicoCartographerProbe
+from cartographer.adapters.klipper.endstop import KlipperEndstop
 from cartographer.core import MacroRegistration, PrinterCartographer
 from cartographer.extra import load_config
 from cartographer.interfaces.configuration import Configuration, ScanModelConfiguration
@@ -196,7 +197,11 @@ def adapters() -> Mock:
     host.printer.add_object.side_effect = add_object
     host.config.wrapper.get_name.return_value = "cartographer"
     host.config.wrapper.has_section.return_value = False
-    host.config.wrapper.error.side_effect = ValueError
+
+    def config_error(message: str) -> ValueError:
+        return ValueError(message)
+
+    host.config.wrapper.error.side_effect = config_error
     return host
 
 
@@ -269,6 +274,7 @@ def test_missing_registry_uses_legacy_registration(
         name, probe = adapters.printer.add_object.call_args.args
         assert name == "probe"
         assert type(probe) is KalicoCartographerProbe
+        assert not hasattr(probe, "mcu_probe")
     else:
         adapters.printer.add_object.assert_not_called()
     assert adapters.printer.lookup_object("probe_list", None) is None
@@ -309,7 +315,11 @@ def test_conflicting_default_config_error_propagates(
 ) -> None:
     del registry_module
     error = ValueError("conflicting default")
-    adapters.config.wrapper.has_section.return_value = True
+
+    def has_section(name: str) -> bool:
+        return name == "probe"
+
+    adapters.config.wrapper.has_section.side_effect = has_section
     adapters.config.wrapper.error.side_effect = None
     adapters.config.wrapper.error.return_value = error
 
@@ -832,3 +842,248 @@ def test_mesh_named_scan_without_native_handler(
     assert params == original
     assert gcode.removals == ["BED_MESH_CALIBRATE"]
     macro.set_fallback_macro.assert_not_called()
+
+
+@pytest.mark.parametrize("is_default", [True, False])
+def test_native_point_consumers_and_rapid_scan_fallback(
+    mocker: MockerFixture,
+    adapters: Mock,
+    runnable_cartographer: PrinterCartographer,
+    registry_module: ModuleType,
+    is_default: bool,
+) -> None:
+    del registry_module, is_default
+    device = runnable_cartographer
+    integrator = KalicoIntegrator(adapters)
+    before = adapters.mcu.mock_calls.copy()
+    integrator.register_probe(device)
+    assert adapters.mcu.mock_calls == before
+    probe = adapters.printer.lookup_object("probe_list").probes["cartographer"]
+    assert type(probe.mcu_probe) is KlipperEndstop
+    assert probe.mcu_probe.mcu is adapters.mcu
+    assert probe.mcu_probe.endstop is device.scan_mode
+    assert not hasattr(probe.mcu_probe, "begin_collect_distance")
+    # Native rapid_scan decides capability before any motion, then uses automatic.
+    method = "rapid_scan"
+    if method == "rapid_scan" and not hasattr(probe.mcu_probe, "begin_collect_distance"):
+        method = "automatic"
+    assert method == "automatic"
+    adapters.toolhead.move.assert_not_called()
+    assert probe.get_offsets() == device.scan_mode.offset.as_tuple()
+    assert probe.get_lift_speed() == device.config.general.lift_speed
+    command = GCodeCommand("BED_MESH_CALIBRATE", "automatic", {"LIFT_SPEED": "8"})
+    assert probe.get_lift_speed(command) == 8
+    scan = mocker.patch.object(device.scan_mode, "perform_probe", side_effect=[1.5, 2.5, 3.5])
+    begin = mocker.spy(probe, "multi_probe_begin")
+    end = mocker.spy(probe, "multi_probe_end")
+    retry_session = object()
+    probe.multi_probe_begin()
+    positions: list[list[float]] = []
+    for x, y in [(10, 20), (30, 40)]:
+        adapters.toolhead.get_position.return_value = Position(x, y, 5)
+        positions.append(probe.run_probe(command, retry_session))
+    probe.multi_probe_end()
+    assert positions == [[10, 20, 1.5], [30, 40, 2.5]]
+    begin.assert_called_once_with()
+    end.assert_called_once_with()
+    # Axis twist consumes the same single-probe position semantics.
+    assert probe.run_probe(command) == [30, 40, 3.5]
+    assert scan.call_count == 3
+    measure = mocker.patch.object(device.scan_mode, "measure_distance", return_value=0.5)
+    has_model = mocker.patch.object(device.scan_mode, "has_model", return_value=False)
+    assert probe.mcu_probe.query_endstop(12.5) == 1
+    measure.assert_not_called()
+    has_model.return_value = True
+    assert probe.mcu_probe.query_endstop(13.5) == 1
+    measure.assert_called_once_with(time=13.5)
+    measure.return_value = device.scan_mode.get_endstop_position() + 1
+    assert probe.mcu_probe.query_endstop(14.5) == 0
+    measure.assert_called_with(time=14.5)
+
+
+@final
+class NativeZCalibration:
+    """Native commands (including aliases) load the selected probe before motion."""
+
+    def __init__(self, registry: ProbeList) -> None:
+        self.registry = registry
+        self.loaded: list[object] = []
+        self.motion = Mock()
+        self.result = object()
+
+    def load_probe(self, selected: object) -> object:
+        self.loaded.append(selected)
+        return self.result
+
+    def command(self, gcmd: GCodeCommand) -> None:
+        _ = self.load_probe(self.registry.get_command_probe(gcmd))
+        self.motion()
+
+
+@pytest.mark.parametrize("is_default", [True, False])
+@pytest.mark.parametrize(
+    "entry", ["CALIBRATE_Z", "PROBE_Z_ACCURACY", "CALIBRATE_Z_BASE", "PROBE_Z_ACCURACY_BASE", "helper"]
+)
+@pytest.mark.parametrize("selector", [None, "cartographer", "other", "other_default", "unknown"])
+def test_native_z_calibration_boundary(
+    mocker: MockerFixture,
+    adapters: Mock,
+    cartographer: Mock,
+    registry_module: ModuleType,
+    is_default: bool,
+    entry: str,
+    selector: str | None,
+) -> None:
+    del registry_module
+
+    def has_section(name: str) -> bool:
+        return name == "z_calibration"
+
+    adapters.config.wrapper.has_section.side_effect = has_section
+    adapters.printer.command_error = ValueError
+    cartographer.config.general.register_as_probe = is_default
+    integrator = KalicoIntegrator(adapters)
+    _ = mocker.patch.object(integrator, "_configure_macro_logger")
+    integrator.setup()
+    integrator.register_probe(cartographer)
+    registry = adapters.printer.lookup_object("probe_list")
+    other = object()
+    registry.probes["other"] = other
+    if selector == "other_default":
+        registry.default_probe = other
+    # The native helper can be loaded after Cartographer setup/registration.
+    helper = NativeZCalibration(registry)
+    original = mocker.spy(helper, "load_probe")
+    gcode = adapters.printer.lookup_object("gcode")
+    if entry != "helper":
+        _ = gcode.register_command(entry, helper.command)
+    adapters.printer.add_object("z_calibration", helper)
+    callbacks = [
+        call.args[1]
+        for call in adapters.printer.register_event_handler.call_args_list
+        if call.args[0] == "klippy:connect"
+    ]
+    assert len(callbacks) == 1
+    callbacks[0]()
+    guarded = helper.load_probe
+    params = {} if selector in (None, "other_default") else {"PROBE": selector}
+    command = GCodeCommand(entry, entry, params)
+
+    def invoke() -> object:
+        if entry == "helper":
+            return guarded(registry.get_command_probe(command))
+        return gcode.dispatch(entry, params)
+
+    if selector == "unknown" or (selector is None and not is_default):
+        with pytest.raises(ValueError, match="Unknown requested probe|No default probe"):
+            _ = invoke()
+        original.assert_not_called()
+        helper.motion.assert_not_called()
+    elif selector not in ("other", "other_default"):
+        with pytest.raises(ValueError, match="native Z calibration.*unsupported.*Cartographer calibration"):
+            _ = invoke()
+        original.assert_not_called()
+        helper.motion.assert_not_called()
+    else:
+        result = invoke()
+        original.assert_called_once_with(other)
+        assert helper.loaded == [other]
+        if entry == "helper":
+            assert result is helper.result
+            helper.motion.assert_not_called()
+        else:
+            helper.motion.assert_called_once_with()
+
+
+@pytest.mark.parametrize("bad_helper", [None, object(), Mock(load_probe=None)])
+def test_missing_native_z_calibration_helper_is_config_error(
+    mocker: MockerFixture, adapters: Mock, cartographer: Mock, registry_module: ModuleType, bad_helper: object
+) -> None:
+    del registry_module
+
+    def has_section(name: str) -> bool:
+        return name == "z_calibration"
+
+    adapters.config.wrapper.has_section.side_effect = has_section
+    integrator = KalicoIntegrator(adapters)
+    _ = mocker.patch.object(integrator, "_configure_macro_logger")
+    integrator.setup()
+    integrator.register_probe(cartographer)
+    if bad_helper is not None:
+        adapters.printer.add_object("z_calibration", bad_helper)
+    callback = next(
+        call.args[1]
+        for call in adapters.printer.register_event_handler.call_args_list
+        if call.args[0] == "klippy:connect"
+    )
+    with pytest.raises(ValueError, match="z_calibration.*load_probe"):
+        callback()
+    adapters.toolhead.move.assert_not_called()
+
+
+@pytest.mark.parametrize("registry_active", [True, False])
+def test_native_safety_inactive_without_section_or_registry(
+    mocker: MockerFixture, adapters: Mock, cartographer: Mock, registry_module: ModuleType, registry_active: bool
+) -> None:
+    del registry_module
+    if not registry_active:
+        _ = mocker.patch(
+            "cartographer.adapters.kalico.integrator.import_module",
+            side_effect=ModuleNotFoundError(name="extras.probe"),
+        )
+        adapters.config.wrapper.has_section.return_value = True
+    integrator = KalicoIntegrator(adapters)
+    _ = mocker.patch.object(integrator, "_configure_macro_logger")
+    integrator.setup()
+    integrator.register_probe(cartographer)
+    helper = NativeZCalibration(ProbeList())
+    original = helper.load_probe
+    adapters.printer.add_object("z_calibration", helper)
+    callbacks = [
+        call.args[1]
+        for call in adapters.printer.register_event_handler.call_args_list
+        if call.args[0] == "klippy:connect"
+    ]
+    if registry_active:
+        assert len(callbacks) == 1
+        callbacks[0]()
+    else:
+        assert not callbacks
+        adapters.config.wrapper.has_section.assert_not_called()
+    assert helper.load_probe == original
+
+
+@pytest.mark.parametrize("is_default", [True, False])
+@pytest.mark.parametrize("selector", [None, "cartographer", "other", "Cartographer"])
+@pytest.mark.parametrize("overrides", [False, True])
+def test_nozzle_cleanup_selector_before_registration(
+    adapters: Mock,
+    cartographer: Mock,
+    registry_module: ModuleType,
+    is_default: bool,
+    selector: str | None,
+    overrides: bool,
+) -> None:
+    del registry_module
+    cartographer.config.general.register_as_probe = is_default
+
+    def has_section(name: str) -> bool:
+        return name == "nozzle_cleanup"
+
+    adapters.config.wrapper.has_section.side_effect = has_section
+    section = adapters.config.wrapper.getsection.return_value
+    section.get.return_value = selector
+    section.error.side_effect = adapters.config.wrapper.error.side_effect
+    if overrides:
+        section.getfloat.return_value = 7.0
+    integrator = KalicoIntegrator(adapters)
+    if selector == "cartographer" or (selector is None and is_default):
+        with pytest.raises(ValueError, match="nozzle_cleanup.*unsupported.*Cartographer"):
+            integrator.register_probe(cartographer)
+        assert adapters.printer.lookup_object("probe_list") is None
+        adapters.printer.add_object.assert_not_called()
+    else:
+        integrator.register_probe(cartographer)
+        assert "cartographer" in adapters.printer.lookup_object("probe_list").probes
+    section.get.assert_called_once_with("probe", None)
+    section.getfloat.assert_not_called()
