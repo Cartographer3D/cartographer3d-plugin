@@ -6,6 +6,7 @@ from cartographer.adapters.klipper_like.utils import make_coord, reraise_for_kli
 
 if TYPE_CHECKING:
     from gcode import GCodeCommand
+    from klippy import Printer
 
     from cartographer.interfaces.configuration import GeneralConfig
     from cartographer.interfaces.printer import ProbeMode, Toolhead
@@ -21,7 +22,13 @@ class KalicoCartographerProbe:
         probe_macro: ProbeMacro,
         query_probe_macro: QueryProbeMacro,
         config: GeneralConfig,
+        *,
+        printer: Printer | None = None,
     ) -> None:
+        self.probe_name = "cartographer"
+        self.is_default_probe = config.register_as_probe
+        self.printer = printer
+
         self.probe = probe
         self.probe_macro = probe_macro
         self.query_probe_macro = query_probe_macro

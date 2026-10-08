@@ -66,7 +66,6 @@ class _Rail(Protocol):
     def get_endstops(self) -> list[tuple[MCU_endstop, str]]: ...
 
 
-@final
 class KlipperLikeIntegrator(Integrator):
     def __init__(
         self,
@@ -113,6 +112,8 @@ class KlipperLikeIntegrator(Integrator):
 
     @override
     def register_probe(self, cartographer: PrinterCartographer) -> None:
+        if not cartographer.config.general.register_as_probe:
+            return
         self._printer.add_object(
             "probe",
             self._target_probe_class(
