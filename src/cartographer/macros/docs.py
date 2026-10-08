@@ -41,7 +41,8 @@ if TYPE_CHECKING:
 # Macros in the order they should appear in docs.
 # (macro_name, macro_class, params_dataclass)
 MACROS: list[tuple[str, type[Macro], type]] = [
-    # Standard probe macros (no CARTOGRAPHER_ prefix) — only registered when register_as_probe is true
+    # Standard probe macros: default/no-selector entries require register_as_probe=true;
+    # registry-capable Kalico also registers named mux entries when false.
     ("PROBE", ProbeMacro, ProbeMacroParams),
     ("PROBE_ACCURACY", ProbeAccuracyMacro, ProbeAccuracyParams),
     ("QUERY_PROBE", QueryProbeMacro, QueryProbeMacroParams),

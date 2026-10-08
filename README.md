@@ -27,6 +27,8 @@ BED_MESH_CALIBRATE PROBE=cartographer METHOD=scan
 For bed mesh, omitting `PROBE` follows the default probe. Selected Cartographer uses optimized scanning by default;
 other selected or default probes use native automatic meshing. `METHOD=scan` requires Cartographer;
 `METHOD=manual` remains native.
+Unknown `PROBE` selectors are rejected before movement even with `METHOD=manual`; without a default probe,
+nonmanual meshing requires an explicit `PROBE`, while manual meshing remains available.
 
 Endstop chip names are unchanged: `probe:z_virtual_endstop` with `register_as_probe: true`,
 `cartographer_probe:z_virtual_endstop` with `false`. There is no `cartographer:` pin-chip alias.
