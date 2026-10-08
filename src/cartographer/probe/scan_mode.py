@@ -120,11 +120,14 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         z_result = dist
         if self._axis_twist_compensation:
             z_result += self._axis_twist_compensation.get_z_compensation_value(
-                    x=toolhead_pos.x+self._config.x_offset, y=toolhead_pos.y+self._config.y_offset
+                x=toolhead_pos.x + self._config.x_offset, y=toolhead_pos.y + self._config.y_offset
             )
 
-        logger.info("probe at %.3f,%.3f is z=%.6f",
-                    toolhead_pos.x+self._config.x_offset, toolhead_pos.y+self._config.y_offset, z_result
+        logger.info(
+            "probe at %.3f,%.3f is z=%.6f",
+            toolhead_pos.x + self._config.x_offset,
+            toolhead_pos.y + self._config.y_offset,
+            z_result,
         )
         self.last_z_result = z_result
         return self.last_z_result
