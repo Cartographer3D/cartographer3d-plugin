@@ -16,8 +16,7 @@ def load_config(config: object) -> object:
 
     cartographer = PrinterCartographer(adapters)
 
-    if cartographer.config.general.register_as_probe:
-        integrator.register_probe(cartographer)
+    integrator.register_probe(cartographer)
 
     for macro in cartographer.macros:
         integrator.register_macro(macro)

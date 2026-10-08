@@ -1,0 +1,180 @@
+from __future__ import annotations
+
+from importlib import import_module
+from typing import TYPE_CHECKING, Callable, Protocol, cast, final
+
+from typing_extensions import override
+
+from cartographer.adapters.kalico.probe import KalicoCartographerProbe
+from cartographer.adapters.klipper.endstop import KlipperEndstop
+from cartographer.adapters.klipper_like.integrator import (
+    FallbackMacroAdapter,
+    KlipperLikeAdapters,
+    KlipperLikeIntegrator,
+    catch_macro_errors,
+)
+from cartographer.interfaces.printer import SupportsFallbackMacro
+
+if TYPE_CHECKING:
+    from configfile import ConfigWrapper
+    from gcode import GCodeCommand
+    from klippy import Printer
+
+    from cartographer.core import MacroRegistration, PrinterCartographer
+
+
+class _ProbeRegistry(Protocol):
+    def add_probe_object(self, obj: KalicoCartographerProbe, config: ConfigWrapper) -> object: ...
+    def get_command_probe(self, gcmd: GCodeCommand, default: object = ...) -> object | None: ...
+
+
+class _ProbeList(Protocol):
+    def get_list(self, printer: Printer) -> _ProbeRegistry: ...
+
+
+class _NativeZCalibration(Protocol):
+    load_probe: Callable[[object], object]
+
+
+@final
+class KalicoIntegrator(KlipperLikeIntegrator):
+    def __init__(self, adapters: KlipperLikeAdapters) -> None:
+        super().__init__(adapters, KalicoCartographerProbe)
+        self._probe_list: _ProbeList | None = None
+        self._registry_probe: KalicoCartographerProbe | None = None
+        try:
+            probe_module = import_module("extras.probe")
+        except ModuleNotFoundError as error:
+            if error.name not in ("extras", "extras.probe"):
+                raise
+        else:
+            probe_list = getattr(probe_module, "ProbeList", None)
+            if all(
+                callable(getattr(probe_list, method, None))
+                for method in ("get_list", "add_probe_object", "get_command_probe")
+            ):
+                self._probe_list = cast("_ProbeList", probe_list)
+
+    @override
+    def setup(self) -> None:
+        super().setup()
+        if self._probe_list is not None:
+            self._printer.register_event_handler("klippy:connect", self._guard_native_z_calibration)
+
+    def _guard_native_z_calibration(self) -> None:
+        if not self._config.wrapper.has_section("z_calibration"):
+            return
+        lookup = cast("Callable[[str, object], object]", self._printer.lookup_object)
+        helper = lookup("z_calibration", None)
+        if not callable(getattr(helper, "load_probe", None)):
+            msg = "Configured [z_calibration] helper requires a callable load_probe"
+            raise self._config.wrapper.error(msg)
+        native = cast("_NativeZCalibration", helper)
+        original = native.load_probe
+        probe = self._registry_probe
+
+        def load_probe(selected: object) -> object:
+            if probe is not None and selected is probe:
+                msg = "Cartographer native Z calibration is unsupported; use Cartographer calibration instead"
+                raise self._printer.command_error(msg)
+            return original(selected)
+
+        # Guard the shared helper boundary, including renamed commands and direct callers.
+        native.load_probe = load_probe
+
+    @override
+    def register_probe(self, cartographer: PrinterCartographer) -> None:
+        if self._probe_list is None:
+            super().register_probe(cartographer)
+            return
+
+        probe = KalicoCartographerProbe(
+            self._toolhead,
+            cartographer.scan_mode,
+            cartographer.probe_macro,
+            cartographer.query_probe_macro,
+            cartographer.config.general,
+            printer=self._printer,
+            mcu_probe=KlipperEndstop(self._mcu, cartographer.scan_mode),
+        )
+        if self._config.wrapper.has_section("nozzle_cleanup"):
+            section = self._config.wrapper.getsection("nozzle_cleanup")
+            selected = section.get("probe", None)
+            if selected == probe.probe_name or (selected is None and probe.is_default_probe):
+                msg = "[nozzle_cleanup] is unsupported with Cartographer; select another probe"
+                raise section.error(msg)
+        registry = self._probe_list.get_list(self._printer)
+        _ = registry.add_probe_object(probe, self._config.wrapper)
+        self._registry_probe = probe
+        if not probe.is_default_probe:
+            for registration in cartographer.probe_macros:
+                self.register_macro(registration)
+
+    @override
+    def register_macro(self, registration: MacroRegistration) -> None:
+        probe = self._registry_probe
+        if probe is not None and registration.name == "BED_MESH_CALIBRATE":
+            assert self._probe_list is not None
+            registry = self._probe_list.get_list(self._printer)
+            macro = registration.macro
+            original = self._gcode.register_command(registration.name, None)
+            if original is not None and isinstance(macro, SupportsFallbackMacro):
+                macro.set_fallback_macro(FallbackMacroAdapter(registration.name, original))
+
+            def route_mesh(gcmd: GCodeCommand) -> None:
+                selected = registry.get_command_probe(gcmd, None)
+                method = gcmd.get("METHOD", None)
+                if method is not None:
+                    method = method.lower()
+                if selected is None and method != "manual":
+                    # Ask the registry for its native missing-default error before any work.
+                    selected = registry.get_command_probe(gcmd)
+                if selected is probe and method in (None, "scan"):
+                    params = {key: value for key, value in gcmd.get_command_parameters().items() if key != "PROBE"}
+                    command = self._gcode.create_gcode_command(gcmd.get_command(), gcmd.get_commandline(), params)
+                    macro.run(command)
+                    return
+                if method == "scan":
+                    msg = "METHOD=scan requires the Cartographer probe"
+                    raise gcmd.error(msg)
+                if original is None:
+                    msg = "The native BED_MESH_CALIBRATE handler is unavailable"
+                    raise gcmd.error(msg)
+                if selected is probe and method != "manual":
+                    macro.run(gcmd)
+                else:
+                    original(gcmd)
+
+            self._gcode.register_command(registration.name, catch_macro_errors(route_mesh), desc=macro.description)
+            return
+
+        if probe is None or registration.name not in (
+            "PROBE",
+            "PROBE_ACCURACY",
+            "QUERY_PROBE",
+            "Z_OFFSET_APPLY_PROBE",
+        ):
+            super().register_macro(registration)
+            return
+
+        def run(gcmd: GCodeCommand) -> None:
+            params = {key: value for key, value in gcmd.get_command_parameters().items() if key != "PROBE"}
+            command = self._gcode.create_gcode_command(gcmd.get_command(), gcmd.get_commandline(), params)
+            registration.macro.run(command)
+
+        handler = catch_macro_errors(run)
+        self._gcode.register_mux_command(
+            registration.name,
+            "PROBE",
+            probe.probe_name,
+            handler,
+            desc=registration.macro.description,
+        )
+        if probe.is_default_probe:
+            self._gcode.register_mux_command(
+                registration.name,
+                "PROBE",
+                None,
+                handler,
+                desc=registration.macro.description,
+            )
