@@ -144,20 +144,38 @@ class ProbeList:
     def get_default_probe(self) -> object | None:
         return self.default_probe
 
-    def get_command_probe(self, gcmd: GCodeCommand, default: object = _MISSING_DEFAULT) -> object | None:
+    def get_command_probe(
+        self,
+        gcmd: GCodeCommand,
+        default: object = _MISSING_DEFAULT,
+        no_default_error: str = "No default probe registered, explicitly select probe by passing `PROBE=`",
+    ) -> object | None:
         self.selections.append((gcmd, default))
         name = gcmd.get("PROBE", None)
         if name is not None:
             if name not in self.probes:
-                message = f"Invalid PROBE: {name}"
+                message = f"Unknown requested probe {name}"
                 raise gcmd.error(message)
             return self.probes[name]
         if self.default_probe is not None:
             return self.default_probe
         if default is _MISSING_DEFAULT:
-            message = "No default probe configured"
-            raise gcmd.error(message)
+            raise gcmd.error(no_default_error)
         return default
+
+
+def test_registry_no_default_errors() -> None:
+    registry = ProbeList()
+    command = GCodeCommand("PROBE", "PROBE", {})
+
+    with pytest.raises(ValueError) as error:
+        _ = registry.get_command_probe(command)
+    assert str(error.value) == "No default probe registered, explicitly select probe by passing `PROBE=`"
+
+    with pytest.raises(ValueError) as error:
+        _ = registry.get_command_probe(command, no_default_error="Select a mesh probe")
+    assert str(error.value) == "Select a mesh probe"
+    assert registry.get_command_probe(command, None, no_default_error="Select a mesh probe") is None
 
 
 @pytest.fixture
@@ -644,8 +662,8 @@ def test_mesh_other_probe_delegates_untouched(
     ("params", "error"),
     [
         ({"PROBE": "other", "METHOD": "scan"}, "scan.*Cartographer"),
-        ({"PROBE": "unknown"}, "Invalid PROBE"),
-        ({"PROBE": "unknown", "METHOD": "manual"}, "Invalid PROBE"),
+        ({"PROBE": "unknown"}, "Unknown requested probe unknown"),
+        ({"PROBE": "unknown", "METHOD": "manual"}, "Unknown requested probe unknown"),
         ({}, "No default probe"),
         ({"METHOD": "scan"}, "No default probe"),
         ({"METHOD": "automatic"}, "No default probe"),
