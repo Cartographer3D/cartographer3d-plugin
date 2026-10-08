@@ -76,7 +76,9 @@ class KlipperLikeIntegrator(Integrator):
         self._printer: Printer = adapters.printer
         self._mcu: CartographerMcu = adapters.mcu
         self._toolhead: Toolhead = adapters.toolhead
-        self._target_probe_class = target_probe_class
+        self._target_probe_class: Callable[
+            [Toolhead, ProbeMode, ProbeMacro, QueryProbeMacro, GeneralConfig], object
+        ] = target_probe_class
 
         self._gcode: GCodeDispatch = self._printer.lookup_object("gcode")
 

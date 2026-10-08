@@ -55,4 +55,4 @@ class KalicoIntegrator(KlipperLikeIntegrator):
             printer=self._printer,
         )
         registry = self._probe_list.get_list(self._printer)
-        registry.add_probe_object(probe, self._config.wrapper)
+        _ = registry.add_probe_object(probe, self._config.wrapper)

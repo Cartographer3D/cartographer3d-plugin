@@ -63,7 +63,10 @@ def adapters() -> Mock:
             raise ValueError(message)
         objects[name] = obj
 
-    host.printer.lookup_object.side_effect = lambda name, default=None: objects.get(name, default)
+    def lookup_object(name: str, default: object = None) -> object:
+        return objects.get(name, default)
+
+    host.printer.lookup_object.side_effect = lookup_object
     host.printer.add_object.side_effect = add_object
     host.config.wrapper.get_name.return_value = "cartographer"
     host.config.wrapper.has_section.return_value = False
@@ -83,7 +86,7 @@ def cartographer() -> Mock:
 def registry_module(mocker: MockerFixture) -> ModuleType:
     module = ModuleType("extras.probe")
     module.__dict__["ProbeList"] = ProbeList
-    mocker.patch("cartographer.adapters.kalico.integrator.import_module", return_value=module)
+    _ = mocker.patch("cartographer.adapters.kalico.integrator.import_module", return_value=module)
     return module
 
 
@@ -96,11 +99,11 @@ def test_registers_actual_probe_during_config_load(
     integrator = KalicoIntegrator(adapters)
     adapters.printer.add_object.assert_not_called()
     assert adapters.printer.lookup_object("probe_list", None) is None
-    mocker.patch("cartographer.extra.init_runtime", return_value=(adapters, integrator))
-    mocker.patch("cartographer.extra.PrinterCartographer", return_value=cartographer)
-    mocker.patch.object(integrator, "setup")
-    mocker.patch.object(integrator, "register_coil_temperature_sensor")
-    mocker.patch.object(integrator, "register_endstop_pin")
+    _ = mocker.patch("cartographer.extra.init_runtime", return_value=(adapters, integrator))
+    _ = mocker.patch("cartographer.extra.PrinterCartographer", return_value=cartographer)
+    _ = mocker.patch.object(integrator, "setup")
+    _ = mocker.patch.object(integrator, "register_coil_temperature_sensor")
+    _ = mocker.patch.object(integrator, "register_endstop_pin")
 
     assert load_config(adapters.config.wrapper) is cartographer
 
@@ -148,10 +151,10 @@ def test_missing_registry_uses_legacy_registration(
     "error", [ImportError("broken probe import"), ModuleNotFoundError("missing dependency", name="dependency")]
 )
 def test_import_failures_propagate(mocker: MockerFixture, adapters: Mock, error: ImportError) -> None:
-    mocker.patch("cartographer.adapters.kalico.integrator.import_module", side_effect=error)
+    _ = mocker.patch("cartographer.adapters.kalico.integrator.import_module", side_effect=error)
 
     with pytest.raises(ImportError) as caught:
-        KalicoIntegrator(adapters)
+        _ = KalicoIntegrator(adapters)
 
     assert caught.value is error
     adapters.printer.add_object.assert_not_called()
