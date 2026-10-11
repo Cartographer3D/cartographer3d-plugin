@@ -61,6 +61,17 @@ class TestRegisterEndstopPin:
 
 
 class TestRegisterProbe:
+    def test_named_only_skips_legacy_registration(
+        self, integrator: KlipperLikeIntegrator, adapters: Mock, probe_class: Mock
+    ) -> None:
+        cartographer = Mock()
+        cartographer.config.general.register_as_probe = False
+
+        integrator.register_probe(cartographer)
+
+        probe_class.assert_not_called()
+        adapters.printer.add_object.assert_not_called()
+
     def test_invokes_probe_callable_with_expected_deps(
         self, integrator: KlipperLikeIntegrator, adapters: Mock, probe_class: Mock
     ) -> None:

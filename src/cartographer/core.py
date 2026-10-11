@@ -81,6 +81,8 @@ class PrinterCartographer:
         self.probe_macro = ProbeMacro(probe, toolhead)
         self.query_probe_macro = QueryProbeMacro(probe)
 
+        self.probe_macros = self._create_probe_macro_registrations(probe, toolhead)
+
         # Register all macros
         self.macros = self._create_macro_registrations(probe, toolhead, adapters)
 
@@ -151,7 +153,8 @@ class PrinterCartographer:
         registrations: list[MacroRegistration] = []
 
         # Core probe macros
-        registrations.extend(self._create_probe_macro_registrations(probe, toolhead))
+        if self.config.general.register_as_probe:
+            registrations.extend(self.probe_macros)
 
         # Cartographer-specific macros
         registrations.extend(self._create_cartographer_macro_registrations(probe, toolhead, adapters))
@@ -171,31 +174,16 @@ class PrinterCartographer:
         return registrations
 
     def _create_probe_macro_registrations(self, probe: Probe, toolhead: Toolhead) -> list[MacroRegistration]:
-        """Create standard probe macro registrations (only when register_as_probe is true)."""
-        if not self.config.general.register_as_probe:
-            return []
-        return list(
-            chain.from_iterable(
-                [
-                    self._register_macro("PROBE", self.probe_macro, use_prefix=False),
-                    self._register_macro(
-                        "PROBE_ACCURACY",
-                        ProbeAccuracyMacro(probe, toolhead, lift_speed=self.config.general.lift_speed),
-                        use_prefix=False,
-                    ),
-                    self._register_macro(
-                        "QUERY_PROBE",
-                        self.query_probe_macro,
-                        use_prefix=False,
-                    ),
-                    self._register_macro(
-                        "Z_OFFSET_APPLY_PROBE",
-                        ZOffsetApplyProbeMacro(probe, toolhead, self.config),
-                        use_prefix=False,
-                    ),
-                ]
-            )
-        )
+        """Create reusable standard probe macro registrations."""
+        return [
+            MacroRegistration("PROBE", self.probe_macro),
+            MacroRegistration(
+                "PROBE_ACCURACY",
+                ProbeAccuracyMacro(probe, toolhead, lift_speed=self.config.general.lift_speed),
+            ),
+            MacroRegistration("QUERY_PROBE", self.query_probe_macro),
+            MacroRegistration("Z_OFFSET_APPLY_PROBE", ZOffsetApplyProbeMacro(probe, toolhead, self.config)),
+        ]
 
     def _create_cartographer_macro_registrations(
         self, probe: Probe, toolhead: Toolhead, adapters: Adapters

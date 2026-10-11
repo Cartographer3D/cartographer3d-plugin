@@ -10,6 +10,8 @@ class GCodeCommand:
     def respond_raw(self, msg: str) -> None: ...
     def respond_info(self, msg: str, log: bool = True) -> None: ...
     def get_command_parameters(self) -> dict[str, str]: ...
+    def get_command(self) -> str: ...
+    def get_commandline(self) -> str: ...
     @overload
     def get(
         self,
@@ -96,6 +98,14 @@ class GCodeDispatch:
         when_not_ready: bool = False,
         desc: str | None = None,
     ) -> Callable[[GCodeCommand], None] | None: ...
+    def register_mux_command(
+        self,
+        cmd: str,
+        key: str,
+        value: str | None,
+        func: Callable[[GCodeCommand], None],
+        desc: str | None = None,
+    ) -> None: ...
     def create_gcode_command(
         self,
         command: str,

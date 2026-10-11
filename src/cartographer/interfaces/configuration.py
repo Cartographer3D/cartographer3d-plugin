@@ -175,7 +175,11 @@ class GeneralConfig:
         "When true, Cartographer registers as the 'probe' printer object and 'probe:' pin chip,"
         " overriding PROBE/PROBE_ACCURACY/QUERY_PROBE/Z_OFFSET_APPLY_PROBE commands."
         " When false, Cartographer registers its endstop under the 'cartographer_probe:' pin chip"
-        " and does not claim the 'probe' object, allowing a separate [probe] section to coexist.",
+        " and does not claim the 'probe' object, allowing a separate [probe] section to coexist."
+        " On registry-capable Kalico, Cartographer always registers as the named 'cartographer' probe:"
+        " true makes it the default probe, while false registers it as named-only."
+        " There, standard probe mux commands extend rather than override other probes' handlers."
+        " Pin-chip names and existing behavior elsewhere are unchanged.",
         default=True,
     )
 

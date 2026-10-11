@@ -36,11 +36,10 @@ def init_runtime(config: object) -> tuple[Adapters, Integrator]:
 
     if env == Environment.Kalico:
         from cartographer.adapters.kalico.adapters import KalicoAdapters
-        from cartographer.adapters.kalico.probe import KalicoCartographerProbe
-        from cartographer.adapters.klipper_like.integrator import KlipperLikeIntegrator
+        from cartographer.adapters.kalico.integrator import KalicoIntegrator
 
         adapters = KalicoAdapters(cast("KlipperConfigWrapper", config))
-        return adapters, KlipperLikeIntegrator(adapters, KalicoCartographerProbe)
+        return adapters, KalicoIntegrator(adapters)
 
     msg = f"Unsupported environment: {env}"
     raise RuntimeError(msg)
