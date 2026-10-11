@@ -163,18 +163,12 @@ class KalicoIntegrator(KlipperLikeIntegrator):
             registration.macro.run(command)
 
         handler = catch_macro_errors(run)
-        self._gcode.register_mux_command(
-            registration.name,
-            "PROBE",
-            probe.probe_name,
-            handler,
-            desc=registration.macro.description,
-        )
-        if probe.is_default_probe:
+        keys = (probe.probe_name, None) if probe.is_default_probe else (probe.probe_name,)
+        for key in keys:
             self._gcode.register_mux_command(
                 registration.name,
                 "PROBE",
-                None,
+                key,
                 handler,
                 desc=registration.macro.description,
             )
