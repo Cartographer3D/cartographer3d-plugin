@@ -29,7 +29,6 @@ class Command(MockParams):
         self.command = command
         self.commandline = commandline
         self.params = params
-        self.respond_info = Mock()
 
     def get_command(self) -> str:
         return self.command
@@ -119,10 +118,8 @@ def test_config_registers_real_probe(mocker: MockerFixture, host: Mock, is_defau
     host.printer.add_object.assert_not_called()
 
 
-@pytest.mark.parametrize(
-    ("missing", "is_default"),
-    [("module", True), ("module", False), ("class", True), ("class", False), ("api", True), ("api", False)],
-)
+@pytest.mark.parametrize("missing", ["module", "class", "get_list", "add_probe_object", "get_command_probe"])
+@pytest.mark.parametrize("is_default", [True, False])
 def test_legacy_fallback(mocker: MockerFixture, host: Mock, missing: str, is_default: bool) -> None:
     if missing == "module":
         _ = mocker.patch(
@@ -132,7 +129,7 @@ def test_legacy_fallback(mocker: MockerFixture, host: Mock, missing: str, is_def
     elif missing == "class":
         del host.module.ProbeList
     else:
-        host.api.get_command_probe = None
+        setattr(host.api, missing, None)
     host.device.config.general.register_as_probe = is_default
     KalicoIntegrator(host).register_probe(host.device)
     if is_default:
@@ -184,6 +181,20 @@ def test_four_mux_commands_copy_only_selector(host: Mock, is_default: bool) -> N
         assert original.params == {"PROBE": "cartographer", "EXTRA": "retained"}
         host.gcode.create_gcode_command.reset_mock()
     host.gcode.register_command.assert_not_called()
+
+
+@pytest.mark.parametrize("mesh", [False, True])
+def test_registered_callbacks_catch_macro_errors(host: Mock, mesh: bool) -> None:
+    integrator, probe = register(host)
+    host.registry.get_command_probe.return_value = probe
+    name = "BED_MESH_CALIBRATE" if mesh else "PROBE"
+    macro = Mock(spec=["run", "description"])
+    macro.run.side_effect = RuntimeError("macro failure")
+    integrator.register_macro(MacroRegistration(name, macro))
+    callback = command_handler(host) if mesh else host.gcode.register_mux_command.call_args.args[3]
+    command = Command(name, name, {"PROBE": "cartographer", "METHOD": "scan"})
+    with pytest.raises(command.error, match="^macro failure$"):
+        _ = callback(command)
 
 
 @pytest.mark.parametrize("other_first", [True, False])
@@ -307,14 +318,9 @@ def test_missing_native_errors_but_named_scan_works(host: Mock) -> None:
 
 def test_real_probe_native_rapid_diagnostic_and_point_contract(host: Mock) -> None:
     _, probe = register(host)
+    assert probe.name == "cartographer"
     assert not hasattr(probe.mcu_probe, "begin_collect_distance")
     command = Command("BED_MESH_CALIBRATE", "rapid scan", {"METHOD": "rapid_scan", "LIFT_SPEED": "8"})
-    # Native consumer-shaped diagnostic: removing the real adapter's name must fail here.
-    if command.get("METHOD") == "rapid_scan" and not hasattr(probe.mcu_probe, "begin_collect_distance"):
-        command.respond_info(f"METHOD=rapid_scan not supported for probe {probe.name}, using automatic")
-    command.respond_info.assert_called_once_with(
-        "METHOD=rapid_scan not supported for probe cartographer, using automatic"
-    )
     host.device.scan_mode.perform_probe.assert_not_called()
     host.toolhead.move.assert_not_called()
     host.toolhead.get_position.return_value = Position(10, 20, 5)
