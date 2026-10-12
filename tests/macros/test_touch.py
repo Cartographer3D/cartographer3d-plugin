@@ -95,8 +95,8 @@ def test_touch_accuracy_macro_output(
     i = -1
     measurements: list[float] = [50 + i * 10 for i in range(10)]
 
-    def mock_probe(max_samples: int | None = None) -> float:
-        _ = max_samples
+    def mock_probe(max_samples: int | None = None, *, speed: float | None = None) -> float:
+        _ = max_samples, speed
         nonlocal i
         i += 1
         return measurements[i]
@@ -129,8 +129,8 @@ def test_touch_accuracy_macro_sample_count(
     i = -1
     measurements: list[float] = [50 + i * 10 for i in range(10)]
 
-    def mock_probe(max_samples: int | None = None) -> float:
-        _ = max_samples
+    def mock_probe(max_samples: int | None = None, *, speed: float | None = None) -> float:
+        _ = max_samples, speed
         nonlocal i
         i += 1
         return measurements[i]
@@ -157,6 +157,7 @@ def test_touch_home_macro_moves(
 ):
     macro = TouchHomeMacro(probe, toolhead, home_position=(10, 10), lift_speed=5, travel_speed=50, random_radius=0)
     probe.perform_probe = mocker.Mock(return_value=0.1)
+    _ = mocker.patch.object(probe, "approach_height", 1.5, create=True)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 2))
     move_spy = mocker.spy(toolhead, "move")
 
@@ -165,6 +166,7 @@ def test_touch_home_macro_moves(
     assert move_spy.mock_calls == [
         mocker.call(z=4, speed=mocker.ANY),
         mocker.call(x=10, y=10, speed=mocker.ANY),
+        mocker.call(z=1.5, speed=5),
     ]
 
 
@@ -237,6 +239,7 @@ def test_random_radius_uniform_distribution(
     """Test that random positions are generated correctly with square root method."""
     macro = TouchHomeMacro(probe, toolhead, home_position=(50, 50), lift_speed=5, travel_speed=50, random_radius=10.0)
     probe.perform_probe = mocker.Mock(return_value=0.1)
+    _ = mocker.patch.object(probe, "approach_height", 1.5, create=True)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 2))
     move_spy = mocker.spy(toolhead, "move")
 
@@ -246,4 +249,5 @@ def test_random_radius_uniform_distribution(
     assert move_spy.mock_calls == [
         mocker.call(z=4, speed=mocker.ANY),
         mocker.call(x=expected_x, y=expected_y, speed=mocker.ANY),
+        mocker.call(z=1.5, speed=5),
     ]

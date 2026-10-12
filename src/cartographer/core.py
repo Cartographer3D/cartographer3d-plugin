@@ -218,6 +218,8 @@ class PrinterCartographer:
                             adapters.gcode,
                             self.task_executor,
                             self.scheduler,
+                            self.touch_mode,
+                            self.scan_mode,
                         ),
                     ),
                 ]

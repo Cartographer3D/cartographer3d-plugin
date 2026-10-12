@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import astuple, replace
+from dataclasses import replace
 from functools import partial
 from typing import TYPE_CHECKING, final
 
@@ -156,7 +156,7 @@ class KlipperConfiguration(Configuration):
 
     @override
     def save_coil_model(self, config: CoilCalibrationConfiguration) -> None:
-        value = ",".join(map(str, astuple(config)))
+        value = ",".join(map(str, config.as_config_values()))
         self._config.set(f"{self.name} coil", get_option_name(CoilConfiguration, "calibration"), value)
 
     @override

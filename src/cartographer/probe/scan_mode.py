@@ -23,6 +23,18 @@ logger = logging.getLogger(__name__)
 
 
 TRIGGER_DISTANCE = 2.0
+# Worst case from the scan trigger to the Z steppers halting: Klipper's
+# multi-MCU trsync timeout (25 ms) stops them even if the trigger report is
+# lost, plus a few ms of sampling and detection. Homing halts without a
+# deceleration ramp, so overshoot is speed x this.
+WORST_CASE_STOP_TIME = 0.030
+# Share of the trigger height that overshoot may use up.
+MAX_OVERSHOOT_FRACTION = 0.5
+
+
+def max_safe_probe_speed(trigger_distance: float) -> float:
+    """Fastest descent whose worst-case overshoot stays well clear of the bed."""
+    return trigger_distance * MAX_OVERSHOOT_FRACTION / WORST_CASE_STOP_TIME
 
 
 @dataclass(frozen=True)
@@ -95,7 +107,18 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         }
 
     @override
-    def perform_probe(self) -> float:
+    def perform_probe(self, *, speed: float | None = None) -> float:
+        speed = speed if speed is not None else self._config.probe_speed
+        max_speed = max_safe_probe_speed(self.probe_height)
+        if speed > max_speed:
+            logger.warning(
+                "Scan probe speed %.1f mm/s capped to %.1f mm/s, the fastest that stops safely "
+                "above the bed from the %.1f mm trigger",
+                speed,
+                max_speed,
+                self.probe_height,
+            )
+            speed = max_speed
         if not self._toolhead.is_homed("z"):
             msg = "Z axis must be homed before probing"
             raise RuntimeError(msg)
@@ -103,9 +126,9 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         dist = self.measure_distance()
         if dist > self.probe_height + 0.5:
             # Safely move downwards
-            _ = self._toolhead.z_probing_move(self, speed=self._config.probe_speed)
+            _ = self._toolhead.z_probing_move(self, speed=speed)
         elif self._toolhead.get_position().z < self.probe_height:
-            self._toolhead.move(z=self.probe_height, speed=self._config.probe_speed)
+            self._toolhead.move(z=self.probe_height, speed=speed)
             self._toolhead.wait_moves()
 
         delta = self.probe_height - self.measure_distance()

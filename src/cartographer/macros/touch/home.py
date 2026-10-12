@@ -78,6 +78,10 @@ class TouchHomeMacro(Macro):
                 y=home_y,
                 speed=self._travel_speed,
             )
+            if z_was_homed:
+                # Z is already known (e.g. scan homed), so drop fast to where the
+                # first touch starts instead of making it crawl down from the hop.
+                self._toolhead.move(z=self._probe.approach_height, speed=self._lift_speed)
             self._toolhead.wait_moves()
 
             trigger_pos = self._probe.perform_probe()

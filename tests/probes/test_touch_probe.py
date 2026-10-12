@@ -224,3 +224,27 @@ def test_impossible_budget_fails_before_z_probing_move(mocker: MockerFixture, to
 
     move_spy.assert_not_called()
     toolhead.z_probing_move.assert_not_called()
+
+
+def test_home_start_sends_hold_as_time_at_model_speed(
+    mocker: MockerFixture, mcu: Mcu, toolhead: Toolhead, config: Configuration
+) -> None:
+    from dataclasses import replace
+
+    from cartographer.probe.touch_mode import TouchMode, TouchModeConfiguration
+
+    touch = TouchMode(mcu, toolhead, replace(TouchModeConfiguration.from_config(config), hold_distance=0.06))
+    touch.load_model("test_touch")
+    mcu.start_homing_touch = mocker.Mock()
+
+    _ = touch.home_start(0.0)
+
+    mcu.start_homing_touch.assert_called_once_with(0.0, 1000, 20)  # 0.06 mm at 3 mm/s
+
+
+def test_home_start_without_hold_sends_zero(mocker: MockerFixture, mcu: Mcu, probe: Probe) -> None:
+    mcu.start_homing_touch = mocker.Mock()
+
+    _ = probe.touch.home_start(0.0)
+
+    mcu.start_homing_touch.assert_called_once_with(0.0, 1000, 0)

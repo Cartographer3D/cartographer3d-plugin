@@ -51,6 +51,7 @@ class TouchModeConfiguration:
     retract_distance: float
     models: dict[str, TouchModelConfiguration]
     sample_range: float
+    hold_distance: float = 0.0
 
     @staticmethod
     def from_config(config: Configuration) -> TouchModeConfiguration:
@@ -67,6 +68,7 @@ class TouchModeConfiguration:
             lift_speed=config.general.lift_speed,
             retract_distance=config.touch.retract_distance,
             sample_range=config.touch.sample_range,
+            hold_distance=config.touch.hold_distance,
         )
 
 
@@ -232,8 +234,14 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             "last_z_result": round(self.last_z_result, 6) if self.last_z_result is not None else None,
         }
 
+    @property
+    def approach_height(self) -> float:
+        """Height each touch starts from: touches below it lift back up to it first."""
+        return self._config.retract_distance
+
     @override
-    def perform_probe(self, max_samples: int | None = None) -> float:
+    def perform_probe(self, max_samples: int | None = None, *, speed: float | None = None) -> float:
+        del speed  # touch always runs at the model's speed: its threshold was calibrated there
         if not self._toolhead.is_homed("z"):
             msg = "Z axis must be homed before probing"
             raise RuntimeError(msg)
@@ -324,7 +332,8 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         if nozzle_temperature > max_temp + MAX_TOUCH_TEMPERATURE_EPSILON:
             msg = f"Nozzle temperature must be below {max_temp:d}C, was {nozzle_temperature:.1f}C"
             raise RuntimeError(msg)
-        return self._mcu.start_homing_touch(print_time, model.threshold)
+        hold_ms = round(1000 * self._config.hold_distance / model.speed)
+        return self._mcu.start_homing_touch(print_time, model.threshold, hold_ms)
 
     @override
     def on_home_end(self, homing_state: HomingState) -> None:
