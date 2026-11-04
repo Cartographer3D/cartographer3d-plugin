@@ -6,10 +6,13 @@ from unittest.mock import Mock
 import pytest
 
 from cartographer.adapters.klipper.endstop import KlipperEndstop
-from cartographer.adapters.klipper_like.gcode_context import gcode_command_context
+from cartographer.adapters.klipper_like.gcode_context import gcode_command_context, get_gcode_command
 from cartographer.adapters.klipper_like.integrator import KlipperLikeIntegrator
+from cartographer.interfaces.printer import Position
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
     from gcode import GCodeCommand
     from pytest_mock import MockerFixture
 
@@ -189,3 +192,140 @@ def test_home_end_only_notifies_successful_or_legacy_events(mocker: MockerFixtur
         homing.set_homed_position.assert_not_called()
     else:
         endstop.on_home_end.assert_called_once()
+
+
+@pytest.mark.parametrize("pos", [[1.0, 2.0, 3.0, 4.0], None])
+@pytest.mark.parametrize("callback_error", [False, True])
+def test_manual_probe_live_completion_context(
+    adapter: KlipperToolhead, mocker: MockerFixture, pos: list[float] | None, callback_error: bool
+) -> None:
+    initiating = Mock(expired=False)
+    completing = Mock()
+    previous = Mock()
+    backend = Mock()
+    callbacks: list[Callable[[list[float] | None, GCodeCommand], None]] = []
+
+    def new_helper(
+        printer: object,
+        gcmd: GCodeCommand,
+        finalize_callback: Callable[[list[float] | None, GCodeCommand], None],
+        pass_gcmd: bool = False,
+    ) -> None:
+        assert gcmd is initiating
+        assert not initiating.expired
+        assert pass_gcmd is True
+        backend(printer, gcmd)
+        callbacks.append(finalize_callback)
+
+    error = ValueError("completion failed")
+    seen: list[Position | None] = []
+
+    def finalize(position: Position | None) -> None:
+        assert initiating.expired
+        assert get_gcode_command() is completing
+        seen.append(position)
+        if callback_error:
+            raise error
+
+    _ = mocker.patch("cartographer.adapters.klipper_like.toolhead.ManualProbeHelper", new_helper)
+    with gcode_command_context(initiating):
+        adapter.manual_probe(finalize)
+        assert get_gcode_command() is initiating
+    initiating.expired = True
+    with gcode_command_context(previous):
+        if callback_error:
+            with pytest.raises(ValueError) as caught:
+                callbacks[0](pos, completing)
+            assert caught.value is error
+        else:
+            callbacks[0](pos, completing)
+        assert get_gcode_command() is previous
+    assert seen == [Position(1.0, 2.0, 3.0) if pos else None]
+    backend.assert_called_once_with(adapter.printer, initiating)
+    cast("Mock", adapter.printer).lookup_object.assert_not_called()
+
+
+@pytest.mark.parametrize("pos", [[1.0, 2.0, 3.0, 4.0], None])
+@pytest.mark.parametrize("callback_error", [False, True])
+def test_manual_probe_legacy_completion_clears_context(
+    adapter: KlipperToolhead, mocker: MockerFixture, pos: list[float] | None, callback_error: bool
+) -> None:
+    initiating = Mock(expired=False)
+    previous = Mock()
+    backend = Mock()
+    callbacks: list[Callable[[list[float] | None], None]] = []
+    gcode = cast("Mock", adapter.printer.lookup_object("gcode"))
+
+    def old_helper(
+        printer: object, gcmd: GCodeCommand, finalize_callback: Callable[[list[float] | None], None]
+    ) -> None:
+        assert gcmd is gcode.create_gcode_command.return_value
+        backend(printer, gcmd)
+        callbacks.append(finalize_callback)
+
+    error = ValueError("completion failed")
+    seen: list[Position | None] = []
+
+    def finalize(position: Position | None) -> None:
+        assert initiating.expired
+        assert get_gcode_command() is None
+        seen.append(position)
+        if callback_error:
+            raise error
+
+    _ = mocker.patch("cartographer.adapters.klipper_like.toolhead.ManualProbeHelper", old_helper)
+    with gcode_command_context(initiating):
+        adapter.manual_probe(finalize)
+        assert get_gcode_command() is initiating
+    initiating.expired = True
+    with gcode_command_context(previous):
+        if callback_error:
+            with pytest.raises(ValueError) as caught:
+                callbacks[0](pos)
+            assert caught.value is error
+        else:
+            callbacks[0](pos)
+        assert get_gcode_command() is previous
+    assert seen == [Position(1.0, 2.0, 3.0) if pos else None]
+    gcode.create_gcode_command.assert_called_once_with("", "", {})
+    backend.assert_called_once_with(adapter.printer, gcode.create_gcode_command.return_value)
+
+
+def test_manual_probe_new_helper_requires_live_context(adapter: KlipperToolhead, mocker: MockerFixture) -> None:
+    backend = Mock()
+    finalize = Mock()
+
+    def new_helper(printer: object, gcmd: GCodeCommand, callback: object, pass_gcmd: bool = False) -> None:
+        backend(printer, gcmd, callback, pass_gcmd)
+
+    _ = mocker.patch("cartographer.adapters.klipper_like.toolhead.ManualProbeHelper", new_helper)
+    with gcode_command_context(None), pytest.raises(RuntimeError, match="(?i)(active|live).*command"):
+        adapter.manual_probe(finalize)
+    backend.assert_not_called()
+    finalize.assert_not_called()
+    cast("Mock", adapter.printer).lookup_object.assert_not_called()
+
+
+@pytest.mark.parametrize("new_api", [False, True])
+def test_manual_probe_backend_type_error_is_not_retried(
+    adapter: KlipperToolhead, mocker: MockerFixture, new_api: bool
+) -> None:
+    error = TypeError("inside manual probe backend")
+    backend = Mock(side_effect=error)
+    initiating = Mock()
+
+    def old_helper(printer: object, gcmd: GCodeCommand, callback: object) -> None:
+        backend(printer, gcmd, callback)
+
+    def new_helper(printer: object, gcmd: GCodeCommand, callback: object, pass_gcmd: bool = False) -> None:
+        assert gcmd is initiating
+        assert pass_gcmd is True
+        backend(printer, gcmd, callback, pass_gcmd)
+
+    _ = mocker.patch(
+        "cartographer.adapters.klipper_like.toolhead.ManualProbeHelper", new_helper if new_api else old_helper
+    )
+    with gcode_command_context(initiating), pytest.raises(TypeError) as caught:
+        adapter.manual_probe(Mock())
+    assert caught.value is error
+    backend.assert_called_once()

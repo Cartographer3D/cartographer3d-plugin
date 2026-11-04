@@ -11,12 +11,13 @@ from typing_extensions import override
 
 from cartographer.adapters.klipper.endstop import KlipperEndstop
 from cartographer.adapters.klipper_like.axis_compat import uses_string_homing_axes
-from cartographer.adapters.klipper_like.gcode_context import get_gcode_command
+from cartographer.adapters.klipper_like.gcode_context import gcode_command_context, get_gcode_command
 from cartographer.adapters.klipper_like.utils import reraise_from_klipper
 from cartographer.interfaces.printer import Endstop, HomingAxis, Position, TemperatureStatus, Toolhead
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
+    from gcode import GCodeCommand
     from klippy import Printer
     from mcu import MCU_endstop
     from stepper import MCU_stepper
@@ -161,13 +162,24 @@ class KlipperLikeToolhead(Toolhead, ABC):
 
     @override
     def manual_probe(self, finalize_callback: Callable[[Position | None], None]) -> None:
-        gcode = self.printer.lookup_object("gcode")
-        gcmd = gcode.create_gcode_command("", "", {})
-        _ = ManualProbeHelper(
-            self.printer,
-            gcmd,
-            lambda pos: finalize_callback(Position(pos[0], pos[1], pos[2]) if pos else None),
-        )
+        passes_gcmd = "pass_gcmd" in inspect.signature(ManualProbeHelper).parameters
+        if passes_gcmd:
+            gcmd = get_gcode_command()
+            if gcmd is None:
+                msg = "Manual probing requires an active G-code command context"
+                raise RuntimeError(msg)
+        else:
+            gcode = self.printer.lookup_object("gcode")
+            gcmd = gcode.create_gcode_command("", "", {})
+
+        def finalize(pos: list[float] | None, callback_gcmd: GCodeCommand | None = None) -> None:
+            with gcode_command_context(callback_gcmd):
+                finalize_callback(Position(pos[0], pos[1], pos[2]) if pos else None)
+
+        if passes_gcmd:
+            _ = ManualProbeHelper(self.printer, gcmd, finalize, pass_gcmd=True)
+        else:
+            _ = ManualProbeHelper(self.printer, gcmd, finalize)
 
     @override
     def clear_z_homing_state(self) -> None:
