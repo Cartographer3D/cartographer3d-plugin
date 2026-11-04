@@ -14,8 +14,8 @@ if TYPE_CHECKING:
 class KlipperAxisTwistCompensationAdapter(KlipperLikeAxisTwistCompensationAdapter):
     def __init__(self, config: ConfigWrapper, *, x_offset: float, y_offset: float) -> None:
         super().__init__(config)
-        self._x_offset = x_offset
-        self._y_offset = y_offset
+        self._x_offset: float = x_offset
+        self._y_offset: float = y_offset
 
     @override
     def get_z_compensation_value(self, *, x: float, y: float) -> float:
