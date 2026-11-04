@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING, cast
 
 import pytest
@@ -7,6 +8,7 @@ from numpy.polynomial import Polynomial
 
 from cartographer.interfaces.configuration import Configuration, ScanModelConfiguration
 from cartographer.interfaces.printer import HomingState, Position, Sample, Toolhead
+from tests.mocks.config import MockConfiguration, default_general_config
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
@@ -84,7 +86,13 @@ def test_probe_returns_trigger_position(
     assert trigger_pos == pytest.approx(probe.scan.probe_height + z_pos - dist)  # pyright:ignore[reportUnknownMemberType]
 
 
+@pytest.mark.parametrize(
+    "config",
+    [MockConfiguration(general=replace(default_general_config, x_offset=12.5, y_offset=-23.0))],
+)
 def test_probe_applies_axis_twist_compensation(
+    config: Configuration,
+    mocker: MockerFixture,
     probe: Probe,
     toolhead: Toolhead,
     session: Session[Sample],
@@ -95,11 +103,15 @@ def test_probe_applies_axis_twist_compensation(
     z_pos = 2
     z_comp = 0.5
     session.get_items = lambda: [sample(frequency=dist) for _ in range(11)]
-    toolhead.get_position = lambda: Position(0, 0, z_pos)
-    axis_twist_compensation_adapter.get_z_compensation_value = lambda x, y: z_comp
+    assert config.general.x_offset == 12.5
+    assert config.general.y_offset == -23.0
+    toolhead.get_position = lambda: Position(41.0, 67.0, z_pos)
+    compensation = mocker.Mock(return_value=z_comp)
+    axis_twist_compensation_adapter.get_z_compensation_value = compensation
 
     trigger_pos = probe.scan.perform_probe(gcmd=params)
 
+    compensation.assert_called_once_with(x=41.0, y=67.0)
     assert trigger_pos == dist + z_comp
 
 
