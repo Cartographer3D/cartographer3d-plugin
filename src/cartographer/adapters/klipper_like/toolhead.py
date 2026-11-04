@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 import logging
 from abc import ABC
 from typing import TYPE_CHECKING, Callable, final
@@ -10,6 +11,7 @@ from typing_extensions import override
 
 from cartographer.adapters.klipper.endstop import KlipperEndstop
 from cartographer.adapters.klipper_like.axis_compat import uses_string_homing_axes
+from cartographer.adapters.klipper_like.gcode_context import get_gcode_command
 from cartographer.adapters.klipper_like.utils import reraise_from_klipper
 from cartographer.interfaces.printer import Endstop, HomingAxis, Position, TemperatureStatus, Toolhead
 
@@ -106,6 +108,13 @@ class KlipperLikeToolhead(Toolhead, ABC):
     @override
     @reraise_from_klipper
     def z_probing_move(self, endstop: Endstop, *, speed: float) -> float:
+        probing_move = self.printer.lookup_object("homing").probing_move
+        requires_gcmd = "gcmd" in inspect.signature(probing_move).parameters
+        gcmd = get_gcode_command()
+        if requires_gcmd and gcmd is None:
+            msg = "Probing requires an active G-code command context"
+            raise RuntimeError(msg)
+
         klipper_endstop = KlipperEndstop(self.mcu, endstop)
         self.wait_moves()
         z_min, _ = self.get_axis_limits("z")
@@ -113,16 +122,25 @@ class KlipperLikeToolhead(Toolhead, ABC):
         pos = self.toolhead.get_position()[:]
         pos[2] = z_min
 
-        epos = self.printer.lookup_object("homing").probing_move(klipper_endstop, pos, speed)
+        if requires_gcmd:
+            epos = probing_move(klipper_endstop, pos, speed, gcmd=gcmd)
+        else:
+            epos = probing_move(klipper_endstop, pos, speed)
         return epos[2]
 
     @override
     def z_home_end(self, endstop: Endstop) -> None:
-        klipper_endstop = KlipperEndstop(self.mcu, endstop)
+        requires_gcmd = "gcmd" in inspect.signature(Homing).parameters
+        gcmd = get_gcode_command()
+        if requires_gcmd and gcmd is None:
+            msg = "Homing completion requires an active G-code command context"
+            raise RuntimeError(msg)
 
-        homing = Homing(self.printer)
+        klipper_endstop = KlipperEndstop(self.mcu, endstop)
+        homing = Homing(self.printer, gcmd=gcmd) if requires_gcmd else Homing(self.printer)
         homing.set_axes([axis_to_index("z")])
         homing.trigger_mcu_pos = {sp.get_name(): sp.get_mcu_position() for sp in klipper_endstop.get_steppers()}
+        homing.homing_successful = True
 
         self.printer.send_event("homing:home_rails_end", homing, [FakeRail(klipper_endstop, self.get_axis_limits("z"))])
 

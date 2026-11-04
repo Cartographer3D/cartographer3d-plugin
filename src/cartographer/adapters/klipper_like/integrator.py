@@ -143,6 +143,9 @@ class KlipperLikeIntegrator(Integrator):
 
     @reraise_for_klipper
     def _handle_home_rails_end(self, homing: Homing, rails: Sequence[_Rail]) -> None:
+        if not getattr(homing, "homing_successful", True):
+            return
+
         homing_state = KlipperHomingState(homing)
         klipper_endstops = [
             es.endstop for rail in rails for es, _ in rail.get_endstops() if isinstance(es, KlipperEndstopBase)
