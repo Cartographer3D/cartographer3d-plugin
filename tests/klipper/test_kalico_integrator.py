@@ -9,8 +9,12 @@ import pytest
 from cartographer.adapters.kalico.integrator import KalicoIntegrator
 from cartographer.adapters.kalico.probe import KalicoCartographerProbe
 from cartographer.adapters.klipper.endstop import KlipperEndstop
+from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
+from cartographer.adapters.klipper_like.gcode_context import gcode_command_context, get_gcode_command
+from cartographer.adapters.klipper_like.integrator import catch_macro_errors
 from cartographer.core import MacroRegistration
 from cartographer.extra import load_config
+from cartographer.interfaces.errors import PrinterShutdownError
 from cartographer.interfaces.printer import Position
 from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateMacro
 from tests.mocks.params import MockParams
@@ -38,6 +42,83 @@ class Command(MockParams):
 
     def get_command_parameters(self) -> dict[str, str]:
         return self.params
+
+
+def command(*methods: str) -> GCodeCommand:
+    return cast("GCodeCommand", Mock(spec=["error", *methods], error=ValueError))
+
+
+@pytest.mark.parametrize("error", [None, RuntimeError("failure"), ValueError("failure"), PrinterShutdownError()])
+def test_macro_scope_restores_after_nested_callback(error: Exception | None) -> None:
+    outer, incoming, nested = command(), command(), command()
+
+    def inner(gcmd: GCodeCommand) -> None:
+        assert get_gcode_command() is gcmd is nested
+
+    def run(gcmd: GCodeCommand) -> None:
+        assert get_gcode_command() is gcmd is incoming
+        catch_macro_errors(inner)(nested)
+        assert get_gcode_command() is incoming
+        if error is not None:
+            raise error
+
+    with gcode_command_context(outer):
+        if error is None:
+            catch_macro_errors(run)(incoming)
+        else:
+            with pytest.raises(ValueError):
+                catch_macro_errors(run)(incoming)
+        assert get_gcode_command() is outer
+    assert get_gcode_command() is None
+
+
+@pytest.mark.parametrize("adapter", ["gcode", "accel"])
+@pytest.mark.parametrize("api", ["live", "missing", "noncallable", "unscoped"])
+def test_nested_scripts_prefer_live_command_with_legacy_fallback(mocker: MockerFixture, adapter: str, api: str) -> None:
+    _ = mocker.patch.dict("sys.modules", {"extras.homing": Mock(), "extras.manual_probe": Mock()})
+    from cartographer.adapters.klipper.toolhead import KlipperToolhead
+
+    printer, config, mcu = Mock(), Mock(), Mock()
+    config.printer = printer
+    config.get_printer.return_value = printer
+    dispatch = printer.lookup_object.return_value
+    live = command("run_script")
+    run_script = Mock()
+    if api == "missing":
+        delattr(live, "run_script")
+    else:
+        _ = mocker.patch.object(live, "run_script", None if api == "noncallable" else run_script)
+    with gcode_command_context(None if api == "unscoped" else live):
+        if adapter == "gcode":
+            script = "G4 P1"
+            KlipperGCodeDispatch(printer).run_gcode(script)
+        else:
+            script = "SET_VELOCITY_LIMIT ACCEL=123.456"
+            KlipperToolhead(config, mcu).set_max_accel(123.456)
+    if api == "live":
+        run_script.assert_called_once_with(script)
+        dispatch.run_script_from_command.assert_not_called()
+    else:
+        run_script.assert_not_called()
+        dispatch.run_script_from_command.assert_called_once_with(script)
+
+
+@pytest.mark.parametrize("adapter", ["gcode", "accel"])
+def test_live_script_errors_do_not_retry_legacy_api(mocker: MockerFixture, adapter: str) -> None:
+    _ = mocker.patch.dict("sys.modules", {"extras.homing": Mock(), "extras.manual_probe": Mock()})
+    from cartographer.adapters.klipper.toolhead import KlipperToolhead
+
+    printer, config = Mock(), Mock()
+    config.printer = printer
+    config.get_printer.return_value = printer
+    live = command("run_script")
+    _ = mocker.patch.object(live, "run_script", side_effect=RuntimeError("script failure"))
+    with gcode_command_context(live), pytest.raises(RuntimeError, match="script failure"):
+        if adapter == "gcode":
+            KlipperGCodeDispatch(printer).run_gcode("G4 P1")
+        else:
+            KlipperToolhead(config, Mock()).set_max_accel(100)
+    printer.lookup_object.return_value.run_script_from_command.assert_not_called()
 
 
 PROBE_COMMANDS = ("PROBE", "PROBE_ACCURACY", "QUERY_PROBE", "Z_OFFSET_APPLY_PROBE")
@@ -314,6 +395,66 @@ def test_missing_native_errors_but_named_scan_works(host: Mock) -> None:
     assert_copy(host, original, macro.run.call_args.args[0])
     assert original.params == {"PROBE": "cartographer", "METHOD": "scan"}
     macro.set_fallback_macro.assert_not_called()
+
+
+@pytest.mark.parametrize("mesh", [False, True])
+@pytest.mark.parametrize("child_api", ["live", "missing", "noncallable"])
+def test_filtered_command_inherits_live_context(mocker: MockerFixture, host: Mock, mesh: bool, child_api: str) -> None:
+    integrator, probe = register(host)
+    host.registry.get_command_probe.return_value = probe
+    name = "BED_MESH_CALIBRATE" if mesh else "PROBE"
+    macro = Mock(spec=["run", "description"])
+    integrator.register_macro(MacroRegistration(name, macro))
+    callback = command_handler(host) if mesh else host.gcode.register_mux_command.call_args.args[3]
+    original = Command(name, "original line", {"PROBE": "cartographer", "EXTRA": "retained"})
+    child = Mock(return_value=Command(name, "original line", {"EXTRA": "retained"}))
+    if child_api != "missing":
+        _ = mocker.patch.object(original, "create_subcommand", child if child_api == "live" else None, create=True)
+
+    def run(received: Command) -> None:
+        assert get_gcode_command() is original
+        assert received is not original
+        if child_api == "live":
+            assert received is child.return_value
+        assert received.params == {"EXTRA": "retained"}
+        assert received.command == original.command
+        assert received.commandline == original.commandline
+
+    macro.run.side_effect = run
+    _ = callback(original)
+    assert get_gcode_command() is None
+    if child_api == "live":
+        child.assert_called_once_with(name, "original line", {"EXTRA": "retained"})
+        host.gcode.create_gcode_command.assert_not_called()
+    else:
+        child.assert_not_called()
+        host.gcode.create_gcode_command.assert_called_once_with(name, "original line", {"EXTRA": "retained"})
+    assert original.params == {"PROBE": "cartographer", "EXTRA": "retained"}
+
+
+@pytest.mark.parametrize("fail", [False, True])
+def test_native_probe_scopes_actual_command_and_restores(host: Mock, fail: bool) -> None:
+    _, probe = register(host)
+    outer = cast("GCodeCommand", cast("object", Command("OUTER", "outer", {})))
+    incoming = cast("GCodeCommand", cast("object", Command("PROBE", "probe", {})))
+    host.toolhead.get_position.return_value = Position(10, 20, 5)
+
+    def perform_probe() -> float:
+        assert get_gcode_command() is incoming
+        if fail:
+            msg = "probe failure"
+            raise ValueError(msg)
+        return 1.5
+
+    host.device.scan_mode.perform_probe.side_effect = perform_probe
+    with gcode_command_context(outer):
+        if fail:
+            with pytest.raises(ValueError, match="probe failure"):
+                _ = probe.run_probe(incoming)
+        else:
+            assert probe.run_probe(incoming) == [10, 20, 1.5]
+        assert get_gcode_command() is outer
+    assert get_gcode_command() is None
 
 
 def test_real_probe_native_rapid_diagnostic_and_point_contract(host: Mock) -> None:

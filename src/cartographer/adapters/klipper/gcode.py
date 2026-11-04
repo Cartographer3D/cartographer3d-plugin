@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
 
+from cartographer.adapters.klipper_like.gcode_context import get_gcode_command
 from cartographer.interfaces.printer import GCodeDispatch
 
 if TYPE_CHECKING:
@@ -17,4 +18,7 @@ class KlipperGCodeDispatch(GCodeDispatch):
 
     @override
     def run_gcode(self, script: str) -> None:
+        gcmd = get_gcode_command()
+        if gcmd is not None and callable(getattr(gcmd, "run_script", None)):
+            return gcmd.run_script(script)
         return self._gcode.run_script_from_command(script)

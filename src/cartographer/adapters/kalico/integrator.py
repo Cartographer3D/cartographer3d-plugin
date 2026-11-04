@@ -131,7 +131,10 @@ class KalicoIntegrator(KlipperLikeIntegrator):
                     selected = registry.get_command_probe(gcmd)
                 if selected is probe and method in (None, "scan"):
                     params = {key: value for key, value in gcmd.get_command_parameters().items() if key != "PROBE"}
-                    command = self._gcode.create_gcode_command(gcmd.get_command(), gcmd.get_commandline(), params)
+                    if callable(getattr(gcmd, "create_subcommand", None)):
+                        command = gcmd.create_subcommand(gcmd.get_command(), gcmd.get_commandline(), params)
+                    else:
+                        command = self._gcode.create_gcode_command(gcmd.get_command(), gcmd.get_commandline(), params)
                     macro.run(command)
                     return
                 if method == "scan":
@@ -159,7 +162,10 @@ class KalicoIntegrator(KlipperLikeIntegrator):
 
         def run(gcmd: GCodeCommand) -> None:
             params = {key: value for key, value in gcmd.get_command_parameters().items() if key != "PROBE"}
-            command = self._gcode.create_gcode_command(gcmd.get_command(), gcmd.get_commandline(), params)
+            if callable(getattr(gcmd, "create_subcommand", None)):
+                command = gcmd.create_subcommand(gcmd.get_command(), gcmd.get_commandline(), params)
+            else:
+                command = self._gcode.create_gcode_command(gcmd.get_command(), gcmd.get_commandline(), params)
             registration.macro.run(command)
 
         handler = catch_macro_errors(run)
