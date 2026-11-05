@@ -68,7 +68,7 @@ class ScanCalibrateMacro(Macro):
         if p.method == ScanCalibrateMethod.TOUCH:
             return self._run_touch(name, gcmd=params)
         elif p.method == ScanCalibrateMethod.MANUAL:
-            return self._run_manual(name)
+            return self._run_manual(name, gcmd=params)
 
         assert_never(p.method)
 
@@ -84,15 +84,16 @@ class ScanCalibrateMacro(Macro):
 
         self._calibrate(name)
 
-    def _run_manual(self, name: str) -> None:
+    def _run_manual(self, name: str, *, gcmd: MacroParams) -> None:
         _, z_max = self._toolhead.get_axis_limits("z")
         self._toolhead.set_z_position(z=z_max - 10)
 
         logger.info("Triggering manual probe, please bring nozzle to 0.1mm above the bed")
 
-        self._toolhead.manual_probe(partial(self._handle_manual_probe, name))
+        self._toolhead.manual_probe(partial(self._handle_manual_probe, name), gcmd=gcmd)
 
-    def _handle_manual_probe(self, name: str, pos: Position | None) -> None:
+    def _handle_manual_probe(self, name: str, pos: Position | None, gcmd: MacroParams) -> None:
+        del gcmd  # This continuation only moves and samples; it has no command-dependent operations.
         if pos is None:
             self._toolhead.clear_z_homing_state()
             return

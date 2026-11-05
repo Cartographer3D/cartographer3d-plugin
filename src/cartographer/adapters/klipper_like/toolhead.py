@@ -11,7 +11,6 @@ from typing_extensions import override
 
 from cartographer.adapters.klipper.endstop import KlipperEndstop
 from cartographer.adapters.klipper_like.axis_compat import uses_string_homing_axes
-from cartographer.adapters.klipper_like.gcode_context import gcode_command_context, get_gcode_command
 from cartographer.adapters.klipper_like.utils import reraise_from_klipper
 from cartographer.interfaces.printer import Endstop, HomingAxis, MacroParams, Position, TemperatureStatus, Toolhead
 
@@ -155,25 +154,25 @@ class KlipperLikeToolhead(Toolhead, ABC):
         return status["axis_minimum"][index], status["axis_maximum"][index]
 
     @override
-    def manual_probe(self, finalize_callback: Callable[[Position | None], None]) -> None:
+    def manual_probe(
+        self, finalize_callback: Callable[[Position | None, MacroParams], None], *, gcmd: MacroParams
+    ) -> None:
         passes_gcmd = "pass_gcmd" in inspect.signature(ManualProbeHelper).parameters
-        if passes_gcmd:
-            gcmd = get_gcode_command()
-            if gcmd is None:
-                msg = "Manual probing requires an active G-code command context"
-                raise RuntimeError(msg)
-        else:
-            gcode = self.printer.lookup_object("gcode")
-            gcmd = gcode.create_gcode_command("", "", {})
+        raw_gcmd = cast("GCodeCommand", gcmd)
 
-        def finalize(pos: list[float] | None, callback_gcmd: GCodeCommand | None = None) -> None:
-            with gcode_command_context(callback_gcmd):
-                finalize_callback(Position(pos[0], pos[1], pos[2]) if pos else None)
+        def finalize(pos: list[float] | None, callback_gcmd: GCodeCommand) -> None:
+            finalize_callback(Position(pos[0], pos[1], pos[2]) if pos else None, callback_gcmd)
 
         if passes_gcmd:
-            _ = ManualProbeHelper(self.printer, gcmd, finalize, pass_gcmd=True)
+            _ = ManualProbeHelper(self.printer, raw_gcmd, finalize, pass_gcmd=True)
         else:
-            _ = ManualProbeHelper(self.printer, gcmd, finalize)
+
+            def finalize_legacy(pos: list[float] | None) -> None:
+                # Legacy helpers cannot surface the completion command; old firmware has no execution scope.
+                gcode = self.printer.lookup_object("gcode")
+                finalize(pos, gcode.create_gcode_command("", "", {}))
+
+            _ = ManualProbeHelper(self.printer, raw_gcmd, finalize_legacy)
 
     @override
     def clear_z_homing_state(self) -> None:

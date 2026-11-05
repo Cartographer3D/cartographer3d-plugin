@@ -10,7 +10,6 @@ from cartographer.adapters.kalico.integrator import KalicoIntegrator
 from cartographer.adapters.kalico.probe import KalicoCartographerProbe
 from cartographer.adapters.klipper.endstop import KlipperEndstop
 from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
-from cartographer.adapters.klipper_like.gcode_context import gcode_command_context, get_gcode_command
 from cartographer.adapters.klipper_like.integrator import catch_macro_errors
 from cartographer.core import MacroRegistration
 from cartographer.extra import load_config
@@ -49,31 +48,25 @@ def command(*methods: str) -> GCodeCommand:
 
 
 @pytest.mark.parametrize("error", [None, RuntimeError("failure"), ValueError("failure"), PrinterShutdownError()])
-def test_macro_scope_restores_after_nested_callback(error: Exception | None) -> None:
-    outer, incoming, nested = command(), command(), command()
-
-    def inner(gcmd: GCodeCommand) -> None:
-        assert get_gcode_command() is gcmd is nested
+def test_macro_forwards_command_and_converts_errors(error: Exception | None) -> None:
+    incoming = command()
 
     def run(gcmd: GCodeCommand) -> None:
-        assert get_gcode_command() is gcmd is incoming
-        catch_macro_errors(inner)(nested)
-        assert get_gcode_command() is incoming
+        assert gcmd is incoming
         if error is not None:
             raise error
 
-    with gcode_command_context(outer):
-        if error is None:
+    if error is None:
+        catch_macro_errors(run)(incoming)
+    else:
+        message = "Aborted: printer entered shutdown" if isinstance(error, PrinterShutdownError) else "failure"
+        with pytest.raises(ValueError, match=message) as caught:
             catch_macro_errors(run)(incoming)
-        else:
-            with pytest.raises(ValueError):
-                catch_macro_errors(run)(incoming)
-        assert get_gcode_command() is outer
-    assert get_gcode_command() is None
+        assert caught.value.__cause__ is (None if isinstance(error, PrinterShutdownError) else error)
 
 
 @pytest.mark.parametrize("adapter", ["gcode", "accel"])
-@pytest.mark.parametrize("api", ["live", "missing", "noncallable", "unscoped"])
+@pytest.mark.parametrize("api", ["live", "missing", "noncallable"])
 def test_nested_scripts_prefer_live_command_with_legacy_fallback(mocker: MockerFixture, adapter: str, api: str) -> None:
     _ = mocker.patch.dict("sys.modules", {"extras.homing": Mock(), "extras.manual_probe": Mock()})
     from cartographer.adapters.klipper.toolhead import KlipperToolhead
@@ -88,21 +81,18 @@ def test_nested_scripts_prefer_live_command_with_legacy_fallback(mocker: MockerF
         delattr(live, "run_script")
     else:
         _ = mocker.patch.object(live, "run_script", None if api == "noncallable" else run_script)
-    ambient = command("run_script")
-    with gcode_command_context(None if api == "unscoped" else ambient):
-        if adapter == "gcode":
-            script = "G4 P1"
-            KlipperGCodeDispatch(printer).run_gcode(script, gcmd=live)
-        else:
-            script = "SET_VELOCITY_LIMIT ACCEL=123.456"
-            KlipperToolhead(config, mcu).set_max_accel(123.456, gcmd=live)
-    if api in ("live", "unscoped"):
+    if adapter == "gcode":
+        script = "G4 P1"
+        KlipperGCodeDispatch(printer).run_gcode(script, gcmd=live)
+    else:
+        script = "SET_VELOCITY_LIMIT ACCEL=123.456"
+        KlipperToolhead(config, mcu).set_max_accel(123.456, gcmd=live)
+    if api == "live":
         run_script.assert_called_once_with(script)
         dispatch.run_script_from_command.assert_not_called()
     else:
         run_script.assert_not_called()
         dispatch.run_script_from_command.assert_called_once_with(script)
-    cast("Mock", ambient).run_script.assert_not_called()
 
 
 @pytest.mark.parametrize("adapter", ["gcode", "accel"])
@@ -118,14 +108,12 @@ def test_live_script_errors_do_not_retry_legacy_api(
     config.get_printer.return_value = printer
     live = command("run_script")
     run_script = mocker.patch.object(live, "run_script", side_effect=error_type("script failure"))
-    ambient = command("run_script")
-    with gcode_command_context(ambient), pytest.raises(error_type, match="script failure"):
+    with pytest.raises(error_type, match="script failure"):
         if adapter == "gcode":
             KlipperGCodeDispatch(printer).run_gcode("G4 P1", gcmd=live)
         else:
             KlipperToolhead(config, Mock()).set_max_accel(100, gcmd=live)
     run_script.assert_called_once()
-    cast("Mock", ambient).run_script.assert_not_called()
     printer.lookup_object.return_value.run_script_from_command.assert_not_called()
 
 
@@ -420,7 +408,6 @@ def test_filtered_command_inherits_live_context(mocker: MockerFixture, host: Moc
         _ = mocker.patch.object(original, "create_subcommand", child if child_api == "live" else None, create=True)
 
     def run(received: Command) -> None:
-        assert get_gcode_command() is original
         assert received is not original
         if child_api == "live":
             assert received is child.return_value
@@ -430,7 +417,6 @@ def test_filtered_command_inherits_live_context(mocker: MockerFixture, host: Moc
 
     macro.run.side_effect = run
     _ = callback(original)
-    assert get_gcode_command() is None
     if child_api == "live":
         child.assert_called_once_with(name, "original line", {"EXTRA": "retained"})
         host.gcode.create_gcode_command.assert_not_called()
@@ -443,27 +429,22 @@ def test_filtered_command_inherits_live_context(mocker: MockerFixture, host: Moc
 @pytest.mark.parametrize("fail", [False, True])
 def test_native_probe_forwards_actual_command_without_binding(host: Mock, fail: bool) -> None:
     _, probe = register(host)
-    outer = cast("GCodeCommand", cast("object", Command("OUTER", "outer", {})))
     incoming = cast("GCodeCommand", cast("object", Command("PROBE", "probe", {})))
     host.toolhead.get_position.return_value = Position(10, 20, 5)
 
     def perform_probe(*, gcmd: GCodeCommand) -> float:
         assert gcmd is incoming
-        assert get_gcode_command() is outer
         if fail:
             msg = "probe failure"
             raise ValueError(msg)
         return 1.5
 
     host.device.scan_mode.perform_probe.side_effect = perform_probe
-    with gcode_command_context(outer):
-        if fail:
-            with pytest.raises(ValueError, match="probe failure"):
-                _ = probe.run_probe(incoming)
-        else:
-            assert probe.run_probe(incoming) == [10, 20, 1.5]
-        assert get_gcode_command() is outer
-    assert get_gcode_command() is None
+    if fail:
+        with pytest.raises(ValueError, match="probe failure"):
+            _ = probe.run_probe(incoming)
+    else:
+        assert probe.run_probe(incoming) == [10, 20, 1.5]
 
 
 def test_real_probe_native_rapid_diagnostic_and_point_contract(host: Mock) -> None:

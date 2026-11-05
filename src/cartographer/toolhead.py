@@ -60,8 +60,10 @@ class BacklashCompensatingToolhead(Toolhead):
         return self.toolhead.get_axis_limits(axis)
 
     @override
-    def manual_probe(self, finalize_callback: Callable[[Position | None], None]) -> None:
-        self.toolhead.manual_probe(finalize_callback)
+    def manual_probe(
+        self, finalize_callback: Callable[[Position | None, MacroParams], None], *, gcmd: MacroParams
+    ) -> None:
+        self.toolhead.manual_probe(finalize_callback, gcmd=gcmd)
 
     @override
     def clear_z_homing_state(self) -> None:

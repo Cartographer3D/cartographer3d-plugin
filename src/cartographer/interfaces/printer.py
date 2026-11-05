@@ -85,6 +85,8 @@ class Mcu(Protocol):
 
 
 class MacroParams(Protocol):
+    """Retain the original command object when forwarding command-dependent operations."""
+
     @overload
     def get(self, name: str, default: str = ...) -> str: ...
     @overload
@@ -198,7 +200,9 @@ class Toolhead(Protocol):
         """Get the limits of an axis."""
         ...
 
-    def manual_probe(self, finalize_callback: Callable[[Position | None], None]) -> None:
+    def manual_probe(
+        self, finalize_callback: Callable[[Position | None, MacroParams], None], *, gcmd: MacroParams
+    ) -> None:
         """Start a manual probe."""
         ...
 

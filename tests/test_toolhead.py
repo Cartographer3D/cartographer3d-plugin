@@ -6,7 +6,7 @@ from unittest.mock import Mock
 
 import pytest
 
-from cartographer.interfaces.printer import ProbeMode, Toolhead
+from cartographer.interfaces.printer import Position, ProbeMode, Toolhead
 from cartographer.macros.touch.calibrate import (
     CalibrationProbe,
     CalibrationTouchMode,
@@ -35,9 +35,11 @@ if TYPE_CHECKING:
         Toolhead.z_probing_move,
         Toolhead.z_home_end,
         Toolhead.set_max_accel,
+        Toolhead.manual_probe,
         BacklashCompensatingToolhead.z_probing_move,
         BacklashCompensatingToolhead.z_home_end,
         BacklashCompensatingToolhead.set_max_accel,
+        BacklashCompensatingToolhead.manual_probe,
         CalibrationProbe.collect_samples,
         CalibrationProbe.perform_touch_probe,
         CalibrationTouchMode.collect_samples,
@@ -74,3 +76,20 @@ def test_forwarding_toolhead_preserves_command(params: MacroParams) -> None:
     backend.set_max_accel.assert_called_once_with(100, gcmd=params)
     for method in (backend.z_probing_move, backend.z_home_end, backend.set_max_accel):
         assert method.call_args.kwargs["gcmd"] is params
+
+
+@pytest.mark.parametrize("position", [Position(1, 2, 3), None])
+def test_forwarding_toolhead_preserves_manual_callback(params: MacroParams, position: Position | None) -> None:
+    backend = Mock(spec=Toolhead)
+    toolhead = BacklashCompensatingToolhead(backend, backlash=0.1)
+    callback = Mock()
+    completing = Mock()
+
+    toolhead.manual_probe(callback, gcmd=params)
+
+    backend.manual_probe.assert_called_once_with(callback, gcmd=params)
+    assert backend.manual_probe.call_args.args[0] is callback
+    assert backend.manual_probe.call_args.kwargs["gcmd"] is params
+    backend.manual_probe.call_args.args[0](position, completing)
+    callback.assert_called_once_with(position, completing)
+    assert callback.call_args.args[1] is completing

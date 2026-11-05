@@ -59,6 +59,7 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
 
     mock.get_last_move_time = get_last_move_time
 
+    mock.manual_probe = mocker.create_autospec(Toolhead, instance=True).manual_probe
     mock.z_probing_move = mocker.Mock(return_value=0)
 
     return mock

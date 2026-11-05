@@ -17,7 +17,6 @@ from cartographer.adapters.klipper.endstop import (
 from cartographer.adapters.klipper.homing import KlipperHomingChip
 from cartographer.adapters.klipper.logging import setup_console_logger
 from cartographer.adapters.klipper.temperature import PrinterTemperatureCoil
-from cartographer.adapters.klipper_like.gcode_context import gcode_command_context
 from cartographer.adapters.klipper_like.utils import reraise_for_klipper
 from cartographer.interfaces.errors import PrinterShutdownError
 from cartographer.interfaces.printer import Macro, MacroParams, SupportsFallbackMacro
@@ -163,8 +162,7 @@ def catch_macro_errors(func: Callable[[GCodeCommand], None]) -> Callable[[GCodeC
     @wraps(func)
     def wrapper(gcmd: GCodeCommand) -> None:
         try:
-            with gcode_command_context(gcmd):
-                func(gcmd)
+            func(gcmd)
         except PrinterShutdownError:
             msg = "Aborted: printer entered shutdown"
             raise gcmd.error(msg) from None
