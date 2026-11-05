@@ -55,7 +55,7 @@ class TouchAccuracyMacro(Macro):
         self._toolhead.move(z=position.z + p.sample_retract_dist, speed=p.lift_speed)
         measurements: list[float] = []
         while len(measurements) < p.samples:
-            trigger_pos = self._probe.perform_probe()
+            trigger_pos = self._probe.perform_probe(gcmd=params)
             measurements.append(trigger_pos)
             pos = self._toolhead.get_position()
             self._toolhead.move(z=pos.z + p.sample_retract_dist, speed=p.lift_speed)

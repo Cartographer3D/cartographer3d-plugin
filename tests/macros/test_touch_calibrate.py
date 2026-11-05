@@ -24,6 +24,11 @@ from tests.mocks.params import MockParams
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
+    from cartographer.interfaces.configuration import Configuration
+    from cartographer.interfaces.multiprocessing import TaskExecutor
+    from cartographer.interfaces.printer import MacroParams, Mcu, Toolhead
+    from cartographer.probe.probe import Probe
+
 # --- Fake probe for testing ---
 
 
@@ -45,9 +50,11 @@ class FakeCalibrationProbe:
         self._samples_results = list(samples_results or [])
         self._probe_results = list(probe_results or [])
         self.thresholds_set: list[int] = []
+        self.commands: list[MacroParams] = []
 
-    def collect_samples(self, threshold: int, sample_count: int) -> tuple[float, ...]:
+    def collect_samples(self, threshold: int, sample_count: int, *, gcmd: MacroParams) -> tuple[float, ...]:
         _ = threshold, sample_count
+        self.commands.append(gcmd)
         result = self._samples_results.pop(0)
         if isinstance(result, ProbeTriggerError):
             raise result
@@ -56,11 +63,34 @@ class FakeCalibrationProbe:
     def set_threshold(self, threshold: int) -> None:
         self.thresholds_set.append(threshold)
 
-    def perform_touch_probe(self) -> float:
+    def perform_touch_probe(self, *, gcmd: MacroParams) -> float:
+        self.commands.append(gcmd)
         result = self._probe_results.pop(0)
         if isinstance(result, RuntimeError):
             raise result
         return result
+
+
+def test_calibration_hardware_loops_preserve_command(
+    mocker: MockerFixture,
+    probe: Probe,
+    mcu: Mcu,
+    toolhead: Toolhead,
+    config: Configuration,
+    task_executor: TaskExecutor,
+    params: MacroParams,
+) -> None:
+    toolhead.z_probing_move = mocker.Mock(return_value=0.5)
+    accel = mocker.spy(toolhead, "set_max_accel")
+    macro = TouchCalibrateMacro(probe, mcu, toolhead, config, task_executor)
+
+    macro.run(params)
+
+    # Seven screening touches, then ten complete five-touch verification sequences.
+    assert toolhead.z_probing_move.call_count == 57
+    assert all(call.kwargs["gcmd"] is params for call in toolhead.z_probing_move.call_args_list)
+    assert accel.call_count == 114
+    assert all(call.kwargs["gcmd"] is params for call in accel.call_args_list)
 
 
 # --- Data classes ---
@@ -141,43 +171,45 @@ class TestFormatDistance:
 
 
 class TestThresholdScreener:
-    def test_returns_none_on_trigger_error(self):
+    def test_returns_none_on_trigger_error(self, params: MacroParams):
         probe = FakeCalibrationProbe(samples_results=[ProbeTriggerError("triggered")])
         screener = ThresholdScreener(probe, required_samples=3)
 
-        result = screener.screen(threshold=1000, sample_count=5)
+        result = screener.screen(threshold=1000, sample_count=5, gcmd=params)
 
         assert result is None
 
-    def test_passes_with_tight_samples(self):
+    def test_passes_with_tight_samples(self, params: MacroParams):
         probe = FakeCalibrationProbe(
             samples_results=[(1.000, 1.002, 1.004, 1.006, 1.008)],
         )
         screener = ThresholdScreener(probe, required_samples=3)
 
-        result = screener.screen(threshold=1000, sample_count=5)
+        result = screener.screen(threshold=1000, sample_count=5, gcmd=params)
 
         assert result is not None
         assert result.passed(sample_range=0.010)
         assert result.threshold == 1000
+        assert probe.commands == [params]
+        assert probe.commands[0] is params
 
-    def test_fails_with_spread_samples(self):
+    def test_fails_with_spread_samples(self, params: MacroParams):
         probe = FakeCalibrationProbe(
             samples_results=[(1.000, 1.050, 1.100, 1.150, 1.200)],
         )
         screener = ThresholdScreener(probe, required_samples=3)
 
-        result = screener.screen(threshold=1000, sample_count=5)
+        result = screener.screen(threshold=1000, sample_count=5, gcmd=params)
 
         assert result is not None
         assert not result.passed(sample_range=0.010)
 
-    def test_returns_all_samples_in_result(self):
+    def test_returns_all_samples_in_result(self, params: MacroParams):
         samples = (1.000, 1.002, 1.004, 1.006, 1.008)
         probe = FakeCalibrationProbe(samples_results=[samples])
         screener = ThresholdScreener(probe, required_samples=3)
 
-        result = screener.screen(threshold=2000, sample_count=5)
+        result = screener.screen(threshold=2000, sample_count=5, gcmd=params)
 
         assert result is not None
         assert result.samples == samples
@@ -188,101 +220,103 @@ class TestThresholdScreener:
 
 
 class TestThresholdVerifier:
-    def test_passes_with_consistent_probes(self):
+    def test_passes_with_consistent_probes(self, params: MacroParams):
         probe = FakeCalibrationProbe(
             probe_results=[1.000, 1.005, 1.003, 1.007, 1.002],
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5, gcmd=params)
 
         assert result is not None
         assert result.passed(max_verify_range=0.020)
         assert len(result.probe_medians) == 5
+        assert len(probe.commands) == 5
+        assert all(gcmd is params for gcmd in probe.commands)
 
-    def test_fails_with_inconsistent_probes(self):
+    def test_fails_with_inconsistent_probes(self, params: MacroParams):
         probe = FakeCalibrationProbe(
             probe_results=[1.000, 1.100, 1.050, 1.200, 1.010],
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5, gcmd=params)
 
         assert result is not None
         assert not result.passed(max_verify_range=0.020)
 
-    def test_exits_early_when_inconsistent(self):
+    def test_exits_early_when_inconsistent(self, params: MacroParams):
         # Provide more results than needed — verifier should stop early
         probe = FakeCalibrationProbe(
             probe_results=[1.000, 1.100, 1.200, 1.300, 1.400],
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5, gcmd=params)
 
         assert result is not None
         # Should have stopped before running all 5 probes
         assert len(result.probe_medians) < 5
         assert not result.passed(max_verify_range=0.020)
 
-    def test_returns_none_on_trigger_error(self):
+    def test_returns_none_on_trigger_error(self, params: MacroParams):
         probe = FakeCalibrationProbe(
             probe_results=[ProbeTriggerError("triggered")],
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5, gcmd=params)
 
         assert result is None
 
-    def test_returns_none_on_mid_sequence_trigger_error(self):
+    def test_returns_none_on_mid_sequence_trigger_error(self, params: MacroParams):
         probe = FakeCalibrationProbe(
             probe_results=[1.000, 1.003, ProbeTriggerError("triggered")],
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5, gcmd=params)
 
         assert result is None
 
-    def test_returns_none_on_touch_error(self):
+    def test_returns_none_on_touch_error(self, params: MacroParams):
         """TouchError (e.g. unable to find consistent samples) returns None."""
         probe = FakeCalibrationProbe(
             probe_results=[TouchError("Unable to find 3 samples within 0.010mm")],
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5, gcmd=params)
 
         assert result is None
 
-    def test_returns_none_on_mid_sequence_touch_error(self):
+    def test_returns_none_on_mid_sequence_touch_error(self, params: MacroParams):
         probe = FakeCalibrationProbe(
             probe_results=[1.000, 1.003, TouchError("Unable to find consistent samples")],
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=5, gcmd=params)
 
         assert result is None
 
-    def test_sets_threshold_before_probing(self):
+    def test_sets_threshold_before_probing(self, params: MacroParams):
         probe = FakeCalibrationProbe(
             probe_results=[1.000, 1.003, 1.005],
         )
         verifier = ThresholdVerifier(probe)
 
-        _ = verifier.verify(threshold=2500, max_verify_range=0.020, sample_count=3)
+        _ = verifier.verify(threshold=2500, max_verify_range=0.020, sample_count=3, gcmd=params)
 
         assert probe.thresholds_set == [2500]
 
-    def test_median_range_calculated_correctly(self):
+    def test_median_range_calculated_correctly(self, params: MacroParams):
         probe = FakeCalibrationProbe(
             probe_results=[1.000, 1.010, 1.005],
         )
         verifier = ThresholdVerifier(probe)
 
-        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=3)
+        result = verifier.verify(threshold=1000, max_verify_range=0.020, sample_count=3, gcmd=params)
 
         assert result is not None
         assert abs(result.median_range - 0.010) < 1e-9

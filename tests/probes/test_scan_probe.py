@@ -11,6 +11,7 @@ from cartographer.interfaces.printer import HomingState, Position, Sample, Toolh
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
+    from cartographer.interfaces.printer import MacroParams
     from cartographer.macros.axis_twist_compensation import AxisTwistCompensationAdapter
     from cartographer.probe.probe import Probe
     from cartographer.stream import Session
@@ -63,20 +64,22 @@ def test_skips_samples(probe: Probe, session: Session[Sample]):
     assert distance == pytest.approx(8)  # pyright:ignore[reportUnknownMemberType]
 
 
-def test_probe_errors_when_not_homed(probe: Probe, toolhead: Toolhead):
+def test_probe_errors_when_not_homed(probe: Probe, toolhead: Toolhead, params: MacroParams):
     toolhead.is_homed = lambda axis: False
 
     with pytest.raises(RuntimeError):
-        _ = probe.scan.perform_probe()
+        _ = probe.scan.perform_probe(gcmd=params)
 
 
-def test_probe_returns_trigger_position(probe: Probe, toolhead: Toolhead, session: Session[Sample]):
+def test_probe_returns_trigger_position(
+    probe: Probe, toolhead: Toolhead, session: Session[Sample], params: MacroParams
+):
     dist = 1
     z_pos = 2
     session.get_items = lambda: [sample(frequency=dist) for _ in range(11)]
     toolhead.get_position = lambda: Position(0, 0, z_pos)
 
-    trigger_pos = probe.scan.perform_probe()
+    trigger_pos = probe.scan.perform_probe(gcmd=params)
 
     assert trigger_pos == pytest.approx(probe.scan.probe_height + z_pos - dist)  # pyright:ignore[reportUnknownMemberType]
 
@@ -86,6 +89,7 @@ def test_probe_applies_axis_twist_compensation(
     toolhead: Toolhead,
     session: Session[Sample],
     axis_twist_compensation_adapter: AxisTwistCompensationAdapter,
+    params: MacroParams,
 ):
     dist = 2
     z_pos = 2
@@ -94,16 +98,16 @@ def test_probe_applies_axis_twist_compensation(
     toolhead.get_position = lambda: Position(0, 0, z_pos)
     axis_twist_compensation_adapter.get_z_compensation_value = lambda x, y: z_comp
 
-    trigger_pos = probe.scan.perform_probe()
+    trigger_pos = probe.scan.perform_probe(gcmd=params)
 
     assert trigger_pos == dist + z_comp
 
 
-def test_probe_errors_outside_range(probe: Probe, session: Session[Sample]):
+def test_probe_errors_outside_range(probe: Probe, session: Session[Sample], params: MacroParams):
     session.get_items = lambda: [sample(frequency=-1) for _ in range(11)]
 
     with pytest.raises(RuntimeError):
-        _ = probe.scan.perform_probe()
+        _ = probe.scan.perform_probe(gcmd=params)
 
 
 def test_do_nothing_when_not_homing(mocker: MockerFixture, probe: Probe, homing_state: HomingState):
@@ -147,10 +151,11 @@ def test_endstop_is_not_triggered(mocker: MockerFixture, probe: Probe):
     assert probe.scan.query_is_triggered(0) is True
 
 
-def test_probe_does_homing_move(mocker: MockerFixture, probe: Probe, toolhead: Toolhead):
+def test_probe_does_homing_move(mocker: MockerFixture, probe: Probe, toolhead: Toolhead, params: MacroParams):
     probe.scan.measure_distance = mocker.Mock(return_value=3)
     toolhead.z_probing_move = mocker.Mock(return_value=2)
 
-    _ = probe.scan.perform_probe()
+    _ = probe.perform_scan(gcmd=params)
 
-    assert toolhead.z_probing_move.mock_calls == [mocker.call(probe.scan, speed=mocker.ANY)]
+    assert toolhead.z_probing_move.call_args.kwargs["gcmd"] is params
+    assert toolhead.z_probing_move.mock_calls == [mocker.call(probe.scan, speed=mocker.ANY, gcmd=params)]

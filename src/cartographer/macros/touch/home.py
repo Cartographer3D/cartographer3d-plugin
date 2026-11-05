@@ -80,9 +80,9 @@ class TouchHomeMacro(Macro):
             )
             self._toolhead.wait_moves()
 
-            trigger_pos = self._probe.perform_probe()
+            trigger_pos = self._probe.perform_probe(gcmd=params)
 
-        self._toolhead.z_home_end(self._probe)
+        self._toolhead.z_home_end(self._probe, gcmd=params)
         pos = self._toolhead.get_position()
         self._toolhead.set_z_position(pos.z - trigger_pos)
 
