@@ -12,7 +12,7 @@ from cartographer.interfaces.printer import Position
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
-    from cartographer.interfaces.printer import Toolhead
+    from cartographer.interfaces.printer import MacroParams, Toolhead
     from cartographer.probe.probe import Probe
 
 
@@ -47,18 +47,20 @@ def base_model(probe: Probe, config: Configuration) -> None:
 # ---------------------------------------------------------------------------
 
 
-def test_inherited_samples_used(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_inherited_samples_used(mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams) -> None:
     """A model with samples=5 (inherited from global) requires 5 agreeing samples."""
     # Global config has samples=5; supply exactly 5 agreeing touches after 2 noisy ones
     # (window = 5 + 2 = 7; first 2 noisy, then 5 consistent → success)
     toolhead.z_probing_move = mocker.Mock(side_effect=[1.0, 2.0, 0.5, 0.5, 0.5, 0.5, 0.5])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
-    result = probe.touch.perform_probe()
+    result = probe.touch.perform_probe(gcmd=params)
     assert result == 0.5
 
 
-def test_inherited_sample_range_used(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_inherited_sample_range_used(
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams
+) -> None:
     """A model with sample_range=0.010 (inherited) rejects spreads wider than 0.010."""
     # 10 monotone values, each 0.003 apart: best-5-in-window-7 = range 0.012 > 0.010
     side = [round(0.500 + i * 0.003, 4) for i in range(10)]
@@ -66,7 +68,7 @@ def test_inherited_sample_range_used(mocker: MockerFixture, toolhead: Toolhead, 
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
     with pytest.raises(RuntimeError, match="Unable to find"):
-        _ = probe.touch.perform_probe()
+        _ = probe.touch.perform_probe(gcmd=params)
 
 
 # ---------------------------------------------------------------------------
@@ -75,7 +77,7 @@ def test_inherited_sample_range_used(mocker: MockerFixture, toolhead: Toolhead, 
 
 
 def test_model_samples_override_used(
-    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, config: Configuration
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, config: Configuration, params: MacroParams
 ) -> None:
     """A model with samples=3 requires only 3 agreeing samples, even though global is 5."""
     config.save_touch_model(
@@ -94,12 +96,12 @@ def test_model_samples_override_used(
     toolhead.z_probing_move = mocker.Mock(side_effect=[0.5, 0.5, 0.5])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
-    result = probe.touch.perform_probe()
+    result = probe.touch.perform_probe(gcmd=params)
     assert result == 0.5
 
 
 def test_model_sample_range_override_used(
-    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, config: Configuration
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, config: Configuration, params: MacroParams
 ) -> None:
     """A model with sample_range=0.005 rejects a spread that global 0.010 would accept."""
     config.save_touch_model(
@@ -121,11 +123,11 @@ def test_model_sample_range_override_used(
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
     with pytest.raises(RuntimeError, match="Unable to find"):
-        _ = probe.touch.perform_probe()
+        _ = probe.touch.perform_probe(gcmd=params)
 
 
 def test_model_sample_range_override_accepts_tight_spread(
-    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, config: Configuration
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, config: Configuration, params: MacroParams
 ) -> None:
     """A model with sample_range=0.015 accepts a spread that global 0.010 would reject."""
     config.save_touch_model(
@@ -144,7 +146,7 @@ def test_model_sample_range_override_accepts_tight_spread(
     toolhead.z_probing_move = mocker.Mock(side_effect=[0.500, 0.504, 0.508, 0.510, 0.512])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
-    result = probe.touch.perform_probe()
+    result = probe.touch.perform_probe(gcmd=params)
     assert abs(result - 0.508) < 0.001  # median of the 5 values
 
 
@@ -154,7 +156,7 @@ def test_model_sample_range_override_accepts_tight_spread(
 
 
 def test_model_samples_window_anti_cherry_picking(
-    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, config: Configuration
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, config: Configuration, params: MacroParams
 ) -> None:
     """With model samples=3 and global max_noisy_samples=2, window=5.
     Spread-out good samples beyond the window (every 3rd position) must still be rejected
@@ -179,11 +181,11 @@ def test_model_samples_window_anti_cherry_picking(
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
     with pytest.raises(RuntimeError, match="Unable to find"):
-        _ = probe.touch.perform_probe()
+        _ = probe.touch.perform_probe(gcmd=params)
 
 
 def test_model_samples_window_succeeds_consecutive(
-    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, config: Configuration
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, config: Configuration, params: MacroParams
 ) -> None:
     """With model samples=3 and global max_noisy_samples=2, window=5.
     Three consecutive good samples within the window succeed."""
@@ -203,5 +205,5 @@ def test_model_samples_window_succeeds_consecutive(
     toolhead.z_probing_move = mocker.Mock(side_effect=[1.0, 2.0, 0.5, 0.5, 0.5])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
-    result = probe.touch.perform_probe()
+    result = probe.touch.perform_probe(gcmd=params)
     assert result == 0.5

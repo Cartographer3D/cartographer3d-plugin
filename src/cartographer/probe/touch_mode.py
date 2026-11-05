@@ -26,6 +26,7 @@ if TYPE_CHECKING:
         Configuration,
         TouchModelConfiguration,
     )
+    from cartographer.interfaces.printer import MacroParams
 
 logger = logging.getLogger(__name__)
 
@@ -233,7 +234,7 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
         }
 
     @override
-    def perform_probe(self, max_samples: int | None = None) -> float:
+    def perform_probe(self, max_samples: int | None = None, *, gcmd: MacroParams) -> float:
         if not self._toolhead.is_homed("z"):
             msg = "Z axis must be homed before probing"
             raise RuntimeError(msg)
@@ -252,31 +253,31 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             self._toolhead.move(z=self._config.retract_distance, speed=self._config.lift_speed)
         self._toolhead.wait_moves()
 
-        self.last_z_result = self._run_probe(max_samples=max_samples)
+        self.last_z_result = self._run_probe(max_samples=max_samples, gcmd=gcmd)
         return self.last_z_result
 
-    def _run_probe(self, max_samples: int | None = None) -> float:
+    def _run_probe(self, max_samples: int | None = None, *, gcmd: MacroParams) -> float:
         model = self.get_model()
         samples = model.samples
         sample_range = model.sample_range
         effective_max = max_samples if max_samples is not None else self._config.max_samples
         max_window = samples + self._config.max_noisy_samples
         return run_probe_sequence(
-            self._perform_single_probe,
+            lambda: self._perform_single_probe(gcmd=gcmd),
             samples=samples,
             max_samples=effective_max,
             max_window=max_window,
             sample_range=sample_range,
         )
 
-    def _perform_single_probe(self) -> float:
+    def _perform_single_probe(self, *, gcmd: MacroParams) -> float:
         model = self.get_model()
         if self._toolhead.get_position().z < self._config.retract_distance:
             self._toolhead.move(z=self._config.retract_distance, speed=self._config.lift_speed)
         self._toolhead.wait_moves()
 
         max_accel = self._toolhead.get_max_accel()
-        self._toolhead.set_max_accel(TOUCH_ACCEL)
+        self._toolhead.set_max_accel(TOUCH_ACCEL, gcmd=gcmd)
 
         # Wait for a single new sample
         # This seems to help avoid triggering prior to move
@@ -285,9 +286,9 @@ class TouchMode(TouchModelSelectorMixin, ProbeMode, Endstop):
             pass
 
         try:
-            trigger_pos = self._toolhead.z_probing_move(self, speed=model.speed)
+            trigger_pos = self._toolhead.z_probing_move(self, speed=model.speed, gcmd=gcmd)
         finally:
-            self._toolhead.set_max_accel(max_accel)
+            self._toolhead.set_max_accel(max_accel, gcmd=gcmd)
 
         pos = self._toolhead.get_position()
         self._toolhead.move(

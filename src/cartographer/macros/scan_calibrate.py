@@ -66,14 +66,14 @@ class ScanCalibrateMacro(Macro):
         self._toolhead.wait_moves()
 
         if p.method == ScanCalibrateMethod.TOUCH:
-            return self._run_touch(name)
+            return self._run_touch(name, gcmd=params)
         elif p.method == ScanCalibrateMethod.MANUAL:
             return self._run_manual(name)
 
         assert_never(p.method)
 
-    def _run_touch(self, name: str) -> None:
-        trigger_pos = self._probe.perform_touch()
+    def _run_touch(self, name: str, *, gcmd: MacroParams) -> None:
+        trigger_pos = self._probe.perform_touch(gcmd=gcmd)
         pos = self._toolhead.get_position()
         self._toolhead.set_z_position(pos.z - trigger_pos)
 

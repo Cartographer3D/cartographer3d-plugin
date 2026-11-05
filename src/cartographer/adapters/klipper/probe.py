@@ -23,7 +23,7 @@ class KlipperProbeSession:
     @reraise_for_klipper
     def run_probe(self, gcmd: GCodeCommand) -> None:
         pos = self.toolhead.get_position()
-        trigger_pos = self._probe.perform_probe()
+        trigger_pos = self._probe.perform_probe(gcmd=gcmd)
         self._results.append([pos.x, pos.y, trigger_pos])
 
         # In new Klipper's _do_home_z_via_probe path, the gcmd contains HOME_ATTEMPT_NUM.

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from typing import TYPE_CHECKING, cast
 from unittest.mock import Mock
 
@@ -18,6 +19,7 @@ if TYPE_CHECKING:
 
     from cartographer.adapters.klipper.toolhead import KlipperToolhead
     from cartographer.adapters.klipper_like.toolhead import FakeRail
+    from cartographer.interfaces.printer import MacroParams
 
 
 @pytest.fixture
@@ -41,7 +43,8 @@ def adapter(mocker: MockerFixture) -> KlipperToolhead:
     return KlipperToolhead(config, mcu)
 
 
-@pytest.mark.parametrize(("new_api", "scoped"), [(False, False), (False, True), (True, True)])
+@pytest.mark.parametrize("new_api", [False, True])
+@pytest.mark.parametrize("scoped", [False, True])
 def test_probing_signature_variants(adapter: KlipperToolhead, new_api: bool, scoped: bool) -> None:
     backend = Mock()
     gcmd = Mock()
@@ -59,8 +62,8 @@ def test_probing_signature_variants(adapter: KlipperToolhead, new_api: bool, sco
         "homing": homing,
         "toolhead": adapter.toolhead,
     }.__getitem__
-    with gcode_command_context(gcmd if scoped else None):
-        assert adapter.z_probing_move(Mock(), speed=2.0) == 1.25
+    with gcode_command_context(Mock() if scoped else None):
+        assert adapter.z_probing_move(Mock(), speed=2.0, gcmd=gcmd) == 1.25
     backend.assert_called_once()
     assert backend.call_args.args[1:] == ([10.0, 20.0, -5, 0.0], 2.0)
     assert backend.call_args.kwargs == ({"gcmd": gcmd} if new_api else {})
@@ -68,38 +71,34 @@ def test_probing_signature_variants(adapter: KlipperToolhead, new_api: bool, sco
         assert backend.call_args.kwargs["gcmd"] is gcmd
 
 
+def test_kalico_acceleration_uses_direct_api(adapter: KlipperToolhead, params: MacroParams) -> None:
+    from cartographer.adapters.kalico.toolhead import KalicoToolhead
+
+    config = Mock()
+    config.get_printer.return_value = adapter.printer
+    kalico = KalicoToolhead(config, Mock())
+
+    kalico.set_max_accel(100, gcmd=params)
+
+    cast("Mock", adapter.toolhead).set_accel.assert_called_once_with(100)
+    parameter = inspect.signature(kalico.set_max_accel).parameters["gcmd"]
+    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
+    assert parameter.default is inspect.Parameter.empty
+
+
 @pytest.mark.parametrize("operation", ["probe", "home_end"])
-def test_new_api_missing_command_has_no_side_effects(
-    adapter: KlipperToolhead, mocker: MockerFixture, operation: str
-) -> None:
-    backend = Mock()
-
-    def new_move(endstop: object, pos: list[float], speed: float, *, gcmd: GCodeCommand) -> list[float]:
-        backend(endstop, pos, speed, gcmd=gcmd)
-        return pos
-
-    def new_homing(printer: object, *, gcmd: GCodeCommand) -> Mock:
-        return backend(printer, gcmd=gcmd)
-
-    homing = Mock(probing_move=new_move)
-    cast("Mock", adapter.printer).lookup_object.side_effect = {
-        "homing": homing,
-        "toolhead": adapter.toolhead,
-    }.__getitem__
-    _ = mocker.patch("cartographer.adapters.klipper_like.toolhead.Homing", new_homing)
-    firmware_toolhead = cast("Mock", adapter.toolhead)
-    firmware_toolhead.reset_mock()
-    with gcode_command_context(None), pytest.raises(RuntimeError, match="(?i)(active|live).*command"):
-        if operation == "probe":
-            _ = adapter.z_probing_move(Mock(), speed=2.0)
-        else:
-            adapter.z_home_end(Mock())
-    backend.assert_not_called()
-    assert firmware_toolhead.mock_calls == []
+def test_physical_command_is_required(adapter: KlipperToolhead, operation: str) -> None:
+    method = adapter.z_probing_move if operation == "probe" else adapter.z_home_end
+    signature = inspect.signature(method)
+    assert signature.parameters["gcmd"].kind is inspect.Parameter.KEYWORD_ONLY
+    assert signature.parameters["gcmd"].default is inspect.Parameter.empty
+    with pytest.raises(TypeError, match="gcmd"):
+        _ = signature.bind(Mock(), **({"speed": 2.0} if operation == "probe" else {}))
     cast("Mock", adapter.printer).send_event.assert_not_called()
 
 
-@pytest.mark.parametrize(("new_api", "scoped"), [(False, False), (False, True), (True, True)])
+@pytest.mark.parametrize("new_api", [False, True])
+@pytest.mark.parametrize("scoped", [False, True])
 def test_synthetic_home_success_visible_to_listeners(
     adapter: KlipperToolhead, mocker: MockerFixture, new_api: bool, scoped: bool
 ) -> None:
@@ -126,8 +125,8 @@ def test_synthetic_home_success_visible_to_listeners(
 
     _ = mocker.patch("cartographer.adapters.klipper_like.toolhead.Homing", new_homing if new_api else old_homing)
     cast("Mock", adapter.printer).send_event.side_effect = listener
-    with gcode_command_context(gcmd if scoped else None):
-        adapter.z_home_end(Mock())
+    with gcode_command_context(Mock() if scoped else None):
+        adapter.z_home_end(Mock(), gcmd=gcmd)
     backend.assert_called_once_with(adapter.printer, **({"gcmd": gcmd} if new_api else {}))
     if new_api:
         assert backend.call_args.kwargs["gcmd"] is gcmd
@@ -160,11 +159,12 @@ def test_backend_type_error_is_not_retried(
         "toolhead": adapter.toolhead,
     }.__getitem__
     _ = mocker.patch("cartographer.adapters.klipper_like.toolhead.Homing", new_homing if new_api else old_homing)
-    with gcode_command_context(Mock()), pytest.raises(TypeError) as caught:
+    gcmd = Mock()
+    with pytest.raises(TypeError) as caught:
         if operation == "probe":
-            _ = adapter.z_probing_move(Mock(), speed=2.0)
+            _ = adapter.z_probing_move(Mock(), speed=2.0, gcmd=gcmd)
         else:
-            adapter.z_home_end(Mock())
+            adapter.z_home_end(Mock(), gcmd=gcmd)
     assert caught.value is error
     backend.assert_called_once()
     cast("Mock", adapter.printer).send_event.assert_not_called()

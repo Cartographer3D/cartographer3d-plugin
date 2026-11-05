@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, final
 
-from cartographer.adapters.klipper_like.gcode_context import gcode_command_context
 from cartographer.adapters.klipper_like.utils import make_coord, reraise_for_klipper
 
 if TYPE_CHECKING:
@@ -65,10 +64,9 @@ class KalicoCartographerProbe:
     @reraise_for_klipper
     def run_probe(self, gcmd: GCodeCommand, *args: object, **kwargs: object) -> list[float]:
         del args, kwargs
-        with gcode_command_context(gcmd):
-            pos = self.toolhead.get_position()
-            trigger_pos = self.probe.perform_probe()
-            return [pos.x, pos.y, trigger_pos]
+        pos = self.toolhead.get_position()
+        trigger_pos = self.probe.perform_probe(gcmd=gcmd)
+        return [pos.x, pos.y, trigger_pos]
 
     def multi_probe_begin(self):
         pass

@@ -88,22 +88,21 @@ def test_nested_scripts_prefer_live_command_with_legacy_fallback(mocker: MockerF
         delattr(live, "run_script")
     else:
         _ = mocker.patch.object(live, "run_script", None if api == "noncallable" else run_script)
-    ambient = command("run_script") if adapter == "gcode" else live
+    ambient = command("run_script")
     with gcode_command_context(None if api == "unscoped" else ambient):
         if adapter == "gcode":
             script = "G4 P1"
             KlipperGCodeDispatch(printer).run_gcode(script, gcmd=live)
         else:
             script = "SET_VELOCITY_LIMIT ACCEL=123.456"
-            KlipperToolhead(config, mcu).set_max_accel(123.456)
-    if api == "live" or (adapter == "gcode" and api == "unscoped"):
+            KlipperToolhead(config, mcu).set_max_accel(123.456, gcmd=live)
+    if api in ("live", "unscoped"):
         run_script.assert_called_once_with(script)
         dispatch.run_script_from_command.assert_not_called()
     else:
         run_script.assert_not_called()
         dispatch.run_script_from_command.assert_called_once_with(script)
-    if adapter == "gcode":
-        cast("Mock", ambient).run_script.assert_not_called()
+    cast("Mock", ambient).run_script.assert_not_called()
 
 
 @pytest.mark.parametrize("adapter", ["gcode", "accel"])
@@ -119,15 +118,14 @@ def test_live_script_errors_do_not_retry_legacy_api(
     config.get_printer.return_value = printer
     live = command("run_script")
     run_script = mocker.patch.object(live, "run_script", side_effect=error_type("script failure"))
-    ambient = command("run_script") if adapter == "gcode" else live
+    ambient = command("run_script")
     with gcode_command_context(ambient), pytest.raises(error_type, match="script failure"):
         if adapter == "gcode":
             KlipperGCodeDispatch(printer).run_gcode("G4 P1", gcmd=live)
         else:
-            KlipperToolhead(config, Mock()).set_max_accel(100)
+            KlipperToolhead(config, Mock()).set_max_accel(100, gcmd=live)
     run_script.assert_called_once()
-    if adapter == "gcode":
-        cast("Mock", ambient).run_script.assert_not_called()
+    cast("Mock", ambient).run_script.assert_not_called()
     printer.lookup_object.return_value.run_script_from_command.assert_not_called()
 
 
@@ -443,14 +441,15 @@ def test_filtered_command_inherits_live_context(mocker: MockerFixture, host: Moc
 
 
 @pytest.mark.parametrize("fail", [False, True])
-def test_native_probe_scopes_actual_command_and_restores(host: Mock, fail: bool) -> None:
+def test_native_probe_forwards_actual_command_without_binding(host: Mock, fail: bool) -> None:
     _, probe = register(host)
     outer = cast("GCodeCommand", cast("object", Command("OUTER", "outer", {})))
     incoming = cast("GCodeCommand", cast("object", Command("PROBE", "probe", {})))
     host.toolhead.get_position.return_value = Position(10, 20, 5)
 
-    def perform_probe() -> float:
-        assert get_gcode_command() is incoming
+    def perform_probe(*, gcmd: GCodeCommand) -> float:
+        assert gcmd is incoming
+        assert get_gcode_command() is outer
         if fail:
             msg = "probe failure"
             raise ValueError(msg)
@@ -479,7 +478,7 @@ def test_real_probe_native_rapid_diagnostic_and_point_contract(host: Mock) -> No
     host.device.scan_mode.offset.as_tuple.return_value = (1.0, 2.0, 3.0)
     native_command = cast("GCodeCommand", cast("object", command))
     assert probe.run_probe(native_command, object()) == [10, 20, 1.5]
-    host.device.scan_mode.perform_probe.assert_called_once_with()
+    host.device.scan_mode.perform_probe.assert_called_once_with(gcmd=native_command)
     assert probe.get_offsets() == (1.0, 2.0, 3.0)
     assert probe.get_lift_speed(native_command) == 8 and probe.get_lift_speed() == 6
     for triggered in (True, False):

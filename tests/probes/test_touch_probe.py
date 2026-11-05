@@ -10,6 +10,7 @@ from cartographer.interfaces.printer import Mcu, Position, TemperatureStatus, To
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
 
+    from cartographer.interfaces.printer import MacroParams
     from cartographer.probe.probe import Probe
 
 
@@ -28,15 +29,38 @@ def configure_probe(probe: Probe, config: Configuration) -> None:
     probe.touch.load_model("test_touch")
 
 
-def test_probe_success(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_probe_success(mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams) -> None:
     toolhead.z_probing_move = mocker.Mock(return_value=0.5)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
-    assert probe.touch.perform_probe() == 0.5
+    accel = mocker.spy(toolhead, "set_max_accel")
+    assert probe.perform_touch(gcmd=params) == 0.5
+    assert toolhead.z_probing_move.call_count == 5
+    assert all(call.kwargs["gcmd"] is params for call in toolhead.z_probing_move.call_args_list)
+    assert accel.call_count == 10
+    assert all(call.kwargs["gcmd"] is params for call in accel.call_args_list)
+
+
+@pytest.mark.parametrize("error_type", [RuntimeError, TypeError])
+def test_probe_failure_restores_acceleration_with_same_command(
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams, error_type: type[Exception]
+) -> None:
+    error = error_type("backend failure")
+    toolhead.z_probing_move = mocker.Mock(side_effect=error)
+    toolhead.get_max_accel = mocker.Mock(return_value=1000)
+    accel = mocker.spy(toolhead, "set_max_accel")
+
+    with pytest.raises(error_type) as caught:
+        _ = probe.perform_touch(gcmd=params)
+
+    assert caught.value is error
+    toolhead.z_probing_move.assert_called_once_with(probe.touch, speed=3, gcmd=params)
+    assert accel.call_args_list == [mocker.call(100, gcmd=params), mocker.call(1000, gcmd=params)]
+    assert all(call.kwargs["gcmd"] is params for call in accel.call_args_list)
 
 
 def test_probe_includes_z_offset(
-    mocker: MockerFixture, toolhead: Toolhead, config: Configuration, probe: Probe
+    mocker: MockerFixture, toolhead: Toolhead, config: Configuration, probe: Probe, params: MacroParams
 ) -> None:
     config.save_touch_model(
         TouchModelConfiguration(
@@ -53,73 +77,79 @@ def test_probe_includes_z_offset(
     toolhead.z_probing_move = mocker.Mock(return_value=-0.5)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
-    assert probe.touch.perform_probe() == 0
+    assert probe.touch.perform_probe(gcmd=params) == 0
 
 
-def test_probe_moves_below_2(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_probe_moves_below_2(mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams) -> None:
     toolhead.z_probing_move = mocker.Mock(return_value=0.5)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
     move_spy = mocker.spy(toolhead, "move")
 
-    _ = probe.touch.perform_probe()
+    _ = probe.touch.perform_probe(gcmd=params)
 
     assert move_spy.mock_calls[0] == mocker.call(z=2, speed=mocker.ANY)
 
 
-def test_does_not_move_above_2(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_does_not_move_above_2(mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams) -> None:
     toolhead.z_probing_move = mocker.Mock(return_value=0.5)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 10))
     move_spy = mocker.spy(toolhead, "move")
 
-    _ = probe.touch.perform_probe()
+    _ = probe.touch.perform_probe(gcmd=params)
 
     assert move_spy.mock_calls[0] != mocker.call(z=2, speed=mocker.ANY)
 
 
-def test_probe_standard_deviation_failure(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_probe_standard_deviation_failure(
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams
+) -> None:
     toolhead.z_probing_move = mocker.Mock(side_effect=[1 + i * 0.1 for i in range(20)])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
     with pytest.raises(RuntimeError, match="Unable to find"):
-        _ = probe.touch.perform_probe()
+        _ = probe.touch.perform_probe(gcmd=params)
 
 
-def test_probe_suceeds_on_more(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_probe_suceeds_on_more(mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams) -> None:
     toolhead.z_probing_move = mocker.Mock(side_effect=[1.0, 1.01, 1.5, 0.5, 0.5, 0.5, 0.5, 0.5])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
-    assert probe.touch.perform_probe() == 0.5
+    assert probe.touch.perform_probe(gcmd=params) == 0.5
 
 
-def test_probe_spread_samples_rejected_by_window(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_probe_spread_samples_rejected_by_window(
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams
+) -> None:
     # Spread-out good samples interleaved with bad ones can no longer be cherry-picked
     # because the sliding window only considers the most recent samples + max_noisy_samples.
     toolhead.z_probing_move = mocker.Mock(side_effect=[0.5, 1.0, 1.5, 0.5, 2.5, 0.5, 3.5, 0.5, 4.5, 0.5])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
     with pytest.raises(RuntimeError, match="Unable to find"):
-        _ = probe.touch.perform_probe()
+        _ = probe.touch.perform_probe(gcmd=params)
 
 
-def test_probe_succeeds_within_window(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_probe_succeeds_within_window(
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams
+) -> None:
     # First 3 are noisy, then 5 consistent samples within the window.
     # samples=5, max_noisy_samples=2: window=7, so the last 5 samples [0.5, 0.5, 0.5, 0.5, 0.5] all agree.
     toolhead.z_probing_move = mocker.Mock(side_effect=[1.0, 2.0, 3.0, 0.5, 0.5, 0.5, 0.5, 0.5])
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
 
-    assert probe.touch.perform_probe() == 0.5
+    assert probe.touch.perform_probe(gcmd=params) == 0.5
 
 
-def test_probe_unhomed_z(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_probe_unhomed_z(mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams) -> None:
     toolhead.is_homed = mocker.Mock(return_value=False)
 
     with pytest.raises(RuntimeError, match="Z axis must be homed"):
-        _ = probe.touch.perform_probe()
+        _ = probe.touch.perform_probe(gcmd=params)
 
 
 @pytest.mark.parametrize("trigger_z", [-5.0, -4.999], ids=["exact_floor", "inclusive_boundary"])
 def test_floor_abort_retract_then_wait_raises(
-    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, trigger_z: float
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, trigger_z: float, params: MacroParams
 ) -> None:
     """Retract queued after floor hit, wait_moves completes it, then RuntimeError raised."""
     toolhead.get_axis_limits = mocker.Mock(return_value=(-5, 100))
@@ -137,7 +167,7 @@ def test_floor_abort_retract_then_wait_raises(
     wait_spy.side_effect = lambda: move_counts.append(move_spy.call_count)
 
     with pytest.raises(RuntimeError, match="movement floor"):
-        _ = probe.touch.perform_probe()
+        _ = probe.touch.perform_probe(gcmd=params)
 
     move_spy.assert_called_once_with(z=2, speed=5)
     assert move_counts == [0, 0, 1]
@@ -185,7 +215,9 @@ def test_probe_outside_bounds(mocker: MockerFixture, toolhead: Toolhead, probe: 
         _ = probe.touch.home_start(0)
 
 
-def test_increased_budget_permits_longer_sequence(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_increased_budget_permits_longer_sequence(
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams
+) -> None:
     """An explicit max_samples override allows convergence that the config budget would exhaust.
 
     With samples=5, max_noisy_samples=2 (window=7), and sample_range=0.010:
@@ -202,17 +234,19 @@ def test_increased_budget_permits_longer_sequence(mocker: MockerFixture, toolhea
 
     # Default budget (max_samples=10) exhausts before convergence.
     with pytest.raises(RuntimeError, match="Unable to find"):
-        _ = probe.touch.perform_probe()
+        _ = probe.touch.perform_probe(gcmd=params)
 
     # Reset the mock for the second run.
     toolhead.z_probing_move = mocker.Mock(side_effect=side_effects)
 
     # Raising the budget to 15 reaches the clean 5-sample window and succeeds.
-    result = probe.touch.perform_probe(max_samples=15)
+    result = probe.touch.perform_probe(max_samples=15, gcmd=params)
     assert result == 0.5
 
 
-def test_impossible_budget_fails_before_z_probing_move(mocker: MockerFixture, toolhead: Toolhead, probe: Probe) -> None:
+def test_impossible_budget_fails_before_z_probing_move(
+    mocker: MockerFixture, toolhead: Toolhead, probe: Probe, params: MacroParams
+) -> None:
     """max_samples < effective_samples raises RuntimeError before any probing movement."""
     toolhead.z_probing_move = mocker.Mock(return_value=0.5)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 1))
@@ -220,7 +254,7 @@ def test_impossible_budget_fails_before_z_probing_move(mocker: MockerFixture, to
 
     # effective samples = 5 (from config); passing max_samples=3 is impossible.
     with pytest.raises(RuntimeError, match=r"max_samples \(3\) must be >= the effective samples \(5\)"):
-        _ = probe.touch.perform_probe(max_samples=3)
+        _ = probe.touch.perform_probe(max_samples=3, gcmd=params)
 
     move_spy.assert_not_called()
     toolhead.z_probing_move.assert_not_called()
