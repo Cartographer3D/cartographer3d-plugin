@@ -102,8 +102,8 @@ class TemperatureCalibrateMacro(Macro):
 
         for phase, height in enumerate(heights, 1):
             logger.info("Starting Phase %d of %d (height=%.1fmm)", phase, len(heights), height)
-            self._cool_down_phase(cooling_height, p.min_temp, p.z_speed)
-            samples = self._heat_up_phase(height, p.bed_temp, p.min_temp, p.max_temp, p.z_speed)
+            self._cool_down_phase(cooling_height, p.min_temp, p.z_speed, gcmd=params)
+            samples = self._heat_up_phase(height, p.bed_temp, p.min_temp, p.max_temp, p.z_speed, gcmd=params)
             data_per_height[height] = samples
 
             logger.info("Phase %d complete: collected %d samples", phase, len(samples))
@@ -115,7 +115,7 @@ class TemperatureCalibrateMacro(Macro):
             except Exception as e:
                 logger.warning("Failed to write samples to CSV: %s", e)
 
-        self.gcode.run_gcode("M140 S0")
+        self.gcode.run_gcode("M140 S0", gcmd=params)
         self.toolhead.move(z=cooling_height, speed=p.z_speed)
 
         model = self.task_executor.run(fit_coil_temperature_model, data_per_height, self.mcu.get_coil_reference())
@@ -130,22 +130,24 @@ class TemperatureCalibrateMacro(Macro):
         )
 
     @log_duration("Cooldown phase")
-    def _cool_down_phase(self, height: float, min_temp: int, z_speed: int) -> None:
+    def _cool_down_phase(self, height: float, min_temp: int, z_speed: int, *, gcmd: MacroParams) -> None:
         """Cool down the probe to minimum temperature."""
         logger.info("Cooling probe to %d°C, moving to z %.1f", min_temp, height)
 
         self.toolhead.move(z=height, speed=z_speed)
         self.toolhead.wait_moves()
-        self.gcode.run_gcode("M140 S0\nM106 S255")
+        self.gcode.run_gcode("M140 S0\nM106 S255", gcmd=gcmd)
 
         logger.info("Waiting for coil temperature to reach %d°C", min_temp)
         self._wait_for_temperature(target_temp=min_temp, cooling=True)
 
     @log_duration("Heat up phase")
-    def _heat_up_phase(self, height: float, bed_temp: int, min_temp: int, max_temp: int, z_speed: int) -> list[Sample]:
+    def _heat_up_phase(
+        self, height: float, bed_temp: int, min_temp: int, max_temp: int, z_speed: int, *, gcmd: MacroParams
+    ) -> list[Sample]:
         """Heat up and collect samples during temperature rise."""
         logger.info("Starting heaters: bed=%d°C, moving to z %.1f", bed_temp, height)
-        self.gcode.run_gcode(f"M140 S{bed_temp}\nM106 S0")
+        self.gcode.run_gcode(f"M140 S{bed_temp}\nM106 S0", gcmd=gcmd)
 
         self.toolhead.move(z=height, speed=z_speed)
         self.toolhead.wait_moves()

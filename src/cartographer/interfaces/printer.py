@@ -148,7 +148,7 @@ class TemperatureStatus(NamedTuple):
 
 
 class GCodeDispatch(Protocol):
-    def run_gcode(self, script: str) -> None:
+    def run_gcode(self, script: str, *, gcmd: MacroParams) -> None:
         """Run the given gcode script."""
         ...
 
