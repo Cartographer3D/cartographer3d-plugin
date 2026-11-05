@@ -130,12 +130,7 @@ class KalicoIntegrator(KlipperLikeIntegrator):
                     # Ask the registry for its native missing-default error before any work.
                     selected = registry.get_command_probe(gcmd)
                 if selected is probe and method in (None, "scan"):
-                    params = {key: value for key, value in gcmd.get_command_parameters().items() if key != "PROBE"}
-                    if callable(getattr(gcmd, "create_subcommand", None)):
-                        command = gcmd.create_subcommand(gcmd.get_command(), gcmd.get_commandline(), params)
-                    else:
-                        command = self._gcode.create_gcode_command(gcmd.get_command(), gcmd.get_commandline(), params)
-                    macro.run(command)
+                    macro.run(self._derive_probe_command(gcmd))
                     return
                 if method == "scan":
                     msg = "METHOD=scan requires the Cartographer probe"
@@ -161,12 +156,7 @@ class KalicoIntegrator(KlipperLikeIntegrator):
             return
 
         def run(gcmd: GCodeCommand) -> None:
-            params = {key: value for key, value in gcmd.get_command_parameters().items() if key != "PROBE"}
-            if callable(getattr(gcmd, "create_subcommand", None)):
-                command = gcmd.create_subcommand(gcmd.get_command(), gcmd.get_commandline(), params)
-            else:
-                command = self._gcode.create_gcode_command(gcmd.get_command(), gcmd.get_commandline(), params)
-            registration.macro.run(command)
+            registration.macro.run(self._derive_probe_command(gcmd))
 
         handler = catch_macro_errors(run)
         keys = (probe.probe_name, None) if probe.is_default_probe else (probe.probe_name,)
@@ -178,3 +168,9 @@ class KalicoIntegrator(KlipperLikeIntegrator):
                 handler,
                 desc=registration.macro.description,
             )
+
+    def _derive_probe_command(self, gcmd: GCodeCommand) -> GCodeCommand:
+        params = {key: value for key, value in gcmd.get_command_parameters().items() if key != "PROBE"}
+        if callable(getattr(gcmd, "create_subcommand", None)):
+            return gcmd.create_subcommand(gcmd.get_command(), gcmd.get_commandline(), params)
+        return self._gcode.create_gcode_command(gcmd.get_command(), gcmd.get_commandline(), params)

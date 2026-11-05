@@ -39,7 +39,9 @@ def adapter(mocker: MockerFixture) -> KlipperToolhead:
     stepper.get_name.return_value = "stepper_z"
     stepper.get_mcu_position.return_value = 123
     mcu.dispatch.get_steppers.return_value = [stepper]
-    return KlipperToolhead(config, mcu)
+    adapter = KlipperToolhead(config, mcu)
+    printer.lookup_object.reset_mock()
+    return adapter
 
 
 @pytest.mark.parametrize("new_api", [False, True])
