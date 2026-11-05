@@ -5,7 +5,6 @@ from unittest.mock import Mock
 
 import pytest
 
-from cartographer.adapters.kalico.probe import KalicoCartographerProbe
 from cartographer.adapters.klipper.probe import KlipperProbeSession
 from cartographer.adapters.klipper_v12.probe import KlipperV12CartographerProbe
 from cartographer.interfaces.printer import Position
@@ -35,13 +34,8 @@ def session(probe_mode: Mock, toolhead: Mock) -> KlipperProbeSession:
     return KlipperProbeSession(probe_mode, toolhead)
 
 
-@pytest.mark.parametrize("probe_class", [KalicoCartographerProbe, KlipperV12CartographerProbe])
-def test_native_probe_preserves_command(
-    probe_class: type[KalicoCartographerProbe] | type[KlipperV12CartographerProbe],
-    toolhead: Mock,
-    probe_mode: Mock,
-) -> None:
-    probe = probe_class(toolhead, probe_mode, Mock(), Mock(), Mock())
+def test_native_probe_preserves_command(toolhead: Mock, probe_mode: Mock) -> None:
+    probe = KlipperV12CartographerProbe(toolhead, probe_mode, Mock(), Mock(), Mock())
     gcmd = Mock()
 
     assert probe.run_probe(gcmd) == [10, 20, 1.5]

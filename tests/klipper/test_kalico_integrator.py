@@ -65,15 +65,9 @@ def test_macro_forwards_command_and_converts_errors(error: Exception | None) -> 
         assert caught.value.__cause__ is (None if isinstance(error, PrinterShutdownError) else error)
 
 
-@pytest.mark.parametrize("adapter", ["gcode", "accel"])
 @pytest.mark.parametrize("api", ["live", "missing", "noncallable"])
-def test_nested_scripts_prefer_live_command_with_legacy_fallback(mocker: MockerFixture, adapter: str, api: str) -> None:
-    _ = mocker.patch.dict("sys.modules", {"extras.homing": Mock(), "extras.manual_probe": Mock()})
-    from cartographer.adapters.klipper.toolhead import KlipperToolhead
-
-    printer, config, mcu = Mock(), Mock(), Mock()
-    config.printer = printer
-    config.get_printer.return_value = printer
+def test_nested_scripts_prefer_live_command_with_legacy_fallback(mocker: MockerFixture, api: str) -> None:
+    printer = Mock()
     dispatch = printer.lookup_object.return_value
     live = command("run_script")
     run_script = Mock()
@@ -81,12 +75,8 @@ def test_nested_scripts_prefer_live_command_with_legacy_fallback(mocker: MockerF
         delattr(live, "run_script")
     else:
         _ = mocker.patch.object(live, "run_script", None if api == "noncallable" else run_script)
-    if adapter == "gcode":
-        script = "G4 P1"
-        KlipperGCodeDispatch(printer).run_gcode(script, gcmd=live)
-    else:
-        script = "SET_VELOCITY_LIMIT ACCEL=123.456"
-        KlipperToolhead(config, mcu).set_max_accel(123.456, gcmd=live)
+    script = "G4 P1"
+    KlipperGCodeDispatch(printer).run_gcode(script, gcmd=live)
     if api == "live":
         run_script.assert_called_once_with(script)
         dispatch.run_script_from_command.assert_not_called()
@@ -95,24 +85,13 @@ def test_nested_scripts_prefer_live_command_with_legacy_fallback(mocker: MockerF
         dispatch.run_script_from_command.assert_called_once_with(script)
 
 
-@pytest.mark.parametrize("adapter", ["gcode", "accel"])
 @pytest.mark.parametrize("error_type", [RuntimeError, TypeError])
-def test_live_script_errors_do_not_retry_legacy_api(
-    mocker: MockerFixture, adapter: str, error_type: type[Exception]
-) -> None:
-    _ = mocker.patch.dict("sys.modules", {"extras.homing": Mock(), "extras.manual_probe": Mock()})
-    from cartographer.adapters.klipper.toolhead import KlipperToolhead
-
-    printer, config = Mock(), Mock()
-    config.printer = printer
-    config.get_printer.return_value = printer
+def test_live_script_errors_do_not_retry_legacy_api(mocker: MockerFixture, error_type: type[Exception]) -> None:
+    printer = Mock()
     live = command("run_script")
     run_script = mocker.patch.object(live, "run_script", side_effect=error_type("script failure"))
     with pytest.raises(error_type, match="script failure"):
-        if adapter == "gcode":
-            KlipperGCodeDispatch(printer).run_gcode("G4 P1", gcmd=live)
-        else:
-            KlipperToolhead(config, Mock()).set_max_accel(100, gcmd=live)
+        KlipperGCodeDispatch(printer).run_gcode("G4 P1", gcmd=live)
     run_script.assert_called_once()
     printer.lookup_object.return_value.run_script_from_command.assert_not_called()
 

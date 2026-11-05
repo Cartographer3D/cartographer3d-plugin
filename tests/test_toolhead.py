@@ -46,17 +46,11 @@ if TYPE_CHECKING:
         CalibrationTouchMode.perform_touch_probe,
         ThresholdScreener.screen,
         ThresholdVerifier.verify,
+        *(getattr(TouchMode, name) for name in ("_run_probe", "_perform_single_probe")),
     ],
 )
 def test_physical_operations_require_explicit_command(method: Callable[..., object]) -> None:
     parameter = inspect.signature(method).parameters["gcmd"]
-    assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
-    assert parameter.default is inspect.Parameter.empty
-
-
-@pytest.mark.parametrize("method_name", ["_run_probe", "_perform_single_probe"])
-def test_touch_hardware_helpers_require_command(method_name: str) -> None:
-    parameter = inspect.signature(getattr(TouchMode, method_name)).parameters["gcmd"]
     assert parameter.kind is inspect.Parameter.KEYWORD_ONLY
     assert parameter.default is inspect.Parameter.empty
 

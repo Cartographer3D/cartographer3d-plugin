@@ -70,6 +70,17 @@ def test_probing_signature_variants(adapter: KlipperToolhead, new_api: bool) -> 
         assert backend.call_args.kwargs["gcmd"] is gcmd
 
 
+def test_acceleration_delegates_script_and_command(
+    adapter: KlipperToolhead, params: MacroParams, mocker: MockerFixture
+) -> None:
+    run_gcode = mocker.patch("cartographer.adapters.klipper.toolhead.KlipperGCodeDispatch.run_gcode")
+
+    adapter.set_max_accel(123.456, gcmd=params)
+
+    run_gcode.assert_called_once_with("SET_VELOCITY_LIMIT ACCEL=123.456", gcmd=params)
+    assert run_gcode.call_args.kwargs["gcmd"] is params
+
+
 def test_kalico_acceleration_uses_direct_api(adapter: KlipperToolhead, params: MacroParams) -> None:
     from cartographer.adapters.kalico.toolhead import KalicoToolhead
 
