@@ -42,10 +42,10 @@ class KalicoMeshAxisTwistCompensationAdapter(AxisTwistCompensation):
         self.compensation = cast("_MeshCompensation", manager)
 
     @override
-    def get_z_compensation_value(self, *, x: float, y: float) -> float:
-        probe = self.registry.get_probe("cartographer")
+    def get_z_compensation_value(self, *, x: float, y: float, probe_name: str = "cartographer") -> float:
+        probe = self.registry.get_probe(probe_name)
         if probe is None:
-            msg = "Cartographer scan probe is not registered in Kalico's probe_list"
+            msg = f"Probe '{probe_name}' is not registered in Kalico's probe_list"
             raise RuntimeError(msg)
         # Native lookup applies probe XY offsets itself; pass nozzle coordinates unchanged.
         return self.compensation.get_z_compensation_value([x, y, 0], probe=probe)

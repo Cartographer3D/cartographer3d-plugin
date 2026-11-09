@@ -37,3 +37,36 @@ Native `CALIBRATE_Z` and `PROBE_Z_ACCURACY` cannot use Cartographer; use the exi
 `CARTOGRAPHER_SCAN_CALIBRATE` / `CARTOGRAPHER_TOUCH_CALIBRATE` commands instead.
 `[nozzle_cleanup]` selecting Cartographer is rejected at configuration time; if Cartographer is the default,
 explicitly select another available probe. Cartographer does not provide nozzle-cleaning support.
+
+### Kalico per-probe mesh compensation
+
+Current Kalico with native per-probe axis-twist meshes can calibrate `cartographer` against a named
+`cartographer_touch` reference. This touch name is available only when the new mesh compensation is configured;
+registry-only and older Kalico still expose only the scan probe. Touch is never the default, adds no mux `PROBE`
+shortcuts or homing pin, and does not change existing homing. Native point meshing can select it, but `METHOD=scan`
+cannot. The native Z-calibration and nozzle-cleanup restrictions above apply to both Cartographer names.
+
+Prepare calibrated scan and touch modes, clean the nozzle, home and level the printer, and allow temperatures to
+stabilize at a touch-safe nozzle temperature before calibration. There is no automatic heater control. Choose bounds
+reachable by both modes and safe for nozzle contact; the following bounds and point counts are **illustrative only**,
+not machine-specific safe defaults:
+
+```ini
+[axis_twist_compensation cartographer]
+reference_probe: cartographer_touch
+mesh_min: 30, 30
+mesh_max: 180, 180
+probe_count: 3, 3
+```
+
+```gcode
+AXIS_TWIST_COMPENSATION_CALIBRATE PROBE=cartographer REFERENCE_PROBE=cartographer_touch
+SAVE_CONFIG
+```
+
+Kalico owns the full mesh calibration and persistence. Existing compensation on the selected reference is honored;
+no compensation map for `cartographer_touch` is required (normally it has none). Maps and offsets are not copied
+between probes. Manual calibration or another reference probe are also supported natively.
+
+On new mesh-capable Kalico, this native full-mesh workflow replaces `CARTOGRAPHER_AXIS_TWIST_COMPENSATION`.
+Older firmware keeps the existing Cartographer command.

@@ -86,7 +86,7 @@ def test_native_lookup_resolves_late_and_passes_exact_registered_probe(host: Moc
     # No probe exists during core construction, regardless of the eventual default.
     adapter = create_axis_twist_compensation(host.config)
     host.registry.get_probe.assert_not_called()
-    with pytest.raises(RuntimeError, match="Cartographer scan probe is not registered"):
+    with pytest.raises(RuntimeError, match="Probe 'cartographer' is not registered"):
         _ = adapter.get_z_compensation_value(x=12.0, y=34.0)
     host.manager.get_z_compensation_value.assert_not_called()
 
@@ -103,6 +103,21 @@ def test_native_lookup_resolves_late_and_passes_exact_registered_probe(host: Moc
     host.manager.get_z_compensation_value.assert_called_once_with([12.0, 34.0, 0], probe=probe)
     assert host.manager.get_z_compensation_value.call_args.kwargs["probe"] is probe
     assert host.manager.mock_calls == [call.get_z_compensation_value([12.0, 34.0, 0], probe=probe)]
+
+
+@pytest.mark.parametrize("probe_name", ["cartographer_touch", "missing"])
+def test_explicit_native_probe_lookup(host: Mock, probe_name: str) -> None:
+    adapter = KalicoMeshAxisTwistCompensationAdapter(host.config)
+    probe = object()
+    host.registry.get_probe.side_effect = {"cartographer_touch": probe}.get
+    if probe_name == "missing":
+        with pytest.raises(RuntimeError, match="Probe 'missing' is not registered"):
+            _ = adapter.get_z_compensation_value(x=12, y=34, probe_name=probe_name)
+        host.manager.get_z_compensation_value.assert_not_called()
+    else:
+        assert adapter.get_z_compensation_value(x=12, y=34, probe_name=probe_name) == 0.125
+        host.manager.get_z_compensation_value.assert_called_once_with([12, 34, 0], probe=probe)
+    host.registry.get_probe.assert_called_once_with(probe_name)
 
 
 @pytest.mark.parametrize("map_state", ["missing", "unknown", "loaded"])
