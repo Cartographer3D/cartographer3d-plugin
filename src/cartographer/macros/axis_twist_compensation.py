@@ -164,7 +164,7 @@ class AxisTwistCompensationMacro(Macro):
 
         self.adapter.clear_compensations(axis)
         try:
-            self._calibrate(axis, p.sample_count, options)
+            self._calibrate(axis, p.sample_count, options, gcmd=params)
         except RuntimeError:
             logger.info(
                 "Error during axis twist compensation calibration, "
@@ -173,7 +173,9 @@ class AxisTwistCompensationMacro(Macro):
             )
             raise
 
-    def _calibrate(self, axis: Literal["x", "y"], sample_count: int, options: ResolvedCalibrationOptions) -> None:
+    def _calibrate(
+        self, axis: Literal["x", "y"], sample_count: int, options: ResolvedCalibrationOptions, *, gcmd: MacroParams
+    ) -> None:
         step = (options.end - options.start) / (sample_count - 1)
         results: list[float] = []
         start_time = time.time()
@@ -181,9 +183,9 @@ class AxisTwistCompensationMacro(Macro):
         for i in range(sample_count):
             position = options.start + i * step
             self._move_probe_to(axis, position, options.line)
-            scan = self.probe.perform_scan()
+            scan = self.probe.perform_scan(gcmd=gcmd)
             self._move_nozzle_to(axis, position, options.line)
-            touch = self.probe.perform_touch()
+            touch = self.probe.perform_touch(gcmd=gcmd)
             result = scan - touch
             logger.debug("Offset at %.2f: %.6f", position, result)
             results.append(result)

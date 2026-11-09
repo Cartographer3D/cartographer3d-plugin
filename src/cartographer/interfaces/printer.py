@@ -85,6 +85,8 @@ class Mcu(Protocol):
 
 
 class MacroParams(Protocol):
+    """Retain the original command object when forwarding command-dependent operations."""
+
     @overload
     def get(self, name: str, default: str = ...) -> str: ...
     @overload
@@ -136,7 +138,7 @@ class ProbeMode(Protocol):
     @property
     def last_homing_time(self) -> float: ...
     def get_status(self, eventtime: float) -> object: ...
-    def perform_probe(self) -> float: ...
+    def perform_probe(self, *, gcmd: MacroParams) -> float: ...
     def note_homing_complete(self) -> None:
         """Record that a homing operation using this mode has completed."""
         ...
@@ -148,7 +150,7 @@ class TemperatureStatus(NamedTuple):
 
 
 class GCodeDispatch(Protocol):
-    def run_gcode(self, script: str) -> None:
+    def run_gcode(self, script: str, *, gcmd: MacroParams) -> None:
         """Run the given gcode script."""
         ...
 
@@ -182,11 +184,11 @@ class Toolhead(Protocol):
         """Returns currently applied gcode offset for the z axis."""
         ...
 
-    def z_probing_move(self, endstop: Endstop, *, speed: float) -> float:
+    def z_probing_move(self, endstop: Endstop, *, speed: float, gcmd: MacroParams) -> float:
         """Starts probing move towards the given endstop."""
         ...
 
-    def z_home_end(self, endstop: Endstop) -> None:
+    def z_home_end(self, endstop: Endstop, *, gcmd: MacroParams) -> None:
         """Informs the modules that homing has ended on the z axis."""
         ...
 
@@ -198,7 +200,9 @@ class Toolhead(Protocol):
         """Get the limits of an axis."""
         ...
 
-    def manual_probe(self, finalize_callback: Callable[[Position | None], None]) -> None:
+    def manual_probe(
+        self, finalize_callback: Callable[[Position | None, MacroParams], None], *, gcmd: MacroParams
+    ) -> None:
         """Start a manual probe."""
         ...
 
@@ -218,6 +222,6 @@ class Toolhead(Protocol):
         """Get the current maximum accel"""
         ...
 
-    def set_max_accel(self, accel: float) -> None:
+    def set_max_accel(self, accel: float, *, gcmd: MacroParams) -> None:
         """Set the current maximum accel"""
         ...

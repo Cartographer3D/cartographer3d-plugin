@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import inspect
 import logging
 from abc import ABC
-from typing import TYPE_CHECKING, Callable, final
+from typing import TYPE_CHECKING, Callable, cast, final
 
 from extras.homing import Homing
 from extras.manual_probe import ManualProbeHelper
@@ -11,10 +12,11 @@ from typing_extensions import override
 from cartographer.adapters.klipper.endstop import KlipperEndstop
 from cartographer.adapters.klipper_like.axis_compat import uses_string_homing_axes
 from cartographer.adapters.klipper_like.utils import reraise_from_klipper
-from cartographer.interfaces.printer import Endstop, HomingAxis, Position, TemperatureStatus, Toolhead
+from cartographer.interfaces.printer import Endstop, HomingAxis, MacroParams, Position, TemperatureStatus, Toolhead
 
 if TYPE_CHECKING:
     from configfile import ConfigWrapper
+    from gcode import GCodeCommand
     from klippy import Printer
     from mcu import MCU_endstop
     from stepper import MCU_stepper
@@ -105,7 +107,11 @@ class KlipperLikeToolhead(Toolhead, ABC):
 
     @override
     @reraise_from_klipper
-    def z_probing_move(self, endstop: Endstop, *, speed: float) -> float:
+    def z_probing_move(self, endstop: Endstop, *, speed: float, gcmd: MacroParams) -> float:
+        probing_move = self.printer.lookup_object("homing").probing_move
+        requires_gcmd = "gcmd" in inspect.signature(probing_move).parameters
+        raw_gcmd = cast("GCodeCommand", gcmd)
+
         klipper_endstop = KlipperEndstop(self.mcu, endstop)
         self.wait_moves()
         z_min, _ = self.get_axis_limits("z")
@@ -113,16 +119,22 @@ class KlipperLikeToolhead(Toolhead, ABC):
         pos = self.toolhead.get_position()[:]
         pos[2] = z_min
 
-        epos = self.printer.lookup_object("homing").probing_move(klipper_endstop, pos, speed)
+        if requires_gcmd:
+            epos = probing_move(klipper_endstop, pos, speed, gcmd=raw_gcmd)
+        else:
+            epos = probing_move(klipper_endstop, pos, speed)
         return epos[2]
 
     @override
-    def z_home_end(self, endstop: Endstop) -> None:
-        klipper_endstop = KlipperEndstop(self.mcu, endstop)
+    def z_home_end(self, endstop: Endstop, *, gcmd: MacroParams) -> None:
+        requires_gcmd = "gcmd" in inspect.signature(Homing).parameters
+        raw_gcmd = cast("GCodeCommand", gcmd)
 
-        homing = Homing(self.printer)
+        klipper_endstop = KlipperEndstop(self.mcu, endstop)
+        homing = Homing(self.printer, gcmd=raw_gcmd) if requires_gcmd else Homing(self.printer)
         homing.set_axes([axis_to_index("z")])
         homing.trigger_mcu_pos = {sp.get_name(): sp.get_mcu_position() for sp in klipper_endstop.get_steppers()}
+        homing.homing_successful = True
 
         self.printer.send_event("homing:home_rails_end", homing, [FakeRail(klipper_endstop, self.get_axis_limits("z"))])
 
@@ -142,14 +154,25 @@ class KlipperLikeToolhead(Toolhead, ABC):
         return status["axis_minimum"][index], status["axis_maximum"][index]
 
     @override
-    def manual_probe(self, finalize_callback: Callable[[Position | None], None]) -> None:
-        gcode = self.printer.lookup_object("gcode")
-        gcmd = gcode.create_gcode_command("", "", {})
-        _ = ManualProbeHelper(
-            self.printer,
-            gcmd,
-            lambda pos: finalize_callback(Position(pos[0], pos[1], pos[2]) if pos else None),
-        )
+    def manual_probe(
+        self, finalize_callback: Callable[[Position | None, MacroParams], None], *, gcmd: MacroParams
+    ) -> None:
+        passes_gcmd = "pass_gcmd" in inspect.signature(ManualProbeHelper).parameters
+        raw_gcmd = cast("GCodeCommand", gcmd)
+
+        def finalize(pos: list[float] | None, callback_gcmd: GCodeCommand) -> None:
+            finalize_callback(Position(pos[0], pos[1], pos[2]) if pos else None, callback_gcmd)
+
+        if passes_gcmd:
+            _ = ManualProbeHelper(self.printer, raw_gcmd, finalize, pass_gcmd=True)
+        else:
+
+            def finalize_legacy(pos: list[float] | None) -> None:
+                # Legacy helpers cannot surface the completion command; old firmware has no execution scope.
+                gcode = self.printer.lookup_object("gcode")
+                finalize(pos, gcode.create_gcode_command("", "", {}))
+
+            _ = ManualProbeHelper(self.printer, raw_gcmd, finalize_legacy)
 
     @override
     def clear_z_homing_state(self) -> None:

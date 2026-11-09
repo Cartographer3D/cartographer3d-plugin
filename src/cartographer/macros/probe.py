@@ -56,7 +56,7 @@ class ProbeMacro(Macro):
     @override
     def run(self, params: MacroParams) -> None:
         _ = parse(ProbeMacroParams, params)
-        trigger_pos = self._probe.perform_scan()
+        trigger_pos = self._probe.perform_scan(gcmd=params)
         self.last_trigger_position = trigger_pos
         offset = self._probe.scan.offset
         pos = self._toolhead.get_position()
@@ -96,7 +96,7 @@ class ProbeAccuracyMacro(Macro):
         self._toolhead.move(z=position.z + p.sample_retract_dist, speed=p.lift_speed)
         measurements: list[float] = []
         while len(measurements) < p.samples:
-            trigger_pos = self._probe.perform_scan()
+            trigger_pos = self._probe.perform_scan(gcmd=params)
             measurements.append(trigger_pos)
             pos = self._toolhead.get_position()
             self._toolhead.move(z=pos.z + p.sample_retract_dist, speed=p.lift_speed)

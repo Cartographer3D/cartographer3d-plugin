@@ -99,7 +99,7 @@ def calculate_step(threshold: int, range_value: float | None, sample_range: floa
 class CalibrationProbe(Protocol):
     """Protocol for probe operations needed during calibration."""
 
-    def collect_samples(self, threshold: int, sample_count: int) -> tuple[float, ...]:
+    def collect_samples(self, threshold: int, sample_count: int, *, gcmd: MacroParams) -> tuple[float, ...]:
         """Collect raw samples at the given threshold."""
         ...
 
@@ -107,7 +107,7 @@ class CalibrationProbe(Protocol):
         """Update the active threshold."""
         ...
 
-    def perform_touch_probe(self) -> float:
+    def perform_touch_probe(self, *, gcmd: MacroParams) -> float:
         """Perform one complete touch probe sequence."""
         ...
 
@@ -120,14 +120,14 @@ class ThresholdScreener:
         self._probe = probe
         self._required_samples = required_samples
 
-    def screen(self, threshold: int, sample_count: int) -> ScreeningResult | None:
+    def screen(self, threshold: int, sample_count: int, *, gcmd: MacroParams) -> ScreeningResult | None:
         """
         Quick screen: can we find any valid subset?
 
         Returns None if probe triggered due to noise.
         """
         try:
-            samples = self._probe.collect_samples(threshold, sample_count)
+            samples = self._probe.collect_samples(threshold, sample_count, gcmd=gcmd)
         except ProbeTriggerError:
             logger.warning(
                 "Threshold %d triggered prior to movement.",
@@ -158,6 +158,8 @@ class ThresholdVerifier:
         threshold: int,
         max_verify_range: float,
         sample_count: int,
+        *,
+        gcmd: MacroParams,
     ) -> VerificationResult | None:
         """
         Verify threshold by running actual touch probe sequences.
@@ -179,7 +181,7 @@ class ThresholdVerifier:
 
         for attempt in range(sample_count):
             try:
-                median = self._probe.perform_touch_probe()
+                median = self._probe.perform_touch_probe(gcmd=gcmd)
                 medians.append(median)
                 logger.debug(
                     "Verification sample %d/%d: median=%.4fmm",
@@ -356,6 +358,7 @@ class TouchCalibrateMacro(Macro):
                 p.max_verify_range,
                 p.verification_samples,
                 screening_samples,
+                gcmd=params,
             )
 
         if threshold is None:
@@ -383,6 +386,8 @@ class TouchCalibrateMacro(Macro):
         max_verify_range: float,
         verification_samples: int,
         screening_samples: int,
+        *,
+        gcmd: MacroParams,
     ) -> int | None:
         """
         Find the minimum threshold that produces consistent results.
@@ -396,7 +401,7 @@ class TouchCalibrateMacro(Macro):
 
         while threshold <= threshold_max:
             # Phase 1: Quick screening
-            screening = screener.screen(threshold, screening_samples)
+            screening = screener.screen(threshold, screening_samples, gcmd=gcmd)
 
             if screening is None:
                 threshold += calculate_step(threshold, None, sample_range)
@@ -409,7 +414,7 @@ class TouchCalibrateMacro(Macro):
                 continue
 
             # Phase 2: Actual touch probe verification
-            verification = verifier.verify(threshold, max_verify_range, verification_samples)
+            verification = verifier.verify(threshold, max_verify_range, verification_samples, gcmd=gcmd)
 
             if verification is None:
                 threshold += calculate_step(threshold, None, sample_range)
@@ -582,22 +587,24 @@ class CalibrationTouchMode(TouchMode):
         self,
         threshold: int,
         sample_count: int,
+        *,
+        gcmd: MacroParams,
     ) -> tuple[float, ...]:
         """Collect samples at the given threshold."""
         self.set_threshold(threshold)
         samples: list[float] = []
 
         for _ in range(sample_count):
-            pos = self._perform_single_probe()
+            pos = self._perform_single_probe(gcmd=gcmd)
             samples.append(pos)
 
         return tuple(sorted(samples))
 
-    def perform_touch_probe(self) -> float:
+    def perform_touch_probe(self, *, gcmd: MacroParams) -> float:
         """
         Perform one complete touch probe sequence.
 
         Uses the shared _run_probe() to ensure parity with
         the runtime TouchMode._run_probe() logic.
         """
-        return self._run_probe()
+        return self._run_probe(gcmd=gcmd)

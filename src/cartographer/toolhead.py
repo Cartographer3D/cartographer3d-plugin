@@ -4,7 +4,7 @@ from typing import Callable
 
 from typing_extensions import override
 
-from cartographer.interfaces.printer import Endstop, HomingAxis, Position, TemperatureStatus, Toolhead
+from cartographer.interfaces.printer import Endstop, HomingAxis, MacroParams, Position, TemperatureStatus, Toolhead
 
 
 class BacklashCompensatingToolhead(Toolhead):
@@ -44,12 +44,12 @@ class BacklashCompensatingToolhead(Toolhead):
         return self.toolhead.get_gcode_z_offset()
 
     @override
-    def z_probing_move(self, endstop: Endstop, *, speed: float) -> float:
-        return self.toolhead.z_probing_move(endstop, speed=speed)
+    def z_probing_move(self, endstop: Endstop, *, speed: float, gcmd: MacroParams) -> float:
+        return self.toolhead.z_probing_move(endstop, speed=speed, gcmd=gcmd)
 
     @override
-    def z_home_end(self, endstop: Endstop) -> None:
-        return self.toolhead.z_home_end(endstop)
+    def z_home_end(self, endstop: Endstop, *, gcmd: MacroParams) -> None:
+        return self.toolhead.z_home_end(endstop, gcmd=gcmd)
 
     @override
     def set_z_position(self, z: float) -> None:
@@ -60,8 +60,10 @@ class BacklashCompensatingToolhead(Toolhead):
         return self.toolhead.get_axis_limits(axis)
 
     @override
-    def manual_probe(self, finalize_callback: Callable[[Position | None], None]) -> None:
-        self.toolhead.manual_probe(finalize_callback)
+    def manual_probe(
+        self, finalize_callback: Callable[[Position | None, MacroParams], None], *, gcmd: MacroParams
+    ) -> None:
+        self.toolhead.manual_probe(finalize_callback, gcmd=gcmd)
 
     @override
     def clear_z_homing_state(self) -> None:
@@ -80,5 +82,5 @@ class BacklashCompensatingToolhead(Toolhead):
         return self.toolhead.get_max_accel()
 
     @override
-    def set_max_accel(self, accel: float) -> None:
-        self.toolhead.set_max_accel(accel)
+    def set_max_accel(self, accel: float, *, gcmd: MacroParams) -> None:
+        self.toolhead.set_max_accel(accel, gcmd=gcmd)

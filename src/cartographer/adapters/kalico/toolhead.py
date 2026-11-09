@@ -1,6 +1,13 @@
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
 from typing_extensions import override
 
 from cartographer.adapters.klipper_like.toolhead import KlipperLikeToolhead
+
+if TYPE_CHECKING:
+    from cartographer.interfaces.printer import MacroParams
 
 
 class KalicoToolhead(KlipperLikeToolhead):
@@ -9,5 +16,5 @@ class KalicoToolhead(KlipperLikeToolhead):
         return self.toolhead.get_max_velocity()[1]
 
     @override
-    def set_max_accel(self, accel: float) -> None:
+    def set_max_accel(self, accel: float, *, gcmd: MacroParams) -> None:
         self.toolhead.set_accel(accel)

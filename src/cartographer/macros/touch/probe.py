@@ -43,7 +43,7 @@ class TouchProbeMacro(Macro):
     @override
     def run(self, params: MacroParams) -> None:
         p = parse(TouchProbeMacroParams, params, max_samples=self._max_samples)
-        trigger_pos = self._probe.perform_probe(max_samples=p.max_samples)
+        trigger_pos = self._probe.perform_probe(max_samples=p.max_samples, gcmd=params)
         self.last_trigger_position = trigger_pos
         offset = self._probe.offset
         pos = self._toolhead.get_position()

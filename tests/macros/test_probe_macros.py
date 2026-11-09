@@ -31,6 +31,8 @@ def test_probe_macro_logs_result(
         macro.run(params)
 
     assert "Result: at 10.000,10.000 estimate contact at z=0.000000" in caplog.messages
+    probe.scan.perform_probe.assert_called_once_with(gcmd=params)
+    assert probe.scan.perform_probe.call_args.kwargs["gcmd"] is params
 
 
 def test_probe_accuracy_respects_samples_parameter(
@@ -56,6 +58,7 @@ def test_probe_accuracy_respects_samples_parameter(
 
     # Verify: it should probe 2 times
     assert cast("Mock", probe.scan.perform_probe).call_count == 2
+    assert all(call.kwargs["gcmd"] is params for call in probe.scan.perform_probe.call_args_list)
 
 
 def test_probe_accuracy_logs_statistics(

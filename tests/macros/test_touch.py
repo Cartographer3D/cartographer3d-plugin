@@ -47,6 +47,7 @@ def test_touch_macro_output(
         macro.run(params)
 
     assert "Result: at 10.000,10.000 estimate contact at z=5.000000" in caplog.messages
+    probe.perform_probe.assert_called_once_with(max_samples=10, gcmd=params)
 
 
 def test_touch_probe_macro_omitted_max_samples_uses_configured_default(
@@ -61,7 +62,7 @@ def test_touch_probe_macro_omitted_max_samples_uses_configured_default(
 
     macro.run(params)
 
-    probe.perform_probe.assert_called_once_with(max_samples=7)
+    probe.perform_probe.assert_called_once_with(max_samples=7, gcmd=params)
 
 
 def test_touch_probe_macro_explicit_max_samples_overrides_configured_default(
@@ -78,7 +79,7 @@ def test_touch_probe_macro_explicit_max_samples_overrides_configured_default(
 
     macro.run(explicit_params)
 
-    probe.perform_probe.assert_called_once_with(max_samples=20)
+    probe.perform_probe.assert_called_once_with(max_samples=20, gcmd=explicit_params)
 
 
 def test_touch_accuracy_macro_output(
@@ -95,8 +96,9 @@ def test_touch_accuracy_macro_output(
     i = -1
     measurements: list[float] = [50 + i * 10 for i in range(10)]
 
-    def mock_probe(max_samples: int | None = None) -> float:
+    def mock_probe(max_samples: int | None = None, *, gcmd: MacroParams) -> float:
         _ = max_samples
+        assert gcmd is params
         nonlocal i
         i += 1
         return measurements[i]
@@ -129,8 +131,9 @@ def test_touch_accuracy_macro_sample_count(
     i = -1
     measurements: list[float] = [50 + i * 10 for i in range(10)]
 
-    def mock_probe(max_samples: int | None = None) -> float:
+    def mock_probe(max_samples: int | None = None, *, gcmd: MacroParams) -> float:
         _ = max_samples
+        assert gcmd is params
         nonlocal i
         i += 1
         return measurements[i]
@@ -159,9 +162,13 @@ def test_touch_home_macro_moves(
     probe.perform_probe = mocker.Mock(return_value=0.1)
     toolhead.get_position = mocker.Mock(return_value=Position(0, 0, 2))
     move_spy = mocker.spy(toolhead, "move")
+    home_end = mocker.patch.object(toolhead, "z_home_end", wraps=toolhead.z_home_end)
 
     macro.run(params)
 
+    probe.perform_probe.assert_called_once_with(gcmd=params)
+    home_end.assert_called_once_with(probe, gcmd=params)
+    assert home_end.call_args.kwargs["gcmd"] is params
     assert move_spy.mock_calls == [
         mocker.call(z=4, speed=mocker.ANY),
         mocker.call(x=10, y=10, speed=mocker.ANY),

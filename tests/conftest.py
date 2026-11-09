@@ -40,7 +40,8 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
     def get_extruder_temperature() -> TemperatureStatus:
         return TemperatureStatus(30, 30)
 
-    def z_home_end(endstop: Endstop) -> None:
+    def z_home_end(endstop: Endstop, *, gcmd: MacroParams) -> None:
+        del gcmd
         homing_state = mocker.Mock(spec=HomingState, autospec=True)
         homing_state.is_homing_z = mocker.Mock(return_value=True)
         endstop.on_home_end(homing_state)
@@ -58,6 +59,7 @@ def toolhead(mocker: MockerFixture) -> Toolhead:
 
     mock.get_last_move_time = get_last_move_time
 
+    mock.manual_probe = mocker.create_autospec(Toolhead, instance=True).manual_probe
     mock.z_probing_move = mocker.Mock(return_value=0)
 
     return mock

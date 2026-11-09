@@ -80,7 +80,7 @@ def test_z_offset_apply_scan_nozzle_raised(
     # Setup: scan z-offset is 2.0, G28 was run, nozzle was raised 0.4mm
     config.save_scan_model(replace(config.scan.models["default"], z_offset=2.0))
     calibrated_scan.load_model("default")
-    toolhead.z_home_end(probe.scan)
+    toolhead.z_home_end(probe.scan, gcmd=params)
     toolhead.get_gcode_z_offset = lambda: 0.4
 
     # Execute
@@ -106,7 +106,7 @@ def test_z_offset_apply_scan_nozzle_lowered(
     # Setup: scan z-offset is 2.0, G28 was run, nozzle was lowered 0.4mm
     config.save_scan_model(replace(config.scan.models["default"], z_offset=2.0))
     calibrated_scan.load_model("default")
-    toolhead.z_home_end(probe.scan)
+    toolhead.z_home_end(probe.scan, gcmd=params)
     toolhead.get_gcode_z_offset = lambda: -0.4
 
     # Execute
@@ -195,7 +195,7 @@ def test_z_offset_apply_touch_after_scan(
     calibrated_touch.load_model("default")
 
     # G28 was run, then TOUCH_HOME was run, nozzle was raised 0.4mm
-    toolhead.z_home_end(probe.scan)
+    toolhead.z_home_end(probe.scan, gcmd=params)
     touch_home_macro = TouchHomeMacro(
         calibrated_touch, toolhead, home_position=(10, 10), lift_speed=5, travel_speed=50, random_radius=0
     )
@@ -234,7 +234,7 @@ def test_z_offset_apply_scan_after_touch(
         calibrated_touch, toolhead, home_position=(10, 10), lift_speed=5, travel_speed=50, random_radius=0
     )
     touch_home_macro.run(params)
-    toolhead.z_home_end(probe.scan)
+    toolhead.z_home_end(probe.scan, gcmd=params)
     toolhead.get_gcode_z_offset = lambda: 0.4
 
     # Execute
