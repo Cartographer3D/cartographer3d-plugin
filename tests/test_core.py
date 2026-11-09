@@ -7,6 +7,9 @@ from unittest.mock import Mock
 import pytest
 
 from cartographer.core import PrinterCartographer
+from cartographer.interfaces.printer import AxisTwistCompensation, MacroParams
+from cartographer.macros.axis_twist_compensation import AxisTwistCompensationAdapter, AxisTwistCompensationMacro
+from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateMacro
 from cartographer.macros.message import MessageMacro
 
 if TYPE_CHECKING:
@@ -21,6 +24,7 @@ def mock_adapters(config: Configuration):
     adapters.mcu = Mock()
     adapters.config = config
     adapters.axis_twist_compensation = None
+    adapters.axis_twist_calibration = None
     adapters.toolhead = Mock()
     adapters.bed_mesh = Mock()
     adapters.task_executor = Mock()
@@ -104,7 +108,9 @@ class TestMacroRegistration:
 
     def test_axis_twist_compensation_with_adapter(self, mock_adapters: Adapters):
         """Verify AXIS_TWIST_COMPENSATION registered when adapter present."""
-        mock_adapters.axis_twist_compensation = Mock()
+        mock_adapters.axis_twist_compensation = Mock(spec=AxisTwistCompensation)
+        calibration = Mock(spec=AxisTwistCompensationAdapter)
+        mock_adapters.axis_twist_calibration = calibration
         cartographer = PrinterCartographer(mock_adapters)
         registered_names = {reg.name for reg in cartographer.macros}
 
@@ -112,7 +118,8 @@ class TestMacroRegistration:
 
         # Verify it's the actual macro, not a message
         atc_reg = next(reg for reg in cartographer.macros if reg.name == "CARTOGRAPHER_AXIS_TWIST_COMPENSATION")
-        assert not isinstance(atc_reg.macro, MessageMacro)
+        assert isinstance(atc_reg.macro, AxisTwistCompensationMacro)
+        assert atc_reg.macro.adapter is calibration
 
     def test_axis_twist_compensation_without_adapter(self, mock_adapters: Adapters):
         """Verify AXIS_TWIST_COMPENSATION is message when adapter absent."""
@@ -124,9 +131,31 @@ class TestMacroRegistration:
 
         # Verify it's a message macro
         atc_reg = next(reg for reg in cartographer.macros if reg.name == "CARTOGRAPHER_AXIS_TWIST_COMPENSATION")
-        from cartographer.macros.message import MessageMacro
-
         assert isinstance(atc_reg.macro, MessageMacro)
+        with pytest.raises(RuntimeError, match=r"Add \[axis_twist_compensation\] to your config"):
+            atc_reg.macro.run(Mock(spec=MacroParams))
+
+    def test_axis_twist_compensation_lookup_only(self, mock_adapters: Adapters):
+        """Lookup-only support must direct users to native calibration without side effects."""
+        correction = Mock(spec=AxisTwistCompensation)
+        mock_adapters.axis_twist_compensation = correction
+        gcode = Mock()
+        mock_adapters.gcode = gcode
+        cartographer = PrinterCartographer(mock_adapters)
+        macros = {reg.name: reg.macro for reg in cartographer.macros}
+
+        macro = macros["CARTOGRAPHER_AXIS_TWIST_COMPENSATION"]
+        assert isinstance(macro, MessageMacro)
+        params = Mock(spec=MacroParams)
+        with pytest.raises(RuntimeError, match="Use native AXIS_TWIST_COMPENSATION_CALIBRATE"):
+            macro.run(params)
+        assert correction.mock_calls == []
+        assert gcode.mock_calls == []
+        assert params.mock_calls == []
+
+        bed_mesh = macros["BED_MESH_CALIBRATE"]
+        assert isinstance(bed_mesh, BedMeshCalibrateMacro)
+        assert bed_mesh.axis_twist_compensation is correction
 
     def test_custom_prefix_macros(self, mock_adapters: Adapters):
         """Verify custom prefix is applied correctly."""

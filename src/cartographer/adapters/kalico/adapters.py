@@ -37,6 +37,7 @@ class KalicoAdapters(Adapters):
         self.bed_mesh = KlipperBedMesh(config)
         self.gcode = KlipperGCodeDispatch(self.printer)
 
-        self.axis_twist_compensation = None
+        self.axis_twist_calibration = None
         if config.has_section("axis_twist_compensation"):
-            self.axis_twist_compensation = KalicoAxisTwistCompensationAdapter(config)
+            self.axis_twist_calibration = KalicoAxisTwistCompensationAdapter(config)
+        self.axis_twist_compensation = self.axis_twist_calibration

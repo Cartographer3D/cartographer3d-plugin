@@ -300,12 +300,17 @@ class PrinterCartographer:
         adapters: Adapters,
     ) -> list[MacroRegistration]:
         """Create axis twist compensation macro registration."""
-        if adapters.axis_twist_compensation:
+        if adapters.axis_twist_calibration is not None:
             macro = AxisTwistCompensationMacro(
                 probe,
                 toolhead,
-                adapters.axis_twist_compensation,
+                adapters.axis_twist_calibration,
                 self.config,
+            )
+        elif adapters.axis_twist_compensation is not None:
+            macro = MessageMacro(
+                "Legacy line calibration is unavailable with the configured axis twist compensation support. "
+                "Use native AXIS_TWIST_COMPENSATION_CALIBRATE instead."
             )
         else:
             macro = MessageMacro(
