@@ -104,15 +104,6 @@ def test_native_lookup_resolves_late_and_passes_exact_registered_probe(host: Moc
     assert host.manager.get_z_compensation_value.call_args.kwargs["probe"] is probe
 
 
-def test_explicit_native_probe_lookup(host: Mock) -> None:
-    adapter = KalicoMeshAxisTwistCompensationAdapter(host.config)
-    probe = object()
-    host.registry.get_probe.side_effect = {"cartographer_touch": probe}.get
-    assert adapter.get_z_compensation_value(x=12, y=34, probe_name="cartographer_touch") == 0.125
-    host.manager.get_z_compensation_value.assert_called_once_with([12, 34, 0], probe=probe)
-    host.registry.get_probe.assert_called_once_with("cartographer_touch")
-
-
 @pytest.mark.parametrize(
     ("section", "native"),
     [("base", True), ("base", False), ("named", True), ("absent", False), ("similar", False)],

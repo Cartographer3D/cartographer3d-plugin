@@ -116,6 +116,9 @@ class TestMacroRegistration:
         config.get_printer.return_value.load_object.return_value.speed = 40.0
         calibration = KlipperV12AxisTwistCompensationAdapter(config)
         assert isinstance(calibration, AxisTwistCompensationAdapter)
+        assert calibration.move_height == 5.0
+        assert calibration.speed == 40.0
+        assert calibration.available_axes == ("x",)
         mock_adapters.axis_twist_compensation = calibration
         cartographer = PrinterCartographer(mock_adapters)
         registered_names = {reg.name for reg in cartographer.macros}

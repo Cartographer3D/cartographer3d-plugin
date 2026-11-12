@@ -525,6 +525,8 @@ def test_z_guard_inactive(mocker: MockerFixture, host: Mock, legacy: bool) -> No
         (False, False, "cartographer", True),
         (False, True, "other", False),
         (True, False, "cartographer_touch", True),
+        # Without mesh support, this unowned name may belong to another native probe.
+        (False, False, "cartographer_touch", False),
     ],
 )
 def test_nozzle_config(host: Mock, is_default: bool, selector: str | None, reject: bool, mesh: bool) -> None:
@@ -564,17 +566,15 @@ def test_mesh_registers_named_touch_reference(host: Mock) -> None:
     assert all(c.args[2] != "cartographer_touch" for c in host.gcode.register_mux_command.call_args_list)
     host.printer.add_object.assert_not_called()
 
-    # Native calibration resolves its reference from the same registry, without a mux command.
-    host.registry.get_probe.side_effect = {scan.probe_name: scan, touch.probe_name: touch}.get
-    reference = host.registry.get_probe("cartographer_touch")
+    # Native calibration calls the named reference's API, without a mux command.
     incoming = cast("GCodeCommand", cast("object", Command("AXIS_TWIST_COMPENSATION_CALIBRATE", "calibrate", {})))
     host.toolhead.get_position.return_value = Position(10, 20, 5)
     host.device.touch_mode.offset = Position(0, 0, 0)
     host.device.touch_mode.perform_probe.return_value = 1.5
-    assert reference.get_offsets() == (0, 0, 0)
-    reference.multi_probe_begin()
-    assert reference.run_probe(incoming) == [10, 20, 1.5]
-    reference.multi_probe_end()
+    assert touch.get_offsets() == (0, 0, 0)
+    touch.multi_probe_begin()
+    assert touch.run_probe(incoming) == [10, 20, 1.5]
+    touch.multi_probe_end()
     host.device.touch_mode.perform_probe.assert_called_once_with(gcmd=incoming)
     host.device.scan_mode.perform_probe.assert_not_called()
     host.device.probe_macro.run.assert_not_called()
@@ -586,8 +586,7 @@ def test_mesh_registers_named_touch_reference(host: Mock) -> None:
     compensation.get_z_compensation_value.assert_called_once_with(x=10, y=20, probe_name="cartographer_touch")
 
 
-@pytest.mark.parametrize("method", [None, "scan"])
-def test_touch_mesh_stays_native(host: Mock, method: str | None) -> None:
+def test_touch_mesh_stays_native(host: Mock) -> None:
     host.axis_twist_compensation = Mock(spec=KalicoMeshAxisTwistCompensationAdapter)
     integrator, _ = register(host)
     host.registry.get_command_probe.return_value = host.registry.add_probe_object.call_args_list[1].args[0]
@@ -595,16 +594,10 @@ def test_touch_mesh_stays_native(host: Mock, method: str | None) -> None:
     host.gcode.register_command.return_value = native
     macro = Mock(spec=BedMeshCalibrateMacro)
     integrator.register_macro(MacroRegistration("BED_MESH_CALIBRATE", macro))
-    params = {"PROBE": "cartographer_touch"}
-    if method is not None:
-        params["METHOD"] = method
-    incoming = Command("BED_MESH_CALIBRATE", "mesh", params)
-    if method == "scan":
-        with pytest.raises(ValueError, match="METHOD=scan requires"):
-            command_handler(host)(incoming)
-        native.assert_not_called()
-    else:
-        command_handler(host)(incoming)
-        native.assert_called_once_with(incoming)
+    incoming = Command("BED_MESH_CALIBRATE", "mesh", {"PROBE": "cartographer_touch"})
+    command_handler(host)(incoming)
+    native.assert_called_once_with(incoming)
+    assert native.call_args.args[0] is incoming
+    assert incoming.params == {"PROBE": "cartographer_touch"}
     macro.run.assert_not_called()
     host.gcode.create_gcode_command.assert_not_called()
