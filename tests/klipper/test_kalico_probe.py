@@ -61,6 +61,8 @@ def test_errors_propagate_without_overwriting_touch_state(host: Mock, stage: str
     incoming = cast("GCodeCommand", Mock())
     _ = probe.run_probe(incoming)
     previous = probe.get_status(0)
+    host.toolhead.get_position.return_value = Position(30, 40, 5)
+    host.touch.perform_probe.return_value = 2.5
     failing = host.touch.perform_probe if stage == "touch" else host.manager.get_z_compensation_value
     failing.side_effect = RuntimeError("reference failure")
     with pytest.raises(ValueError, match="reference failure"):

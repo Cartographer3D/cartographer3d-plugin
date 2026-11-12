@@ -6,7 +6,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from cartographer.adapters.kalico.axis_twist_compensation import KalicoMeshAxisTwistCompensationAdapter
+from cartographer.adapters.kalico.axis_twist_compensation import (
+    KalicoAxisTwistCompensationAdapter,
+    KalicoMeshAxisTwistCompensationAdapter,
+)
 from cartographer.adapters.kalico.integrator import KalicoIntegrator
 from cartographer.adapters.kalico.probe import KalicoCartographerProbe, KalicoTouchProbe
 from cartographer.adapters.klipper.endstop import KlipperEndstop
@@ -156,6 +159,7 @@ def assert_copy(host: Mock, original: Command, received: Command) -> None:
 @pytest.mark.parametrize("is_default", [True, False])
 def test_config_registers_real_probe(mocker: MockerFixture, host: Mock, is_default: bool) -> None:
     host.device.config.general.register_as_probe = is_default
+    host.axis_twist_compensation = Mock(spec=KalicoAxisTwistCompensationAdapter)
     integrator = KalicoIntegrator(host)
     _ = mocker.patch("cartographer.extra.init_runtime", return_value=(host, integrator))
     _ = mocker.patch("cartographer.extra.PrinterCartographer", return_value=host.device)
