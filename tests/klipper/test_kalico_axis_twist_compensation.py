@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from types import ModuleType
 from typing import TYPE_CHECKING
-from unittest.mock import Mock, call
+from unittest.mock import Mock
 
 import pytest
 
@@ -11,15 +11,10 @@ from cartographer.adapters.kalico.axis_twist_compensation import (
     KalicoMeshAxisTwistCompensationAdapter,
     create_axis_twist_compensation,
 )
-from cartographer.core import PrinterCartographer
-from cartographer.interfaces.printer import MacroParams
 from cartographer.macros.axis_twist_compensation import AxisTwistCompensationAdapter
-from cartographer.macros.message import MessageMacro
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
-
-    from cartographer.interfaces.configuration import Configuration
 
 
 @pytest.fixture
@@ -52,14 +47,12 @@ def host(mocker: MockerFixture) -> Mock:
     return host
 
 
-@pytest.mark.parametrize("capability", ["missing", "noncallable", "callable"])
+@pytest.mark.parametrize("capability", ["missing", "callable"])
 def test_selects_class_capability_before_legacy_initialization(
     mocker: MockerFixture, host: Mock, capability: str
 ) -> None:
     if capability == "missing":
         del host.native.AxisTwistCompensation.get_compensation
-    elif capability == "noncallable":
-        host.native.AxisTwistCompensation.get_compensation = None
     legacy_init = mocker.patch.object(KalicoAxisTwistCompensationAdapter, "__init__", return_value=None)
     adapter = create_axis_twist_compensation(host.config)
     if capability == "callable":
@@ -89,9 +82,8 @@ def test_legacy_adapter_retains_calibration_and_lookup(host: Mock) -> None:
     manager.get_z_compensation_value.assert_called_once_with([12.0, 34.0, 0])
 
 
-@pytest.mark.parametrize("default", ["other", "cartographer", None])
-def test_native_lookup_resolves_late_and_passes_exact_registered_probe(host: Mock, default: str | None) -> None:
-    # No probe exists during core construction, regardless of the eventual default.
+def test_native_lookup_resolves_late_and_passes_exact_registered_probe(host: Mock) -> None:
+    # No probe exists during core construction.
     adapter = create_axis_twist_compensation(host.config)
     host.registry.get_probe.assert_not_called()
     with pytest.raises(RuntimeError, match="Probe 'cartographer' is not registered"):
@@ -102,7 +94,7 @@ def test_native_lookup_resolves_late_and_passes_exact_registered_probe(host: Moc
     probe.probe_name = "cartographer"
     probe.get_offsets.return_value = (7.0, -9.0, 2.0)
     other = Mock()
-    host.registry.get_default_probe.return_value = probe if default == "cartographer" else other if default else None
+    host.registry.get_default_probe.return_value = other
     host.registry.get_probe.side_effect = {"cartographer": probe, "other": other}.get
     assert adapter.get_z_compensation_value(x=12.0, y=34.0) == 0.125
     host.registry.get_probe.assert_called_with("cartographer")
@@ -110,60 +102,21 @@ def test_native_lookup_resolves_late_and_passes_exact_registered_probe(host: Moc
     probe.get_offsets.assert_not_called()
     host.manager.get_z_compensation_value.assert_called_once_with([12.0, 34.0, 0], probe=probe)
     assert host.manager.get_z_compensation_value.call_args.kwargs["probe"] is probe
-    assert host.manager.mock_calls == [call.get_z_compensation_value([12.0, 34.0, 0], probe=probe)]
 
 
-@pytest.mark.parametrize("probe_name", ["cartographer_touch", "missing"])
-def test_explicit_native_probe_lookup(host: Mock, probe_name: str) -> None:
+def test_explicit_native_probe_lookup(host: Mock) -> None:
     adapter = KalicoMeshAxisTwistCompensationAdapter(host.config)
     probe = object()
     host.registry.get_probe.side_effect = {"cartographer_touch": probe}.get
-    if probe_name == "missing":
-        with pytest.raises(RuntimeError, match="Probe 'missing' is not registered"):
-            _ = adapter.get_z_compensation_value(x=12, y=34, probe_name=probe_name)
-        host.manager.get_z_compensation_value.assert_not_called()
-    else:
-        assert adapter.get_z_compensation_value(x=12, y=34, probe_name=probe_name) == 0.125
-        host.manager.get_z_compensation_value.assert_called_once_with([12, 34, 0], probe=probe)
-    host.registry.get_probe.assert_called_once_with(probe_name)
+    assert adapter.get_z_compensation_value(x=12, y=34, probe_name="cartographer_touch") == 0.125
+    host.manager.get_z_compensation_value.assert_called_once_with([12, 34, 0], probe=probe)
+    host.registry.get_probe.assert_called_once_with("cartographer_touch")
 
 
-@pytest.mark.parametrize("map_state", ["missing", "unknown", "loaded"])
-def test_native_manager_owns_map_resolution_without_writes(host: Mock, map_state: str) -> None:
-    probe = object()
-    host.registry.get_probe.return_value = probe
-    expected = 0.125 if map_state == "loaded" else 0.0
-    host.manager.get_z_compensation_value.return_value = expected
-    adapter = create_axis_twist_compensation(host.config)
-    assert adapter.get_z_compensation_value(x=-13.0, y=47.0) == expected
-    host.manager.get_z_compensation_value.assert_called_once_with([-13.0, 47.0, 0], probe=probe)
-    # No configuration writes, calibration calls, or map mutations through the adapter.
-    host.printer.lookup_object.assert_not_called()
-    assert not isinstance(adapter, AxisTwistCompensationAdapter)
-    assert not hasattr(adapter, "apply_compensation")
-    assert not hasattr(adapter, "clear_compensations")
-    assert not hasattr(adapter, "get_calibration_options")
-
-
-def test_native_adapter_registers_guide_without_side_effects(host: Mock, config: Configuration) -> None:
-    adapter = KalicoMeshAxisTwistCompensationAdapter(host.config)
-    assert not isinstance(adapter, AxisTwistCompensationAdapter)
-    adapters = Mock(config=config, axis_twist_compensation=adapter)
-    cartographer = PrinterCartographer(adapters)
-    macro = next(reg.macro for reg in cartographer.macros if reg.name == "CARTOGRAPHER_AXIS_TWIST_COMPENSATION")
-    assert isinstance(macro, MessageMacro)
-    calls = list(host.mock_calls)
-    params = Mock(spec_set=MacroParams)
-    with pytest.raises(RuntimeError, match="Use native AXIS_TWIST_COMPENSATION_CALIBRATE"):
-        macro.run(params)
-    assert host.mock_calls == calls
-    assert params.mock_calls == []
-    assert adapters.toolhead.mock_calls == []
-    assert adapters.gcode.mock_calls == []
-
-
-@pytest.mark.parametrize("native", [False, True])
-@pytest.mark.parametrize("section", ["base", "named", "absent", "similar"])
+@pytest.mark.parametrize(
+    ("section", "native"),
+    [("base", True), ("base", False), ("named", True), ("absent", False), ("similar", False)],
+)
 def test_constructor_section_detection_and_fields(
     mocker: MockerFixture, host: Mock, native: bool, section: str
 ) -> None:

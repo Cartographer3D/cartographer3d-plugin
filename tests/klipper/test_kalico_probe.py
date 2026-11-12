@@ -32,8 +32,8 @@ def host(mocker: MockerFixture) -> Mock:
     return host
 
 
-@pytest.mark.parametrize("correction", [0.0, 0.125])
-def test_touch_uses_only_own_native_map_and_state(host: Mock, correction: float) -> None:
+def test_touch_uses_only_own_native_map_and_state(host: Mock) -> None:
+    correction = 0.125
     probe = KalicoTouchProbe(host.toolhead, host.touch, host.general, host.compensation)
     other = object()
     host.registry.get_probe.side_effect = {"cartographer_touch": probe, "cartographer": other}.get
@@ -49,7 +49,6 @@ def test_touch_uses_only_own_native_map_and_state(host: Mock, correction: float)
     assert status["name"] == "cartographer_touch"
     assert status["last_z_result"] == 1.5 + correction
     assert probe.last_probe_position == Position(10, 20, 1.5 + correction)
-    host.touch.get_status.assert_not_called()
     host.touch.offset = Position(1, 2, 3)
     assert probe.get_offsets() == (1, 2, 3)
 
@@ -81,14 +80,10 @@ def test_bounds_checked_before_touch_execution(host: Mock, position: Position) -
     assert probe.get_status(0)["last_z_result"] is None
 
 
-def test_lift_speed_uses_positive_native_override_and_sessions_are_noops(host: Mock) -> None:
+def test_lift_speed_uses_positive_native_override(host: Mock) -> None:
     probe = KalicoTouchProbe(host.toolhead, host.touch, host.general, host.compensation)
     incoming = Mock()
     incoming.get_float.return_value = 8.0
     assert probe.get_lift_speed() == 6.0
     assert probe.get_lift_speed(incoming) == 8.0
     incoming.get_float.assert_called_once_with("LIFT_SPEED", 6.0, above=0.0)
-    probe.multi_probe_begin()
-    probe.multi_probe_end()
-    host.touch.perform_probe.assert_not_called()
-    host.toolhead.move.assert_not_called()

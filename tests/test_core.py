@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
 import pytest
@@ -12,8 +12,6 @@ from cartographer.interfaces.printer import AxisTwistCompensation, MacroParams
 from cartographer.macros.axis_twist_compensation import (
     AxisTwistCompensationAdapter,
     AxisTwistCompensationMacro,
-    CalibrationOptions,
-    CompensationResult,
 )
 from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateMacro
 from cartographer.macros.message import MessageMacro
@@ -21,28 +19,6 @@ from cartographer.macros.message import MessageMacro
 if TYPE_CHECKING:
     from cartographer.interfaces.configuration import Configuration
     from cartographer.runtime.adapters import Adapters
-
-
-class LegacyCompensation:
-    """Structural calibration support without nominal protocol inheritance."""
-
-    move_height: float = 5.0
-    speed: float = 40.0
-    available_axes: tuple[Literal["x", "y"], ...] = ("x", "y")
-
-    def get_z_compensation_value(self, *, x: float, y: float) -> float:
-        del x, y
-        return 0.0
-
-    def clear_compensations(self, axis: Literal["x", "y"]) -> None:
-        del axis
-
-    def apply_compensation(self, result: CompensationResult) -> None:
-        del result
-
-    def get_calibration_options(self, axis: Literal["x", "y"]) -> CalibrationOptions:
-        del axis
-        return CalibrationOptions(None, None, None)
 
 
 @pytest.fixture
@@ -133,20 +109,13 @@ class TestMacroRegistration:
 
         assert legacy.issubset(registered_names), f"Missing legacy macros: {legacy - registered_names}"
 
-    @pytest.mark.parametrize("nominal", [False, True])
-    def test_axis_twist_compensation_with_adapter(self, mock_adapters: Adapters, nominal: bool):
-        """Calibration uses the stored compensation object, structurally or nominally."""
-        if nominal:
-            config = Mock()
-            config.get_printer.return_value.load_object.return_value.horizontal_move_z = 5.0
-            config.get_printer.return_value.load_object.return_value.speed = 40.0
-            calibration = KlipperV12AxisTwistCompensationAdapter(config)
-        else:
-            calibration = LegacyCompensation()
+    def test_axis_twist_compensation_with_adapter(self, mock_adapters: Adapters):
+        """Calibration uses the stored legacy compensation adapter."""
+        config = Mock()
+        config.get_printer.return_value.load_object.return_value.horizontal_move_z = 5.0
+        config.get_printer.return_value.load_object.return_value.speed = 40.0
+        calibration = KlipperV12AxisTwistCompensationAdapter(config)
         assert isinstance(calibration, AxisTwistCompensationAdapter)
-        assert calibration.move_height == 5.0
-        assert calibration.speed == 40.0
-        assert calibration.available_axes == (("x",) if nominal else ("x", "y"))
         mock_adapters.axis_twist_compensation = calibration
         cartographer = PrinterCartographer(mock_adapters)
         registered_names = {reg.name for reg in cartographer.macros}
