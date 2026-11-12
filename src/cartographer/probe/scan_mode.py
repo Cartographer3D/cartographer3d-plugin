@@ -121,7 +121,12 @@ class ScanMode(ScanModelSelectorMixin, ProbeMode, Endstop):
         if self._axis_twist_compensation:
             z_result += self._axis_twist_compensation.get_z_compensation_value(x=toolhead_pos.x, y=toolhead_pos.y)
 
-        logger.info("probe at %.3f,%.3f is z=%.6f", toolhead_pos.x, toolhead_pos.y, z_result)
+        logger.info(
+            "probe at %.3f,%.3f is z=%.6f",
+            toolhead_pos.x,
+            toolhead_pos.y,
+            z_result,
+        )
         self.last_z_result = z_result
         return self.last_z_result
 

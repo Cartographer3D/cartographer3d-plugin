@@ -39,4 +39,6 @@ class KlipperAdapters(Adapters):
 
         self.axis_twist_compensation = None
         if config.has_section("axis_twist_compensation"):
-            self.axis_twist_compensation = KlipperAxisTwistCompensationAdapter(config)
+            self.axis_twist_compensation = KlipperAxisTwistCompensationAdapter(
+                config, x_offset=general.x_offset, y_offset=general.y_offset
+            )
