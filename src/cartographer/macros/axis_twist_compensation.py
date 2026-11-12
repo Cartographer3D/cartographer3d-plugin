@@ -3,10 +3,10 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol, final
+from typing import TYPE_CHECKING, Literal, final
 
 import numpy as np
-from typing_extensions import override
+from typing_extensions import Protocol, override, runtime_checkable
 
 from cartographer.interfaces.printer import AxisTwistCompensation, Macro, MacroParams, Toolhead
 from cartographer.macros.fields import param, parse
@@ -41,6 +41,7 @@ class CompensationResult:
     values: list[float]
 
 
+@runtime_checkable
 class AxisTwistCompensationAdapter(AxisTwistCompensation, Protocol):
     move_height: float
     speed: float

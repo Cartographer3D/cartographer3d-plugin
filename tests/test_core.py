@@ -1,20 +1,48 @@
 from __future__ import annotations
 
 from dataclasses import replace
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 from unittest.mock import Mock
 
 import pytest
 
+from cartographer.adapters.klipper_v12.axis_twist_compensation import KlipperV12AxisTwistCompensationAdapter
 from cartographer.core import PrinterCartographer
 from cartographer.interfaces.printer import AxisTwistCompensation, MacroParams
-from cartographer.macros.axis_twist_compensation import AxisTwistCompensationAdapter, AxisTwistCompensationMacro
+from cartographer.macros.axis_twist_compensation import (
+    AxisTwistCompensationAdapter,
+    AxisTwistCompensationMacro,
+    CalibrationOptions,
+    CompensationResult,
+)
 from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateMacro
 from cartographer.macros.message import MessageMacro
 
 if TYPE_CHECKING:
     from cartographer.interfaces.configuration import Configuration
     from cartographer.runtime.adapters import Adapters
+
+
+class LegacyCompensation:
+    """Structural calibration support without nominal protocol inheritance."""
+
+    move_height: float = 5.0
+    speed: float = 40.0
+    available_axes: tuple[Literal["x", "y"], ...] = ("x", "y")
+
+    def get_z_compensation_value(self, *, x: float, y: float) -> float:
+        del x, y
+        return 0.0
+
+    def clear_compensations(self, axis: Literal["x", "y"]) -> None:
+        del axis
+
+    def apply_compensation(self, result: CompensationResult) -> None:
+        del result
+
+    def get_calibration_options(self, axis: Literal["x", "y"]) -> CalibrationOptions:
+        del axis
+        return CalibrationOptions(None, None, None)
 
 
 @pytest.fixture
@@ -24,7 +52,6 @@ def mock_adapters(config: Configuration):
     adapters.mcu = Mock()
     adapters.config = config
     adapters.axis_twist_compensation = None
-    adapters.axis_twist_calibration = None
     adapters.toolhead = Mock()
     adapters.bed_mesh = Mock()
     adapters.task_executor = Mock()
@@ -106,11 +133,21 @@ class TestMacroRegistration:
 
         assert legacy.issubset(registered_names), f"Missing legacy macros: {legacy - registered_names}"
 
-    def test_axis_twist_compensation_with_adapter(self, mock_adapters: Adapters):
-        """Verify AXIS_TWIST_COMPENSATION registered when adapter present."""
-        mock_adapters.axis_twist_compensation = Mock(spec=AxisTwistCompensation)
-        calibration = Mock(spec=AxisTwistCompensationAdapter)
-        mock_adapters.axis_twist_calibration = calibration
+    @pytest.mark.parametrize("nominal", [False, True])
+    def test_axis_twist_compensation_with_adapter(self, mock_adapters: Adapters, nominal: bool):
+        """Calibration uses the stored compensation object, structurally or nominally."""
+        if nominal:
+            config = Mock()
+            config.get_printer.return_value.load_object.return_value.horizontal_move_z = 5.0
+            config.get_printer.return_value.load_object.return_value.speed = 40.0
+            calibration = KlipperV12AxisTwistCompensationAdapter(config)
+        else:
+            calibration = LegacyCompensation()
+        assert isinstance(calibration, AxisTwistCompensationAdapter)
+        assert calibration.move_height == 5.0
+        assert calibration.speed == 40.0
+        assert calibration.available_axes == (("x",) if nominal else ("x", "y"))
+        mock_adapters.axis_twist_compensation = calibration
         cartographer = PrinterCartographer(mock_adapters)
         registered_names = {reg.name for reg in cartographer.macros}
 
@@ -137,10 +174,13 @@ class TestMacroRegistration:
 
     def test_axis_twist_compensation_lookup_only(self, mock_adapters: Adapters):
         """Lookup-only support must direct users to native calibration without side effects."""
-        correction = Mock(spec=AxisTwistCompensation)
+        correction = Mock(spec_set=AxisTwistCompensation)
+        assert not isinstance(correction, AxisTwistCompensationAdapter)
         mock_adapters.axis_twist_compensation = correction
         gcode = Mock()
         mock_adapters.gcode = gcode
+        toolhead = Mock()
+        mock_adapters.toolhead = toolhead
         cartographer = PrinterCartographer(mock_adapters)
         macros = {reg.name: reg.macro for reg in cartographer.macros}
 
@@ -152,6 +192,7 @@ class TestMacroRegistration:
         assert correction.mock_calls == []
         assert gcode.mock_calls == []
         assert params.mock_calls == []
+        assert toolhead.mock_calls == []
 
         bed_mesh = macros["BED_MESH_CALIBRATE"]
         assert isinstance(bed_mesh, BedMeshCalibrateMacro)

@@ -40,4 +40,3 @@ class KlipperV12Adapters(Adapters):
         self.axis_twist_compensation = None
         if config.has_section("axis_twist_compensation"):
             self.axis_twist_compensation = KlipperV12AxisTwistCompensationAdapter(config)
-        self.axis_twist_calibration = self.axis_twist_compensation

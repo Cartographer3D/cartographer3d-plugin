@@ -11,9 +11,15 @@ from cartographer.adapters.kalico.axis_twist_compensation import (
     KalicoMeshAxisTwistCompensationAdapter,
     create_axis_twist_compensation,
 )
+from cartographer.core import PrinterCartographer
+from cartographer.interfaces.printer import MacroParams
+from cartographer.macros.axis_twist_compensation import AxisTwistCompensationAdapter
+from cartographer.macros.message import MessageMacro
 
 if TYPE_CHECKING:
     from pytest_mock import MockerFixture
+
+    from cartographer.interfaces.configuration import Configuration
 
 
 @pytest.fixture
@@ -77,6 +83,8 @@ def test_legacy_adapter_retains_calibration_and_lookup(host: Mock) -> None:
     adapter = KalicoAxisTwistCompensationAdapter(host.config)
     assert adapter.move_height == 5.0
     assert adapter.speed == 40.0
+    assert adapter.available_axes == ("x", "y")
+    assert isinstance(adapter, AxisTwistCompensationAdapter)
     assert adapter.get_z_compensation_value(x=12.0, y=34.0) == 0.25
     manager.get_z_compensation_value.assert_called_once_with([12.0, 34.0, 0])
 
@@ -131,9 +139,27 @@ def test_native_manager_owns_map_resolution_without_writes(host: Mock, map_state
     host.manager.get_z_compensation_value.assert_called_once_with([-13.0, 47.0, 0], probe=probe)
     # No configuration writes, calibration calls, or map mutations through the adapter.
     host.printer.lookup_object.assert_not_called()
+    assert not isinstance(adapter, AxisTwistCompensationAdapter)
     assert not hasattr(adapter, "apply_compensation")
     assert not hasattr(adapter, "clear_compensations")
     assert not hasattr(adapter, "get_calibration_options")
+
+
+def test_native_adapter_registers_guide_without_side_effects(host: Mock, config: Configuration) -> None:
+    adapter = KalicoMeshAxisTwistCompensationAdapter(host.config)
+    assert not isinstance(adapter, AxisTwistCompensationAdapter)
+    adapters = Mock(config=config, axis_twist_compensation=adapter)
+    cartographer = PrinterCartographer(adapters)
+    macro = next(reg.macro for reg in cartographer.macros if reg.name == "CARTOGRAPHER_AXIS_TWIST_COMPENSATION")
+    assert isinstance(macro, MessageMacro)
+    calls = list(host.mock_calls)
+    params = Mock(spec_set=MacroParams)
+    with pytest.raises(RuntimeError, match="Use native AXIS_TWIST_COMPENSATION_CALIBRATE"):
+        macro.run(params)
+    assert host.mock_calls == calls
+    assert params.mock_calls == []
+    assert adapters.toolhead.mock_calls == []
+    assert adapters.gcode.mock_calls == []
 
 
 @pytest.mark.parametrize("native", [False, True])
@@ -179,15 +205,13 @@ def test_constructor_section_detection_and_fields(
     adapters = KalicoAdapters(host.config)
     if section in ("absent", "similar"):
         assert adapters.axis_twist_compensation is None
-        assert adapters.axis_twist_calibration is None
         host.importer.assert_not_called()
         host.printer.load_object.assert_not_called()
         legacy_init.assert_not_called()
     elif native:
         assert type(adapters.axis_twist_compensation) is KalicoMeshAxisTwistCompensationAdapter
-        assert adapters.axis_twist_calibration is None
+        assert not isinstance(adapters.axis_twist_compensation, AxisTwistCompensationAdapter)
         legacy_init.assert_not_called()
     else:
         assert type(adapters.axis_twist_compensation) is KalicoAxisTwistCompensationAdapter
-        assert adapters.axis_twist_compensation is adapters.axis_twist_calibration
         legacy_init.assert_called_once_with(host.config)
