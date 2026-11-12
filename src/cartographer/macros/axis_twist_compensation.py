@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, Protocol, final
+from typing import TYPE_CHECKING, Literal, Protocol, final, runtime_checkable
 
 import numpy as np
 from typing_extensions import override
@@ -41,6 +41,7 @@ class CompensationResult:
     values: list[float]
 
 
+@runtime_checkable
 class AxisTwistCompensationAdapter(AxisTwistCompensation, Protocol):
     move_height: float
     speed: float

@@ -1,0 +1,161 @@
+from __future__ import annotations
+
+from types import ModuleType
+from typing import TYPE_CHECKING
+from unittest.mock import Mock
+
+import pytest
+
+from cartographer.adapters.kalico.axis_twist_compensation import (
+    KalicoAxisTwistCompensationAdapter,
+    KalicoMeshAxisTwistCompensationAdapter,
+    create_axis_twist_compensation,
+)
+from cartographer.macros.axis_twist_compensation import AxisTwistCompensationAdapter
+
+if TYPE_CHECKING:
+    from pytest_mock import MockerFixture
+
+
+@pytest.fixture
+def host(mocker: MockerFixture) -> Mock:
+    host = Mock()
+    host.config.get_printer.return_value = host.printer
+    host.config.has_section.return_value = True
+    host.config.get_prefix_sections.return_value = []
+    host.registry.get_probe.return_value = None
+    # Reject every legacy movement/calibration attribute, including writes.
+    host.manager = Mock(spec_set=["get_z_compensation_value"])
+    host.manager.get_z_compensation_value.return_value = 0.125
+    host.api.get_list.return_value = host.registry
+    host.native = ModuleType("extras.axis_twist_compensation")
+    host.native.AxisTwistCompensation = type("NativeManager", (), {"get_compensation": Mock()})
+    probe_module = ModuleType("extras.probe")
+    probe_module.__dict__["ProbeList"] = host.api
+    modules = {"extras.axis_twist_compensation": host.native, "extras.probe": probe_module}
+    host.importer = mocker.patch(
+        "cartographer.adapters.kalico.axis_twist_compensation.import_module", side_effect=modules.__getitem__
+    )
+
+    def load(config: object, name: str) -> Mock:
+        assert config is host.config
+        assert name == "axis_twist_compensation"
+        host.api.get_list.assert_called_once_with(host.printer)
+        return host.manager
+
+    host.printer.load_object.side_effect = load
+    return host
+
+
+@pytest.mark.parametrize("capability", ["missing", "callable"])
+def test_selects_class_capability_before_legacy_initialization(
+    mocker: MockerFixture, host: Mock, capability: str
+) -> None:
+    if capability == "missing":
+        del host.native.AxisTwistCompensation.get_compensation
+    legacy_init = mocker.patch.object(KalicoAxisTwistCompensationAdapter, "__init__", return_value=None)
+    adapter = create_axis_twist_compensation(host.config)
+    if capability == "callable":
+        assert type(adapter) is KalicoMeshAxisTwistCompensationAdapter
+        legacy_init.assert_not_called()
+        host.printer.lookup_object.assert_not_called()
+    else:
+        assert type(adapter) is KalicoAxisTwistCompensationAdapter
+        legacy_init.assert_called_once_with(host.config)
+        host.api.get_list.assert_not_called()
+        host.printer.load_object.assert_not_called()
+
+
+def test_legacy_adapter_retains_calibration_and_lookup(host: Mock) -> None:
+    manager = Mock(spec=["horizontal_move_z", "speed", "get_z_compensation_value"])
+    manager.horizontal_move_z = 5.0
+    manager.speed = 40.0
+    manager.get_z_compensation_value.return_value = 0.25
+    host.printer.load_object.side_effect = None
+    host.printer.load_object.return_value = manager
+    adapter = KalicoAxisTwistCompensationAdapter(host.config)
+    assert adapter.move_height == 5.0
+    assert adapter.speed == 40.0
+    assert adapter.available_axes == ("x", "y")
+    assert isinstance(adapter, AxisTwistCompensationAdapter)
+    assert adapter.get_z_compensation_value(x=12.0, y=34.0) == 0.25
+    manager.get_z_compensation_value.assert_called_once_with([12.0, 34.0, 0])
+
+
+def test_native_lookup_resolves_late_and_passes_exact_registered_probe(host: Mock) -> None:
+    # No probe exists during core construction.
+    adapter = create_axis_twist_compensation(host.config)
+    host.registry.get_probe.assert_not_called()
+    with pytest.raises(RuntimeError, match="Probe 'cartographer' is not registered"):
+        _ = adapter.get_z_compensation_value(x=12.0, y=34.0)
+    host.manager.get_z_compensation_value.assert_not_called()
+
+    probe = Mock(spec=["probe_name", "get_offsets"])
+    probe.probe_name = "cartographer"
+    probe.get_offsets.return_value = (7.0, -9.0, 2.0)
+    other = Mock()
+    host.registry.get_default_probe.return_value = other
+    host.registry.get_probe.side_effect = {"cartographer": probe, "other": other}.get
+    assert adapter.get_z_compensation_value(x=12.0, y=34.0) == 0.125
+    host.registry.get_probe.assert_called_with("cartographer")
+    host.registry.get_default_probe.assert_not_called()
+    probe.get_offsets.assert_not_called()
+    host.manager.get_z_compensation_value.assert_called_once_with([12.0, 34.0, 0], probe=probe)
+    assert host.manager.get_z_compensation_value.call_args.kwargs["probe"] is probe
+
+
+@pytest.mark.parametrize(
+    ("section", "native"),
+    [("base", True), ("base", False), ("named", True), ("absent", False), ("similar", False)],
+)
+def test_constructor_section_detection_and_fields(
+    mocker: MockerFixture, host: Mock, native: bool, section: str
+) -> None:
+    mocker.patch.dict(
+        "sys.modules",
+        {"extras.homing": Mock(), "extras.manual_probe": Mock(), "extras.thermistor": Mock(), "greenlet": Mock()},
+    )
+    from cartographer.adapters.kalico.adapters import KalicoAdapters
+
+    def has_section(name: str) -> bool:
+        return section == "base" and name == "axis_twist_compensation"
+
+    host.config.has_section.side_effect = has_section
+    names = {
+        "base": ["axis_twist_compensation"],
+        "named": ["axis_twist_compensation cartographer"],
+        "absent": [],
+        "similar": ["axis_twist_compensation_other"],
+    }[section]
+
+    def get_prefix_sections(prefix: str) -> list[Mock]:
+        return [Mock(get_name=Mock(return_value=name)) for name in names if name.startswith(prefix)]
+
+    host.config.get_prefix_sections.side_effect = get_prefix_sections
+    for name in (
+        "parse",
+        "KalicoMcuPlatform",
+        "CartographerMcu",
+        "KlipperConfiguration",
+        "KalicoToolhead",
+        "KlipperBedMesh",
+        "KlipperGCodeDispatch",
+        "KlipperScheduler",
+    ):
+        _ = mocker.patch(f"cartographer.adapters.kalico.adapters.{name}")
+    legacy_init = mocker.patch.object(KalicoAxisTwistCompensationAdapter, "__init__", return_value=None)
+    if not native:
+        del host.native.AxisTwistCompensation.get_compensation
+    adapters = KalicoAdapters(host.config)
+    if section in ("absent", "similar"):
+        assert adapters.axis_twist_compensation is None
+        host.importer.assert_not_called()
+        host.printer.load_object.assert_not_called()
+        legacy_init.assert_not_called()
+    elif native:
+        assert type(adapters.axis_twist_compensation) is KalicoMeshAxisTwistCompensationAdapter
+        assert not isinstance(adapters.axis_twist_compensation, AxisTwistCompensationAdapter)
+        legacy_init.assert_not_called()
+    else:
+        assert type(adapters.axis_twist_compensation) is KalicoAxisTwistCompensationAdapter
+        legacy_init.assert_called_once_with(host.config)

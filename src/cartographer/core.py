@@ -10,6 +10,7 @@ from cartographer.coil.temperature_compensation import (
 )
 from cartographer.config.model_validator import validate_and_remove_incompatible_models
 from cartographer.macros.axis_twist_compensation import (
+    AxisTwistCompensationAdapter,
     AxisTwistCompensationMacro,
 )
 from cartographer.macros.backlash import EstimateBacklashMacro
@@ -300,12 +301,18 @@ class PrinterCartographer:
         adapters: Adapters,
     ) -> list[MacroRegistration]:
         """Create axis twist compensation macro registration."""
-        if adapters.axis_twist_compensation:
+        compensation = adapters.axis_twist_compensation
+        if isinstance(compensation, AxisTwistCompensationAdapter):
             macro = AxisTwistCompensationMacro(
                 probe,
                 toolhead,
-                adapters.axis_twist_compensation,
+                compensation,
                 self.config,
+            )
+        elif compensation is not None:
+            macro = MessageMacro(
+                "Legacy line calibration is unavailable with the configured axis twist compensation support. "
+                "Use native AXIS_TWIST_COMPENSATION_CALIBRATE instead."
             )
         else:
             macro = MessageMacro(

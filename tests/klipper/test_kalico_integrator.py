@@ -6,8 +6,12 @@ from unittest.mock import Mock
 
 import pytest
 
+from cartographer.adapters.kalico.axis_twist_compensation import (
+    KalicoAxisTwistCompensationAdapter,
+    KalicoMeshAxisTwistCompensationAdapter,
+)
 from cartographer.adapters.kalico.integrator import KalicoIntegrator
-from cartographer.adapters.kalico.probe import KalicoCartographerProbe
+from cartographer.adapters.kalico.probe import KalicoCartographerProbe, KalicoTouchProbe
 from cartographer.adapters.klipper.endstop import KlipperEndstop
 from cartographer.adapters.klipper.gcode import KlipperGCodeDispatch
 from cartographer.adapters.klipper_like.integrator import catch_macro_errors
@@ -117,6 +121,7 @@ def host(mocker: MockerFixture) -> Mock:
     host.config.wrapper.has_section.return_value = False
     host.gcode.create_gcode_command.side_effect = Command
     host.gcode.register_command.return_value = None
+    host.axis_twist_compensation = None
     host.device.config.general.register_as_probe = True
     host.device.config.general.lift_speed = 6.0
     host.device.macros = []
@@ -133,7 +138,7 @@ def register(host: Mock, is_default: bool = True) -> tuple[KalicoIntegrator, Kal
     host.device.config.general.register_as_probe = is_default
     integrator = KalicoIntegrator(host)
     integrator.register_probe(host.device)
-    probe = host.registry.add_probe_object.call_args.args[0]
+    probe = host.registry.add_probe_object.call_args_list[0].args[0]
     assert type(probe) is KalicoCartographerProbe
     return integrator, probe
 
@@ -154,6 +159,7 @@ def assert_copy(host: Mock, original: Command, received: Command) -> None:
 @pytest.mark.parametrize("is_default", [True, False])
 def test_config_registers_real_probe(mocker: MockerFixture, host: Mock, is_default: bool) -> None:
     host.device.config.general.register_as_probe = is_default
+    host.axis_twist_compensation = Mock(spec=KalicoAxisTwistCompensationAdapter)
     integrator = KalicoIntegrator(host)
     _ = mocker.patch("cartographer.extra.init_runtime", return_value=(host, integrator))
     _ = mocker.patch("cartographer.extra.PrinterCartographer", return_value=host.device)
@@ -447,8 +453,10 @@ def test_real_probe_native_rapid_diagnostic_and_point_contract(host: Mock) -> No
     host.device.scan_mode.query_is_triggered.assert_called_with(12.5)
 
 
-@pytest.mark.parametrize("selection", ["selected", "default", "other", "missing"])
+@pytest.mark.parametrize("selection", ["selected", "default", "touch", "other", "missing"])
 def test_z_guard_connect_shared_boundary(mocker: MockerFixture, host: Mock, selection: str) -> None:
+    if selection == "touch":
+        host.axis_twist_compensation = Mock(spec=KalicoMeshAxisTwistCompensationAdapter)
     integrator, probe = register(host)
     _ = mocker.patch.object(integrator, "_configure_macro_logger")
     integrator.setup()
@@ -464,7 +472,10 @@ def test_z_guard_connect_shared_boundary(mocker: MockerFixture, host: Mock, sele
             callback()
     else:
         callback()
-        selected = object() if selection == "other" else probe
+        if selection == "touch":
+            selected = host.registry.add_probe_object.call_args_list[1].args[0]
+        else:
+            selected = object() if selection == "other" else probe
         host.registry.get_command_probe.return_value = selected
 
         def native_command(command: Command) -> object:
@@ -472,7 +483,8 @@ def test_z_guard_connect_shared_boundary(mocker: MockerFixture, host: Mock, sele
             motion()
             return result
 
-        params = {} if selection == "default" else {"PROBE": "other" if selection == "other" else "cartographer"}
+        name = "other" if selection == "other" else "cartographer_touch" if selection == "touch" else "cartographer"
+        params = {} if selection == "default" else {"PROBE": name}
         command = Command("RENAMED_CALIBRATE_Z", "native alias", {**params, "OPTIONAL_OVERRIDE": "7"})
         if selection == "other":
             assert native_command(command) is original.return_value
@@ -506,10 +518,20 @@ def test_z_guard_inactive(mocker: MockerFixture, host: Mock, legacy: bool) -> No
 
 
 @pytest.mark.parametrize(
-    ("is_default", "selector", "reject"),
-    [(True, None, True), (False, None, False), (False, "cartographer", True), (True, "other", False)],
+    ("mesh", "is_default", "selector", "reject"),
+    [
+        (False, True, None, True),
+        (False, False, None, False),
+        (False, False, "cartographer", True),
+        (False, True, "other", False),
+        (True, False, "cartographer_touch", True),
+        # Without mesh support, this unowned name may belong to another native probe.
+        (False, False, "cartographer_touch", False),
+    ],
 )
-def test_nozzle_config(host: Mock, is_default: bool, selector: str | None, reject: bool) -> None:
+def test_nozzle_config(host: Mock, is_default: bool, selector: str | None, reject: bool, mesh: bool) -> None:
+    if mesh:
+        host.axis_twist_compensation = Mock(spec=KalicoMeshAxisTwistCompensationAdapter)
     host.config.wrapper.has_section.return_value = True
     section = host.config.wrapper.getsection.return_value
     section.get.return_value = selector
@@ -525,3 +547,57 @@ def test_nozzle_config(host: Mock, is_default: bool, selector: str | None, rejec
         host.registry.add_probe_object.assert_called_once()
     section.get.assert_called_once_with("probe", None)
     section.getfloat.assert_not_called()
+
+
+def test_mesh_registers_named_touch_reference(host: Mock) -> None:
+    compensation = Mock(spec=KalicoMeshAxisTwistCompensationAdapter)
+    compensation.get_z_compensation_value.return_value = 0.0
+    host.axis_twist_compensation = compensation
+    _, scan = register(host, True)
+    calls = host.registry.add_probe_object.call_args_list
+    assert len(calls) == 2
+    touch = calls[1].args[0]
+    assert type(touch) is KalicoTouchProbe
+    assert calls[1].args[1] is host.config.wrapper
+    assert [scan.probe_name, touch.probe_name] == ["cartographer", "cartographer_touch"]
+    assert scan.is_default_probe is True
+    assert touch.is_default_probe is False
+    assert not hasattr(touch, "mcu_probe")
+    assert all(c.args[2] != "cartographer_touch" for c in host.gcode.register_mux_command.call_args_list)
+    host.printer.add_object.assert_not_called()
+
+    # Native calibration calls the named reference's API, without a mux command.
+    incoming = cast("GCodeCommand", cast("object", Command("AXIS_TWIST_COMPENSATION_CALIBRATE", "calibrate", {})))
+    host.toolhead.get_position.return_value = Position(10, 20, 5)
+    host.device.touch_mode.offset = Position(0, 0, 0)
+    host.device.touch_mode.perform_probe.return_value = 1.5
+    assert touch.get_offsets() == (0, 0, 0)
+    touch.multi_probe_begin()
+    assert touch.run_probe(incoming) == [10, 20, 1.5]
+    touch.multi_probe_end()
+    host.device.touch_mode.perform_probe.assert_called_once_with(gcmd=incoming)
+    host.device.scan_mode.perform_probe.assert_not_called()
+    host.device.probe_macro.run.assert_not_called()
+    host.device.probe_macro.last_trigger_position = 99.0
+    host.device.probe_macro.last_probe_position = Position(80, 90, 99)
+    assert scan.get_status(0)["last_z_result"] == 99.0
+    assert touch.get_status(0)["last_z_result"] == 1.5
+    assert touch.last_probe_position == Position(10, 20, 1.5)
+    compensation.get_z_compensation_value.assert_called_once_with(x=10, y=20, probe_name="cartographer_touch")
+
+
+def test_touch_mesh_stays_native(host: Mock) -> None:
+    host.axis_twist_compensation = Mock(spec=KalicoMeshAxisTwistCompensationAdapter)
+    integrator, _ = register(host)
+    host.registry.get_command_probe.return_value = host.registry.add_probe_object.call_args_list[1].args[0]
+    native = Mock()
+    host.gcode.register_command.return_value = native
+    macro = Mock(spec=BedMeshCalibrateMacro)
+    integrator.register_macro(MacroRegistration("BED_MESH_CALIBRATE", macro))
+    incoming = Command("BED_MESH_CALIBRATE", "mesh", {"PROBE": "cartographer_touch"})
+    command_handler(host)(incoming)
+    native.assert_called_once_with(incoming)
+    assert native.call_args.args[0] is incoming
+    assert incoming.params == {"PROBE": "cartographer_touch"}
+    macro.run.assert_not_called()
+    host.gcode.create_gcode_command.assert_not_called()

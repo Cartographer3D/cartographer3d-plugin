@@ -5,7 +5,8 @@ from typing import TYPE_CHECKING, Callable, Protocol, cast, final
 
 from typing_extensions import override
 
-from cartographer.adapters.kalico.probe import KalicoCartographerProbe
+from cartographer.adapters.kalico.axis_twist_compensation import KalicoMeshAxisTwistCompensationAdapter
+from cartographer.adapters.kalico.probe import KalicoCartographerProbe, KalicoTouchProbe
 from cartographer.adapters.klipper.endstop import KlipperEndstop
 from cartographer.adapters.klipper_like.integrator import (
     FallbackMacroAdapter,
@@ -21,10 +22,16 @@ if TYPE_CHECKING:
     from klippy import Printer
 
     from cartographer.core import MacroRegistration, PrinterCartographer
+    from cartographer.interfaces.printer import AxisTwistCompensation
+
+
+class _KalicoAdapters(KlipperLikeAdapters, Protocol):
+    @property
+    def axis_twist_compensation(self) -> AxisTwistCompensation | None: ...
 
 
 class _ProbeRegistry(Protocol):
-    def add_probe_object(self, obj: KalicoCartographerProbe, config: ConfigWrapper) -> object: ...
+    def add_probe_object(self, obj: KalicoCartographerProbe | KalicoTouchProbe, config: ConfigWrapper) -> object: ...
     def get_command_probe(self, gcmd: GCodeCommand, default: object = ...) -> object | None: ...
 
 
@@ -38,10 +45,12 @@ class _NativeZCalibration(Protocol):
 
 @final
 class KalicoIntegrator(KlipperLikeIntegrator):
-    def __init__(self, adapters: KlipperLikeAdapters) -> None:
+    def __init__(self, adapters: _KalicoAdapters) -> None:
         super().__init__(adapters, KalicoCartographerProbe)
+        self._mesh_compensation = adapters.axis_twist_compensation
         self._probe_list: _ProbeList | None = None
         self._registry_probe: KalicoCartographerProbe | None = None
+        self._touch_probe: KalicoTouchProbe | None = None
         try:
             probe_module = import_module("extras.probe")
         except ModuleNotFoundError as error:
@@ -71,10 +80,10 @@ class KalicoIntegrator(KlipperLikeIntegrator):
             raise self._config.wrapper.error(msg)
         native = cast("_NativeZCalibration", helper)
         original = native.load_probe
-        probe = self._registry_probe
+        probes = (self._registry_probe, self._touch_probe)
 
         def load_probe(selected: object) -> object:
-            if probe is not None and selected is probe:
+            if any(probe is not None and selected is probe for probe in probes):
                 msg = "Cartographer native Z calibration is unsupported; use Cartographer calibration instead"
                 raise self._printer.command_error(msg)
             return original(selected)
@@ -97,15 +106,27 @@ class KalicoIntegrator(KlipperLikeIntegrator):
             printer=self._printer,
             mcu_probe=KlipperEndstop(self._mcu, cartographer.scan_mode),
         )
+        touch = None
+        if isinstance(self._mesh_compensation, KalicoMeshAxisTwistCompensationAdapter):
+            touch = KalicoTouchProbe(
+                self._toolhead, cartographer.touch_mode, cartographer.config.general, self._mesh_compensation
+            )
         if self._config.wrapper.has_section("nozzle_cleanup"):
             section = self._config.wrapper.getsection("nozzle_cleanup")
             selected = section.get("probe", None)
-            if selected == probe.probe_name or (selected is None and probe.is_default_probe):
+            if (
+                selected == probe.probe_name
+                or (touch is not None and selected == touch.probe_name)
+                or (selected is None and probe.is_default_probe)
+            ):
                 msg = "[nozzle_cleanup] is unsupported with Cartographer; select another probe"
                 raise section.error(msg)
         registry = self._probe_list.get_list(self._printer)
         _ = registry.add_probe_object(probe, self._config.wrapper)
         self._registry_probe = probe
+        if touch is not None:
+            _ = registry.add_probe_object(touch, self._config.wrapper)
+            self._touch_probe = touch
         if not probe.is_default_probe:
             for registration in cartographer.probe_macros:
                 self.register_macro(registration)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import TYPE_CHECKING, final
 
-from cartographer.adapters.kalico.axis_twist_compensation import KalicoAxisTwistCompensationAdapter
+from cartographer.adapters.kalico.axis_twist_compensation import create_axis_twist_compensation
 from cartographer.adapters.kalico.mcu_platform import KalicoMcuPlatform
 from cartographer.adapters.kalico.toolhead import KalicoToolhead
 from cartographer.adapters.klipper.bed_mesh import KlipperBedMesh
@@ -38,5 +38,5 @@ class KalicoAdapters(Adapters):
         self.gcode = KlipperGCodeDispatch(self.printer)
 
         self.axis_twist_compensation = None
-        if config.has_section("axis_twist_compensation"):
-            self.axis_twist_compensation = KalicoAxisTwistCompensationAdapter(config)
+        if config.has_section("axis_twist_compensation") or config.get_prefix_sections("axis_twist_compensation "):
+            self.axis_twist_compensation = create_axis_twist_compensation(config)

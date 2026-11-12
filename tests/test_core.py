@@ -6,7 +6,14 @@ from unittest.mock import Mock
 
 import pytest
 
+from cartographer.adapters.klipper_v12.axis_twist_compensation import KlipperV12AxisTwistCompensationAdapter
 from cartographer.core import PrinterCartographer
+from cartographer.interfaces.printer import AxisTwistCompensation, MacroParams
+from cartographer.macros.axis_twist_compensation import (
+    AxisTwistCompensationAdapter,
+    AxisTwistCompensationMacro,
+)
+from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateMacro
 from cartographer.macros.message import MessageMacro
 
 if TYPE_CHECKING:
@@ -103,8 +110,16 @@ class TestMacroRegistration:
         assert legacy.issubset(registered_names), f"Missing legacy macros: {legacy - registered_names}"
 
     def test_axis_twist_compensation_with_adapter(self, mock_adapters: Adapters):
-        """Verify AXIS_TWIST_COMPENSATION registered when adapter present."""
-        mock_adapters.axis_twist_compensation = Mock()
+        """Calibration uses the stored legacy compensation adapter."""
+        config = Mock()
+        config.get_printer.return_value.load_object.return_value.horizontal_move_z = 5.0
+        config.get_printer.return_value.load_object.return_value.speed = 40.0
+        calibration = KlipperV12AxisTwistCompensationAdapter(config)
+        assert isinstance(calibration, AxisTwistCompensationAdapter)
+        assert calibration.move_height == 5.0
+        assert calibration.speed == 40.0
+        assert calibration.available_axes == ("x",)
+        mock_adapters.axis_twist_compensation = calibration
         cartographer = PrinterCartographer(mock_adapters)
         registered_names = {reg.name for reg in cartographer.macros}
 
@@ -112,7 +127,8 @@ class TestMacroRegistration:
 
         # Verify it's the actual macro, not a message
         atc_reg = next(reg for reg in cartographer.macros if reg.name == "CARTOGRAPHER_AXIS_TWIST_COMPENSATION")
-        assert not isinstance(atc_reg.macro, MessageMacro)
+        assert isinstance(atc_reg.macro, AxisTwistCompensationMacro)
+        assert atc_reg.macro.adapter is calibration
 
     def test_axis_twist_compensation_without_adapter(self, mock_adapters: Adapters):
         """Verify AXIS_TWIST_COMPENSATION is message when adapter absent."""
@@ -124,9 +140,35 @@ class TestMacroRegistration:
 
         # Verify it's a message macro
         atc_reg = next(reg for reg in cartographer.macros if reg.name == "CARTOGRAPHER_AXIS_TWIST_COMPENSATION")
-        from cartographer.macros.message import MessageMacro
-
         assert isinstance(atc_reg.macro, MessageMacro)
+        with pytest.raises(RuntimeError, match=r"Add \[axis_twist_compensation\] to your config"):
+            atc_reg.macro.run(Mock(spec=MacroParams))
+
+    def test_axis_twist_compensation_lookup_only(self, mock_adapters: Adapters):
+        """Lookup-only support must direct users to native calibration without side effects."""
+        correction = Mock(spec_set=AxisTwistCompensation)
+        assert not isinstance(correction, AxisTwistCompensationAdapter)
+        mock_adapters.axis_twist_compensation = correction
+        gcode = Mock()
+        mock_adapters.gcode = gcode
+        toolhead = Mock()
+        mock_adapters.toolhead = toolhead
+        cartographer = PrinterCartographer(mock_adapters)
+        macros = {reg.name: reg.macro for reg in cartographer.macros}
+
+        macro = macros["CARTOGRAPHER_AXIS_TWIST_COMPENSATION"]
+        assert isinstance(macro, MessageMacro)
+        params = Mock(spec=MacroParams)
+        with pytest.raises(RuntimeError, match="Use native AXIS_TWIST_COMPENSATION_CALIBRATE"):
+            macro.run(params)
+        assert correction.mock_calls == []
+        assert gcode.mock_calls == []
+        assert params.mock_calls == []
+        assert toolhead.mock_calls == []
+
+        bed_mesh = macros["BED_MESH_CALIBRATE"]
+        assert isinstance(bed_mesh, BedMeshCalibrateMacro)
+        assert bed_mesh.axis_twist_compensation is correction
 
     def test_custom_prefix_macros(self, mock_adapters: Adapters):
         """Verify custom prefix is applied correctly."""

@@ -37,3 +37,12 @@ Native `CALIBRATE_Z` and `PROBE_Z_ACCURACY` cannot use Cartographer; use the exi
 `CARTOGRAPHER_SCAN_CALIBRATE` / `CARTOGRAPHER_TOUCH_CALIBRATE` commands instead.
 `[nozzle_cleanup]` selecting Cartographer is rejected at configuration time; if Cartographer is the default,
 explicitly select another available probe. Cartographer does not provide nozzle-cleaning support.
+
+### Kalico per-probe mesh compensation
+
+When Kalico's per-probe mesh compensation is configured, Cartographer also registers `cartographer_touch` as a
+named-only touch reference for `cartographer`. It never becomes the default and adds no homing pin or mux `PROBE`
+shortcuts. The native Z-calibration and nozzle-cleanup restrictions above apply to both Cartographer probes.
+
+On mesh-capable Kalico, use native `AXIS_TWIST_COMPENSATION_CALIBRATE` instead of
+`CARTOGRAPHER_AXIS_TWIST_COMPENSATION`. Older firmware retains the existing Cartographer command.
