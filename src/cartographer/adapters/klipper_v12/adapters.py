@@ -37,7 +37,7 @@ class KlipperV12Adapters(Adapters):
         self.bed_mesh = KlipperBedMesh(config)
         self.gcode = KlipperGCodeDispatch(self.printer)
 
-        self.axis_twist_calibration = None
+        self.axis_twist_compensation = None
         if config.has_section("axis_twist_compensation"):
-            self.axis_twist_calibration = KlipperV12AxisTwistCompensationAdapter(config)
-        self.axis_twist_compensation = self.axis_twist_calibration
+            self.axis_twist_compensation = KlipperV12AxisTwistCompensationAdapter(config)
+        self.axis_twist_calibration = self.axis_twist_compensation
