@@ -174,3 +174,10 @@ class KlipperConfiguration(Configuration):
         if homing_retract_dist is None or homing_retract_dist != 0:
             msg = "Option 'homing_retract_dist' in section 'stepper_z' must be set to 0"
             raise self.wrapper.error(msg)
+
+    @override
+    def mesh_bounds(self) -> tuple[tuple[float, float], tuple[float, float]]:
+        if self.bed_mesh.mesh_min is None or self.bed_mesh.mesh_max is None:
+            raise ValueError("Missing mesh bounds: 'mesh_min' and 'mesh_max' must be set in bed mesh configuration")
+
+        return self.bed_mesh.mesh_min, self.bed_mesh.mesh_max
