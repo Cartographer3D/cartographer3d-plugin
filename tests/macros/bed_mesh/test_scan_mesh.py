@@ -9,13 +9,8 @@ from typing_extensions import override
 
 from cartographer.interfaces.configuration import MeshPath
 from cartographer.interfaces.printer import Position, Sample, Toolhead
-from cartographer.macros.bed_mesh.helpers import MeshGrid
 from cartographer.macros.bed_mesh.interfaces import BedMeshAdapter
-from cartographer.macros.bed_mesh.scan_mesh import (
-    BedMeshCalibrateConfiguration,
-    BedMeshCalibrateMacro,
-    _compute_mesh_assignment_radius,
-)
+from cartographer.macros.bed_mesh.scan_mesh import BedMeshCalibrateConfiguration, BedMeshCalibrateMacro
 from tests.mocks.config import MockConfiguration, default_general_config
 from tests.mocks.task_executor import InlineTaskExecutor
 from tests.mocks.toolhead import MockToolhead
@@ -485,6 +480,24 @@ class TestBedMeshIntegration:
         "mesh_max, expected",
         [((2.0, 2.0), 1.0), ((20.0, 40.0), 10.0 / 3.0), ((40.0, 20.0), 10.0 / 3.0)],
     )
-    def test_compute_mesh_assignment_radius(self, mesh_max: tuple[float, float], expected: float) -> None:
-        grid = MeshGrid((0.0, 0.0), mesh_max, 3, 3)
-        assert _compute_mesh_assignment_radius(grid) == pytest.approx(expected)
+    def test_run_reports_mesh_assignment_radius(
+        self,
+        bed_mesh_macro: BedMeshCalibrateMacro,
+        params: MockParams,
+        session: Mock,
+        mocker: MockerFixture,
+        mesh_max: tuple[float, float],
+        expected: float,
+    ) -> None:
+        params.params = {
+            "METHOD": "scan",
+            "MESH_MIN": "0,0",
+            "MESH_MAX": f"{mesh_max[0]},{mesh_max[1]}",
+            "PROBE_COUNT": "3,3",
+        }
+        session.get_items = mocker.Mock(return_value=[])
+
+        with pytest.raises(RuntimeError) as exc_info:
+            bed_mesh_macro.run(params)
+
+        assert f"Assignment radius: {expected:.2f}mm." in str(exc_info.value)
