@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 from itertools import chain
-from math import isfinite
+from math import hypot, isfinite
 from typing import TYPE_CHECKING, final
 
 from typing_extensions import override
@@ -110,59 +110,31 @@ _MAX_INVALID_DIAGNOSTICS = 20
 
 
 def _compute_mesh_assignment_radius(grid: MeshGrid) -> float:
-    """Derive a bed-mesh-specific sample-assignment radius from grid spacing.
-
-    radius = max(1.0, min(min_spacing / 3.0, 5.0))
-
-    Falls back to 1.0 when no valid (positive) spacing exists (degenerate grid).
-    """
-    spacings = [spacing for spacing in (grid.x_step, grid.y_step) if spacing > 0]
-    if not spacings:
-        return 1.0
-    return max(1.0, min(min(spacings) / 3.0, 5.0))
+    """Return one third of the smallest positive grid spacing, clamped to 1–5mm."""
+    min_spacing = min((spacing for spacing in (grid.x_step, grid.y_step) if spacing > 0), default=0.0)
+    return max(1.0, min(min_spacing / 3.0, 5.0))
 
 
 def _build_invalid_point_diagnostics(
     invalid_points: list[tuple[Point, int]],
     samples: list[Sample],
 ) -> list[str]:
-    """Return per-point diagnostic lines for invalid grid points.
-
-    Only the first *_MAX_INVALID_DIAGNOSTICS* points are detailed; the remainder
-    are summarised in a single trailing line.  Each entry reports the nearest
-    raw-sample position and its distance.
-    """
-    sample_positions: list[tuple[float, float]] = [
-        (s.position.x, s.position.y) for s in samples if s.position is not None
-    ]
-
+    """Report nearest positioned raw samples for up to 20 invalid points and count the rest."""
+    sample_positions = [(s.position.x, s.position.y) for s in samples if s.position is not None]
     lines: list[str] = []
-    shown = min(len(invalid_points), _MAX_INVALID_DIAGNOSTICS)
-
-    for point, assigned in invalid_points[:shown]:
-        gx, gy = float(point[0]), float(point[1])
-        best_dist: float | None = None
-        best_sx: float = 0.0
-        best_sy: float = 0.0
-
-        for sx, sy in sample_positions:
-            dx = sx - gx
-            dy = sy - gy
-            dist = (dx * dx + dy * dy) ** 0.5
-            if best_dist is None or dist < best_dist:
-                best_dist = dist
-                best_sx = sx
-                best_sy = sy
-
-        if best_dist is not None:
+    for point, assigned in invalid_points[:_MAX_INVALID_DIAGNOSTICS]:
+        gx, gy = point
+        nearest = min(sample_positions, key=lambda p: hypot(p[0] - gx, p[1] - gy), default=None)
+        if nearest is not None:
+            sx, sy = nearest
             lines.append(
                 f"  ({gx:.2f},{gy:.2f}) assigned={assigned}"
-                f" nearest=({best_sx:.2f},{best_sy:.2f}) dist={best_dist:.2f}mm"
+                f" nearest=({sx:.2f},{sy:.2f}) dist={hypot(sx - gx, sy - gy):.2f}mm"
             )
         else:
             lines.append(f"  ({gx:.2f},{gy:.2f}) assigned={assigned} [no raw samples]")
 
-    omitted = len(invalid_points) - shown
+    omitted = len(invalid_points) - _MAX_INVALID_DIAGNOSTICS
     if omitted > 0:
         lines.append(f"  ... and {omitted} more invalid point(s) not shown")
 
