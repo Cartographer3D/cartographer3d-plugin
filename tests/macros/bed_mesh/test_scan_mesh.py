@@ -177,6 +177,37 @@ class TestBedMeshIntegration:
 
         return macro
 
+    def test_run_reports_invalid_point_sample_diagnostics(
+        self,
+        mocker: MockerFixture,
+        bed_mesh_macro: BedMeshCalibrateMacro,
+        probe_offset: Position,
+        params: MockParams,
+        session: Mock,
+    ) -> None:
+        """Invalid mesh errors include assignment radius and nearest-sample diagnostics."""
+        expected_probe_positions = [(float(10 + 20 * x), float(10 + 20 * y)) for x in range(5) for y in range(5)]
+        invalid_point = (90.0, 10.0)
+        valid_probe_positions = [
+            (14.0, 10.0) if point == (10.0, 10.0) else point
+            for point in expected_probe_positions
+            if point != invalid_point
+        ]
+        probe_positions = valid_probe_positions + [(96.0, 10.0)]
+        heights = [0.5] * len(probe_positions)
+        mock_samples = self.create_samples_at_probe_positions(probe_positions, heights, probe_offset)
+        session.get_items = mocker.Mock(return_value=mock_samples)
+
+        params.params = {"METHOD": "scan"}
+        with pytest.raises(RuntimeError) as exc_info:
+            bed_mesh_macro.run(params)
+
+        msg = str(exc_info.value)
+        assert "Mesh scan failed: 1/25 grid points have no valid samples." in msg
+        assert "Raw samples: 25. Assigned to grid: 24." in msg
+        assert "Assignment radius: 5.00mm." in msg
+        assert "(90.00,10.00) assigned=0 nearest=(96.00,10.00) dist=6.00mm" in msg
+
     def test_regular_mesh_boundary_and_coordinate_transformation(
         self,
         mocker: MockerFixture,
@@ -444,3 +475,29 @@ class TestBedMeshIntegration:
         # Check that all expected nozzle positions were visited
         missing = expected_nozzle_positions - actual_move_positions
         assert not missing, f"Missing expected nozzle moves: {missing}"
+
+    @pytest.mark.parametrize(
+        "mesh_max, expected",
+        [((2.0, 2.0), 1.0), ((20.0, 40.0), 10.0 / 3.0), ((40.0, 20.0), 10.0 / 3.0)],
+    )
+    def test_run_reports_mesh_assignment_radius(
+        self,
+        bed_mesh_macro: BedMeshCalibrateMacro,
+        params: MockParams,
+        session: Mock,
+        mocker: MockerFixture,
+        mesh_max: tuple[float, float],
+        expected: float,
+    ) -> None:
+        params.params = {
+            "METHOD": "scan",
+            "MESH_MIN": "0,0",
+            "MESH_MAX": f"{mesh_max[0]},{mesh_max[1]}",
+            "PROBE_COUNT": "3,3",
+        }
+        session.get_items = mocker.Mock(return_value=[])
+
+        with pytest.raises(RuntimeError) as exc_info:
+            bed_mesh_macro.run(params)
+
+        assert f"Assignment radius: {expected:.2f}mm." in str(exc_info.value)
