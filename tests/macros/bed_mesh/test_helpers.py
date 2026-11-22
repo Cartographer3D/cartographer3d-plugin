@@ -207,6 +207,98 @@ class TestSampleProcessor:
         assert result_00.z == 2.0  # Median of [1.0, 2.0, 3.0]
         assert result_00.sample_count == 3
 
+    @pytest.mark.parametrize(
+        "samples",
+        [
+            [],
+            [mock_sample(None)],
+            [mock_sample(Position(-5.0, -5.0, 0.0))],
+            [mock_sample(Position(2.5, 2.5, 0.0))],
+        ],
+    )
+    def test_assign_samples_empty_and_all_filtered(self, samples: list[Sample]):
+        """Test empty sample lists and inputs where every sample is filtered out."""
+        height_calc = Mock(return_value=1.0)
+
+        results = processor.assign_samples_to_grid(samples, height_calc)
+
+        assert len(results) == 9
+        assert all(np.isnan(r.z) and r.sample_count == 0 for r in results)
+        assert height_calc.call_count == 0
+
+    def test_assign_samples_half_step_rounds_to_even(self):
+        """Test that half-step positions round to even grid indices (matching Python round)."""
+        wide_proc = SampleProcessor(grid, max_distance=3.0)
+        samples = [
+            mock_sample(Position(2.5, 0.0, 0.0)),  # 0.5 step -> i=0
+            mock_sample(Position(7.5, 0.0, 0.0)),  # 1.5 step -> i=2
+        ]
+        height_calc = Mock(side_effect=[1.0, 2.0])
+
+        results = wide_proc.assign_samples_to_grid(samples, height_calc)
+        by_point = {r.point: r for r in results}
+
+        assert by_point[(0.0, 0.0)] == GridPointResult(point=(0.0, 0.0), z=1.0, sample_count=1)
+        assert by_point[(5.0, 0.0)].sample_count == 0
+        assert by_point[(10.0, 0.0)] == GridPointResult(point=(10.0, 0.0), z=2.0, sample_count=1)
+
+    def test_assign_samples_even_count_median(self):
+        """Test that even-count cells average the two middle heights."""
+        samples = [
+            mock_sample(Position(0.0, 0.0, 0.0)),
+            mock_sample(Position(0.1, 0.0, 0.0)),
+            mock_sample(Position(0.0, 0.1, 0.0)),
+            mock_sample(Position(-0.1, 0.0, 0.0)),
+        ]
+        height_calc = Mock(side_effect=[4.0, 1.0, 3.0, 2.0])
+
+        results = processor.assign_samples_to_grid(samples, height_calc)
+
+        result_00 = next(r for r in results if r.point == (0.0, 0.0))
+        assert result_00 == GridPointResult(point=(0.0, 0.0), z=2.5, sample_count=4)
+
+    def test_assign_samples_nan_and_inf_median(self):
+        """Test that NaN and +/-inf median handling matches np.median."""
+        samples = [
+            mock_sample(Position(0.0, 0.0, 0.0)),
+            mock_sample(Position(0.0, 0.0, 0.0)),
+            mock_sample(Position(0.0, 0.0, 0.0)),
+            mock_sample(Position(5.0, 0.0, 0.0)),
+            mock_sample(Position(5.0, 0.0, 0.0)),
+            mock_sample(Position(10.0, 0.0, 0.0)),
+            mock_sample(Position(10.0, 0.0, 0.0)),
+            mock_sample(Position(0.0, 5.0, 0.0)),
+        ]
+        height_calc = Mock(
+            side_effect=[
+                1.0,
+                float("nan"),
+                3.0,
+                1.0,
+                float("inf"),
+                float("-inf"),
+                float("inf"),
+                float("inf"),
+            ]
+        )
+
+        results = processor.assign_samples_to_grid(samples, height_calc)
+        by_point = {r.point: r for r in results}
+
+        assert np.isnan(by_point[(0.0, 0.0)].z)
+        assert by_point[(0.0, 0.0)].sample_count == 3
+        assert by_point[(5.0, 0.0)].z == float("inf")
+        assert np.isnan(by_point[(10.0, 0.0)].z)
+        assert by_point[(0.0, 5.0)].z == float("inf")
+
+    def test_assign_samples_zero_width_grid_raises(self):
+        """Test that a zero-width grid raises ZeroDivisionError when samples are in bounds."""
+        zero_grid = MeshGrid((5.0, 0.0), (5.0, 10.0), 3, 3)
+        zero_proc = SampleProcessor(zero_grid, max_distance=1.0)
+
+        with pytest.raises(ZeroDivisionError):
+            _ = zero_proc.assign_samples_to_grid([mock_sample(Position(5.0, 5.0, 0.0))], Mock(return_value=1.0))
+
 
 transformer = CoordinateTransformer(probe_offset=Position(2.0, 1.0, 0))
 
