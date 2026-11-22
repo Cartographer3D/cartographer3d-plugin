@@ -501,3 +501,23 @@ class TestBedMeshIntegration:
             bed_mesh_macro.run(params)
 
         assert f"Assignment radius: {expected:.2f}mm." in str(exc_info.value)
+
+    def test_collect_samples_returns_raw_samples(
+        self,
+        mocker: MockerFixture,
+        bed_mesh_macro: BedMeshCalibrateMacro,
+        probe_offset: Position,
+        params: MockParams,
+        session: Mock,
+    ) -> None:
+        """Collected samples are forwarded to the worker without per-sample copying."""
+        expected_probe_positions = [(float(10 + 20 * x), float(10 + 20 * y)) for x in range(5) for y in range(5)]
+        heights = [1.5 + 0.1 * i for i in range(len(expected_probe_positions))]
+        mock_samples = self.create_samples_at_probe_positions(expected_probe_positions, heights, probe_offset)
+        session.get_items = mocker.Mock(return_value=mock_samples)
+        executor_spy = mocker.spy(bed_mesh_macro.task_executor, "run")
+
+        params.params = {"METHOD": "scan"}
+        bed_mesh_macro.run(params)
+
+        assert any(arg is mock_samples for arg in executor_spy.call_args.args)
