@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-from collections import defaultdict
 from dataclasses import dataclass
 from functools import cached_property
 from math import ceil
@@ -122,38 +121,98 @@ class SampleProcessor:
         calculate_height: Callable[[Sample], float],
     ) -> list[GridPointResult]:
         """Assign samples to grid points and calculate median heights."""
-        accumulator: dict[tuple[int, int], list[float]] = defaultdict(list)
-        sample_points = [
-            (sample.position.x, sample.position.y, sample) for sample in samples if sample.position is not None
+        x_res = self.grid.x_resolution
+        y_res = self.grid.y_resolution
+        z_out: NDArray[np.float64] = np.full(y_res * x_res, np.nan, dtype=np.float64)
+        c_out: NDArray[np.intp] = np.zeros(y_res * x_res, dtype=np.intp)
+
+        selected_samples, cell_ids = self._select_grid_samples(samples)
+        if selected_samples:
+            heights: NDArray[np.float64] = np.fromiter(
+                (calculate_height(sample) for sample in selected_samples),
+                dtype=np.float64,
+                count=len(selected_samples),
+            )
+
+            order: NDArray[np.intp] = np.lexsort((heights, cell_ids))
+            sorted_cells = cell_ids[order]
+            sorted_heights = heights[order]
+
+            unique_cells, starts, counts = np.unique(sorted_cells, return_index=True, return_counts=True)
+            ends = starts + counts
+            mid_lo = starts + (counts - 1) // 2
+            mid_hi = starts + counts // 2
+            lo_vals = sorted_heights[mid_lo]
+            hi_vals = sorted_heights[mid_hi]
+            with np.errstate(invalid="ignore"):
+                medians: NDArray[np.float64] = np.where(mid_lo == mid_hi, lo_vals, 0.5 * (lo_vals + hi_vals))
+            medians[np.isnan(sorted_heights[ends - 1])] = np.nan
+
+            z_out[unique_cells] = medians
+            c_out[unique_cells] = counts
+
+        x_coords = self.grid.x_coords
+        y_coords = self.grid.y_coords
+        z_grid = z_out.reshape(y_res, x_res)
+        c_grid = c_out.reshape(y_res, x_res)
+        return [
+            GridPointResult(
+                point=(float(x_coords[i]), float(y_coords[j])),
+                z=float(z_grid[j, i]),
+                sample_count=int(c_grid[j, i]),
+            )
+            for j in range(y_res)
+            for i in range(x_res)
         ]
 
-        for x, y, sample in sample_points:
-            if not self.grid.contains_point((x, y), epsilon=self.max_distance):
-                continue
+    def _select_grid_samples(self, samples: list[Sample]) -> tuple[list[Sample], NDArray[np.intp]]:
+        """Filter samples to those within grid bounds and assignment radius, returning matching flat cell indices."""
+        positioned_samples: list[Sample] = []
+        coords: list[tuple[float, float]] = []
+        for sample in samples:
+            pos = sample.position
+            if pos is not None:
+                positioned_samples.append(sample)
+                coords.append((pos.x, pos.y))
 
-            j, i = self.grid.point_to_grid_index((x, y))
-            if not self.grid.is_valid_index(j, i):
-                continue
+        empty_cells: NDArray[np.intp] = np.empty(0, dtype=np.intp)
+        if not positioned_samples:
+            return [], empty_cells
 
-            grid_point = self.grid.grid_index_to_point(j, i)
-            distance = np.hypot(x - grid_point[0], y - grid_point[1])
-            if distance > self.max_distance:
-                continue
+        xy: NDArray[np.float64] = np.asarray(coords, dtype=np.float64)
+        xs = xy[:, 0]
+        ys = xy[:, 1]
+        min_x, min_y = self.grid.min_point
+        max_x, max_y = self.grid.max_point
+        eps = self.max_distance
+        in_bounds = (xs >= min_x - eps) & (xs <= max_x + eps) & (ys >= min_y - eps) & (ys <= max_y + eps)
+        bound_indices: NDArray[np.intp] = np.flatnonzero(in_bounds)
+        if bound_indices.size == 0:
+            return [], empty_cells
 
-            sample_height = calculate_height(sample)
-            accumulator[(j, i)].append(sample_height)
+        if self.grid.x_step == 0.0 or self.grid.y_step == 0.0:
+            msg = "Grid step size must be non-zero"
+            raise ZeroDivisionError(msg)
 
-        results: list[GridPointResult] = []
-        for j in range(self.grid.y_resolution):
-            for i in range(self.grid.x_resolution):
-                grid_point = self.grid.grid_index_to_point(j, i)
-                values = accumulator.get((j, i), [])
-                count = len(values)
+        bx = xs[bound_indices]
+        by = ys[bound_indices]
+        ii: NDArray[np.intp] = np.rint((bx - min_x) / self.grid.x_step).astype(np.intp)
+        jj: NDArray[np.intp] = np.rint((by - min_y) / self.grid.y_step).astype(np.intp)
+        valid_idx = (ii >= 0) & (ii < self.grid.x_resolution) & (jj >= 0) & (jj < self.grid.y_resolution)
 
-                z = float(np.median(values)) if values else np.nan
-                results.append(GridPointResult(point=grid_point, z=z, sample_count=count))
+        bound_indices = bound_indices[valid_idx]
+        bx = bx[valid_idx]
+        by = by[valid_idx]
+        ii = ii[valid_idx]
+        jj = jj[valid_idx]
 
-        return results
+        distances: NDArray[np.float64] = np.hypot(bx - self.grid.x_coords[ii], by - self.grid.y_coords[jj])
+        in_radius = distances <= self.max_distance
+
+        keep_indices = bound_indices[in_radius]
+        cell_ids = jj[in_radius] * self.grid.x_resolution + ii[in_radius]
+        selected_samples = [positioned_samples[int(idx)] for idx in keep_indices]
+        return selected_samples, cell_ids
 
 
 @final
