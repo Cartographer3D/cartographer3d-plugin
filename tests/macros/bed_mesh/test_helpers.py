@@ -207,6 +207,24 @@ class TestSampleProcessor:
         assert result_00.z == 2.0  # Median of [1.0, 2.0, 3.0]
         assert result_00.sample_count == 3
 
+    def test_assign_samples_with_position_offset(self):
+        """Test that position_offset shifts sample coordinates before grid assignment."""
+        samples = [
+            mock_sample(None),
+            mock_sample(Position(-5.0, 3.0, 0.0)),  # Shifts to (0, 0)
+            mock_sample(Position(0.0, 8.0, 0.0)),  # Shifts to (5, 5)
+            mock_sample(Position(0.0, 0.0, 0.0)),  # Shifts to (5, -3), outside bounds
+        ]
+        height_calc = Mock(side_effect=[1.5, 2.5])
+
+        results = processor.assign_samples_to_grid(samples, height_calc, position_offset=(5.0, -3.0))
+
+        assert height_calc.call_count == 2
+        by_point = {r.point: r for r in results}
+        assert by_point[(0.0, 0.0)] == GridPointResult(point=(0.0, 0.0), z=1.5, sample_count=1)
+        assert by_point[(5.0, 5.0)] == GridPointResult(point=(5.0, 5.0), z=2.5, sample_count=1)
+        assert sum(r.sample_count for r in results) == 2
+
 
 transformer = CoordinateTransformer(probe_offset=Position(2.0, 1.0, 0))
 

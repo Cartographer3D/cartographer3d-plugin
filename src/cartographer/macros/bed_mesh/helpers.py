@@ -120,11 +120,16 @@ class SampleProcessor:
         self,
         samples: list[Sample],
         calculate_height: Callable[[Sample], float],
+        *,
+        position_offset: tuple[float, float] = (0.0, 0.0),
     ) -> list[GridPointResult]:
         """Assign samples to grid points and calculate median heights."""
         accumulator: dict[tuple[int, int], list[float]] = defaultdict(list)
+        ox, oy = position_offset
         sample_points = [
-            (sample.position.x, sample.position.y, sample) for sample in samples if sample.position is not None
+            (sample.position.x + ox, sample.position.y + oy, sample)
+            for sample in samples
+            if sample.position is not None
         ]
 
         for x, y, sample in sample_points:

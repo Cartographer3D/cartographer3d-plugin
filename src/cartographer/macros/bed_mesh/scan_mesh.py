@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from itertools import chain
 from math import hypot, isfinite
 from typing import TYPE_CHECKING, final
@@ -118,9 +118,12 @@ def _compute_mesh_assignment_radius(grid: MeshGrid) -> float:
 def _build_invalid_point_diagnostics(
     invalid_points: list[tuple[Point, int]],
     samples: list[Sample],
+    *,
+    position_offset: tuple[float, float],
 ) -> list[str]:
     """Report nearest positioned raw samples for up to 20 invalid points and count the rest."""
-    sample_positions = [(s.position.x, s.position.y) for s in samples if s.position is not None]
+    ox, oy = position_offset
+    sample_positions = [(s.position.x + ox, s.position.y + oy) for s in samples if s.position is not None]
     lines: list[str] = []
     for point, assigned in invalid_points[:_MAX_INVALID_DIAGNOSTICS]:
         gx, gy = point
@@ -332,7 +335,7 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
 
     @log_duration("Collecting samples along the scanning path")
     def _collect_samples(self, path: list[Point], params: MeshScanParams) -> list[Sample]:
-        """Collect samples by following the scanning path."""
+        """Collect raw nozzle-frame samples along the scanning path; probe offset is applied during processing."""
         # Move to starting position
         self.toolhead.move(z=params.height, speed=5)
         self._move_probe_to_point(path[0], params.speed)
@@ -358,38 +361,46 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
 
         samples = session.get_items()
         logger.debug("Collected %d samples across %d runs", len(samples), params.runs)
-        return [self._transform_sample(s) for s in samples]
+        return samples
 
     def _move_probe_to_point(self, point: Point, speed: float) -> None:
         """Move probe to specified point (converts to nozzle coordinates)."""
         x, y = self.coordinate_transformer.probe_to_nozzle(point)
         self.toolhead.move(x=float(x), y=float(y), speed=speed)
 
-    def _transform_sample(self, sample: Sample) -> Sample:
-        """Transform sample to probe coordinates."""
-        if sample.position is None:
-            return sample
-
-        probe_position = self.coordinate_transformer.nozzle_to_probe((sample.position.x, sample.position.y))
-        return replace(
-            sample, position=Position(x=float(probe_position[0]), y=float(probe_position[1]), z=sample.position.z)
-        )
-
     @log_duration("Processing samples into final mesh positions")
     def _process_samples_to_positions(self, grid: MeshGrid, samples: list[Sample], height: float) -> list[Position]:
         """Process samples into final mesh positions."""
         assignment_radius = _compute_mesh_assignment_radius(grid)
         sample_processor = SampleProcessor(grid, max_distance=assignment_radius)
+        offset = self.coordinate_transformer.probe_offset
+        probe_offset = (float(offset.x), float(offset.y))
 
         # Assign samples to grid points
-        results = sample_processor.assign_samples_to_grid(samples, self.probe.scan.calculate_sample_distance)
+        results = sample_processor.assign_samples_to_grid(
+            samples,
+            self.probe.scan.calculate_sample_distance,
+            position_offset=probe_offset,
+        )
 
         # Convert results to positions
-        positions = self._results_to_positions(results, height, samples, assignment_radius)
+        positions = self._results_to_positions(
+            results,
+            height,
+            samples,
+            assignment_radius,
+            position_offset=probe_offset,
+        )
         return self.coordinate_transformer.apply_faulty_regions(positions, self.config.faulty_regions)
 
     def _results_to_positions(
-        self, results: list[GridPointResult], height: float, samples: list[Sample], assignment_radius: float
+        self,
+        results: list[GridPointResult],
+        height: float,
+        samples: list[Sample],
+        assignment_radius: float,
+        *,
+        position_offset: tuple[float, float],
     ) -> list[Position]:
         """Convert grid results to Position objects."""
         positions: list[Position] = []
@@ -400,7 +411,7 @@ class BedMeshCalibrateMacro(Macro, SupportsFallbackMacro):
         if invalid_points:
             raw_count = len(samples)
             assigned_count = sum(r.sample_count for r in results)
-            diag_lines = _build_invalid_point_diagnostics(invalid_points, samples)
+            diag_lines = _build_invalid_point_diagnostics(invalid_points, samples, position_offset=position_offset)
             msg_lines = [
                 f"Mesh scan failed: {len(invalid_points)}/{len(results)} grid points have no valid samples."
                 f" Raw samples: {raw_count}. Assigned to grid: {assigned_count}."
